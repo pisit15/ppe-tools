@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Use service role key if available, fallback to anon key
-// tools_users RLS is set to allow all access
+// Use anon key — company_users and admin_accounts both allow anon SELECT
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -24,42 +23,79 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabase();
+    const trimmedUsername = username.toLowerCase().trim();
 
-    // Query tools_users table
-    const { data, error } = await supabase
-      .from('tools_users')
+    // 1) Check admin_accounts first
+    const { data: adminData } = await supabase
+      .from('admin_accounts')
       .select('*')
-      .eq('username', username.toLowerCase().trim())
+      .eq('username', trimmedUsername)
       .eq('is_active', true)
       .single();
 
-    if (error || !data) {
+    if (adminData && adminData.password === password) {
+      return NextResponse.json({
+        success: true,
+        user: {
+          id: adminData.id,
+          username: adminData.username,
+          companyId: 'admin',
+          companyName: 'EA SHE Admin',
+          displayName: adminData.display_name || adminData.username,
+          nickname: '',
+          position: adminData.role === 'super_admin' ? 'Super Admin' : 'Admin',
+          role: 'admin',
+        },
+      });
+    }
+
+    // 2) Check company_users table
+    const { data: userData } = await supabase
+      .from('company_users')
+      .select('*')
+      .eq('username', trimmedUsername)
+      .eq('is_active', true)
+      .single();
+
+    if (!userData) {
       return NextResponse.json(
         { success: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' },
         { status: 401 }
       );
     }
 
-    // Simple password check (matching eashe.org's approach)
-    if (data.password !== password) {
+    // Password check
+    if (userData.password !== password) {
       return NextResponse.json(
         { success: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' },
         { status: 401 }
       );
+    }
+
+    // 3) Get company_name from company_settings
+    let companyName = userData.display_name || userData.company_id;
+    const { data: companyData } = await supabase
+      .from('company_settings')
+      .select('company_name')
+      .eq('company_id', userData.company_id)
+      .single();
+
+    if (companyData) {
+      companyName = companyData.company_name;
     }
 
     // Return user info (never return password)
     return NextResponse.json({
       success: true,
       user: {
-        id: data.id,
-        username: data.username,
-        companyId: data.company_id,
-        companyName: data.company_name,
-        displayName: data.display_name || data.username,
-        nickname: data.nickname || '',
-        position: data.position || '',
-        role: data.role || 'user',
+        id: userData.id,
+        username: userData.username,
+        companyId: userData.company_id,
+        companyName: companyName,
+        displayName: userData.display_name || userData.username,
+        nickname: '',
+        position: '',
+        role: 'user',
       },
     });
   } catch (err) {

@@ -31,19 +31,16 @@ export async function GET() {
       .select('company_id')
       .eq('is_active', true);
 
-    // Get company names from tools_users
-    const { data: authUsers } = await supabase
-      .from('tools_users')
-      .select('company_id, company_name')
-      .neq('role', 'admin');
+    // Get company names from company_settings
+    const { data: companySettings } = await supabase
+      .from('company_settings')
+      .select('company_id, company_name');
 
     // Build company name map
     const companyNames: Record<string, string> = {};
-    if (authUsers) {
-      for (const u of authUsers) {
-        if (!companyNames[u.company_id]) {
-          companyNames[u.company_id] = u.company_name;
-        }
+    if (companySettings) {
+      for (const c of companySettings) {
+        companyNames[c.company_id] = c.company_name;
       }
     }
 
