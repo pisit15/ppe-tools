@@ -55,12 +55,18 @@ export async function POST(request: NextRequest) {
       ])
       .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase insert error:', error);
+      return NextResponse.json(
+        { error: 'Failed to create product', detail: error.message, code: error.code, hint: error.hint },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ data: data[0] }, { status: 201 });
   } catch (error: unknown) {
     console.error('Error creating product:', error);
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = error instanceof Error ? error.message : JSON.stringify(error);
     return NextResponse.json(
       { error: 'Failed to create product', detail: msg },
       { status: 500 }
