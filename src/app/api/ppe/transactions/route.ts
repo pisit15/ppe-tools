@@ -11,7 +11,9 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('end_date');
     const limit = parseInt(searchParams.get('limit') || '100');
 
-    let query = supabase
+    let db;
+    try { db = getSupabaseServer(); } catch { db = supabase; }
+    let query = db
       .from('ppe_transactions')
       .select('*')
       .eq('company_id', companyId);

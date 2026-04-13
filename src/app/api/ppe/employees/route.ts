@@ -7,7 +7,9 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const companyId = searchParams.get('company_id') || 'default';
 
-    const { data, error } = await supabase
+    let db;
+    try { db = getSupabaseServer(); } catch { db = supabase; }
+    const { data, error } = await db
       .from('ppe_employees')
       .select('*')
       .eq('company_id', companyId)
