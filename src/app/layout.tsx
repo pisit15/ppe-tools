@@ -1,14 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { AuthProvider } from '@/components/AuthProvider';
 
 export const metadata: Metadata = {
-  title: 'PPE Inventory System - tools.eashe.org',
-  description: 'Personal Protective Equipment Inventory Management System',
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
+  title: 'EA SHE Tools - tools.eashe.org',
+  description: 'Safety & Environment Tools Platform',
 };
 
 export default function RootLayout({
@@ -18,7 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

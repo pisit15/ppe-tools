@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname, useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import {
   Menu,
@@ -13,7 +13,10 @@ import {
   Users,
   History,
   BarChart3,
+  ArrowLeft,
+  LogOut,
 } from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
 
 type NavItem = {
   label: string;
@@ -24,20 +27,25 @@ type NavItem = {
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const companyId = searchParams.get('company_id') || 'default';
+  const params = useParams();
+  const router = useRouter();
+  const auth = useAuth();
+  const companyId = (params.companyId as string) || 'default';
+  const companyName = auth.getCompanyName(companyId);
+
+  const basePath = `/${companyId}/ppe`;
 
   const navItems: NavItem[] = [
-    { label: 'แดชบอร์ด', href: `/ppe?company_id=${companyId}`, icon: <Home size={20} /> },
-    { label: 'จัดการสต็อก', href: `/ppe/inventory?company_id=${companyId}`, icon: <Package size={20} /> },
-    { label: 'รับเข้า', href: `/ppe/stock-in?company_id=${companyId}`, icon: <TrendingUp size={20} /> },
-    { label: 'เบิกออก', href: `/ppe/stock-out?company_id=${companyId}`, icon: <TrendingDown size={20} /> },
-    { label: 'พนักงาน', href: `/ppe/employees?company_id=${companyId}`, icon: <Users size={20} /> },
-    { label: 'ประวัติ', href: `/ppe/history?company_id=${companyId}`, icon: <History size={20} /> },
-    { label: 'รายงาน', href: `/ppe/reports?company_id=${companyId}`, icon: <BarChart3 size={20} /> },
+    { label: 'แดชบอร์ด', href: basePath, icon: <Home size={20} /> },
+    { label: 'จัดการสต็อก', href: `${basePath}/inventory`, icon: <Package size={20} /> },
+    { label: 'รับเข้า', href: `${basePath}/stock-in`, icon: <TrendingUp size={20} /> },
+    { label: 'เบิกออก', href: `${basePath}/stock-out`, icon: <TrendingDown size={20} /> },
+    { label: 'พนักงาน', href: `${basePath}/employees`, icon: <Users size={20} /> },
+    { label: 'ประวัติ', href: `${basePath}/history`, icon: <History size={20} /> },
+    { label: 'รายงาน', href: `${basePath}/reports`, icon: <BarChart3 size={20} /> },
   ];
 
-  const isActive = (href: string) => pathname === href.split('?')[0];
+  const isActive = (href: string) => pathname === href;
 
   return (
     <aside
@@ -56,22 +64,11 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Company Selector */}
+      {/* Company Info */}
       {isOpen && (
         <div className="p-4 border-b border-blue-800">
-          <label className="text-xs text-blue-300 block mb-2">บริษัท</label>
-          <select
-            value={companyId}
-            onChange={(e) => {
-              const newCompanyId = e.target.value;
-              window.location.href = pathname + `?company_id=${newCompanyId}`;
-            }}
-            className="w-full bg-blue-800 text-white text-sm rounded px-2 py-2 border border-blue-700"
-          >
-            <option value="default">บริษัท เริ่มต้น</option>
-            <option value="eashe">EASHE Corp</option>
-            <option value="subsidiary">Subsidiary Co</option>
-          </select>
+          <label className="text-xs text-blue-300 block mb-1">บริษัท</label>
+          <p className="text-sm font-semibold text-white">{companyName}</p>
         </div>
       )}
 
@@ -93,13 +90,29 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer */}
-      {isOpen && (
-        <div className="p-4 border-t border-blue-800 text-xs text-blue-300">
-          <p className="mb-2">PPE Inventory System</p>
-          <p>Deployed to tools.eashe.org</p>
-        </div>
-      )}
+      {/* Bottom Actions */}
+      <div className="p-4 border-t border-blue-800 space-y-2">
+        {/* Back to Hub */}
+        <button
+          onClick={() => router.push(`/${companyId}`)}
+          className="w-full flex items-center gap-3 px-4 py-2 text-blue-200 hover:text-white hover:bg-blue-800 rounded-lg transition-colors text-sm"
+        >
+          <ArrowLeft size={18} />
+          {isOpen && <span>กลับหน้าเลือกเครื่องมือ</span>}
+        </button>
+
+        {/* Logout */}
+        <button
+          onClick={() => {
+            auth.logout(companyId);
+            router.push('/');
+          }}
+          className="w-full flex items-center gap-3 px-4 py-2 text-blue-200 hover:text-red-300 hover:bg-blue-800 rounded-lg transition-colors text-sm"
+        >
+          <LogOut size={18} />
+          {isOpen && <span>ออกจากระบบ</span>}
+        </button>
+      </div>
     </aside>
   );
 }

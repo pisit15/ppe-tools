@@ -2,14 +2,14 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import type { PPEEmployee } from '@/lib/types';
 import { DEPARTMENTS } from '@/lib/constants';
 
 export default function EmployeesPage() {
-  const searchParams = useSearchParams();
-  const companyId = searchParams.get('company_id') || 'default';
+  const params = useParams();
+  const companyId = params.companyId as string;
   const [employees, setEmployees] = useState<PPEEmployee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

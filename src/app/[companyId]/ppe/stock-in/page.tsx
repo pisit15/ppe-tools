@@ -2,12 +2,12 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import type { PPEProduct } from '@/lib/types';
 
 export default function StockInPage() {
-  const searchParams = useSearchParams();
-  const companyId = searchParams.get('company_id') || 'default';
+  const params = useParams();
+  const companyId = params.companyId as string;
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -2,14 +2,14 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import type { PPEProduct } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
 
 export default function InventoryPage() {
-  const searchParams = useSearchParams();
-  const companyId = searchParams.get('company_id') || 'default';
+  const params = useParams();
+  const companyId = params.companyId as string;
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

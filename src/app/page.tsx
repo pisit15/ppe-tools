@@ -1,113 +1,174 @@
 'use client';
 
-import Link from 'next/link';
-import { Package, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Shield, Lock, Building2, ArrowRight } from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
+import { COMPANIES } from '@/lib/companies';
 
-export default function Home() {
+export default function LoginPage() {
+  const router = useRouter();
+  const auth = useAuth();
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCompany) {
+      setError('กรุณาเลือกบริษัท');
+      return;
+    }
+    if (!password) {
+      setError('กรุณาใส่รหัสผ่าน');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    // Small delay for UX
+    await new Promise((r) => setTimeout(r, 300));
+
+    const success = auth.login(selectedCompany, password);
+    if (success) {
+      router.push(`/${selectedCompany}`);
+    } else {
+      setError('รหัสผ่านไม่ถูกต้อง');
+      setIsLoading(false);
+    }
+  };
+
+  // Check if already logged in to any company
+  const loggedInCompanies = COMPANIES.filter((c) => auth.isLoggedIn(c.id));
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700">
-      {/* Navigation Bar */}
-      <nav className="bg-blue-950 text-white p-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex flex-col">
+      {/* Nav */}
+      <nav className="p-6">
+        <div className="max-w-7xl mx-auto flex items-center gap-3">
+          <Shield className="text-blue-400" size={28} />
           <div>
-            <h1 className="text-2xl font-bold">PPE Inventory System</h1>
-            <p className="text-blue-300 text-sm">tools.eashe.org</p>
-          </div>
-          <div className="text-right">
-            <p className="text-blue-300">Powered by Supabase & Next.js 14</p>
+            <h1 className="text-xl font-bold text-white">EA SHE Tools</h1>
+            <p className="text-blue-300 text-xs">tools.eashe.org</p>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <div className="max-w-7xl mx-auto px-4 py-16">
-        <div className="text-center mb-16">
-          <h2 className="text-5xl font-bold text-white mb-4">
-            PPE Inventory Management
-          </h2>
-          <p className="text-xl text-blue-100 mb-8">
-            Efficiently manage your Personal Protective Equipment inventory across your organization
-          </p>
-          <Link
-            href="/ppe?company_id=default"
-            className="inline-block bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors"
-          >
-            เริ่มต้นใช้งาน
-          </Link>
-        </div>
-
-        {/* Features Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-          <div className="bg-white rounded-lg p-6 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-center h-12 w-12 bg-blue-600 rounded-lg mb-4">
-              <Package className="text-white" size={24} />
+      {/* Main */}
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          {/* Login Card */}
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div
+              className="px-8 py-6 text-center"
+              style={{
+                background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #1e40af 100%)',
+              }}
+            >
+              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <Lock className="text-white" size={28} />
+              </div>
+              <h2 className="text-2xl font-bold text-white">เข้าสู่ระบบ</h2>
+              <p className="text-blue-200 text-sm mt-1">
+                Safety & Environment Tools Platform
+              </p>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              จัดการสต็อก
-            </h3>
-            <p className="text-gray-600">
-              ติดตามสินค้า PPE ของคุณแบบแบ่งรายละเอียด พร้อมตัวเลือกเรียงตามประเภท
-            </p>
+
+            {/* Form */}
+            <form onSubmit={handleLogin} className="p-8 space-y-5">
+              {/* Company Selector */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <Building2 size={14} className="inline mr-1" />
+                  เลือกบริษัท
+                </label>
+                <select
+                  value={selectedCompany}
+                  onChange={(e) => {
+                    setSelectedCompany(e.target.value);
+                    setError('');
+                  }}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                >
+                  <option value="">-- เลือกบริษัท --</option>
+                  {COMPANIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <Lock size={14} className="inline mr-1" />
+                  รหัสผ่าน
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="ใส่รหัสผ่าน"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                />
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                  {error}
+                </div>
+              )}
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                ) : (
+                  <>
+                    เข้าสู่ระบบ
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </button>
+            </form>
           </div>
 
-          <div className="bg-white rounded-lg p-6 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-center h-12 w-12 bg-green-600 rounded-lg mb-4">
-              <TrendingUp className="text-white" size={24} />
+          {/* Quick access for already logged-in companies */}
+          {loggedInCompanies.length > 0 && (
+            <div className="mt-6 bg-white/10 backdrop-blur rounded-xl p-4">
+              <p className="text-blue-200 text-sm mb-3">เข้าสู่ระบบอยู่แล้ว:</p>
+              <div className="space-y-2">
+                {loggedInCompanies.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => router.push(`/${c.id}`)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    <ArrowRight size={16} />
+                  </button>
+                ))}
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              รับเข้า/รับคืน
-            </h3>
-            <p className="text-gray-600">
-              บันทึกสต็อกเข้าแบบเรียบง่ายพร้อมการสนับสนุน PO และการติดตามผู้บันทึก
-            </p>
-          </div>
-
-          <div className="bg-white rounded-lg p-6 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-center h-12 w-12 bg-red-600 rounded-lg mb-4">
-              <TrendingDown className="text-white" size={24} />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              เบิก/ยืม
-            </h3>
-            <p className="text-gray-600">
-              ติดตามการเบิก สต็อกสำหรับพนักงาน โดยมีการวิเคราะห์ตามแผนกและสถานะ
-            </p>
-          </div>
-
-          <div className="bg-white rounded-lg p-6 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-center h-12 w-12 bg-purple-600 rounded-lg mb-4">
-              <BarChart3 className="text-white" size={24} />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              ดูรายงาน
-            </h3>
-            <p className="text-gray-600">
-              สร้างรายงานที่ละเอียดพร้อมแนวโน้มสต็อก ประวัติการเบิก และสถิติการใช้
-            </p>
-          </div>
-        </div>
-
-        {/* Multi-Company Support */}
-        <div className="bg-white rounded-lg p-8 shadow-lg">
-          <h3 className="text-2xl font-bold text-gray-900 mb-4">
-            การสนับสนุนหลายบริษัท
-          </h3>
-          <p className="text-gray-600 mb-4">
-            ระบบนี้รองรับการจัดการ PPE สำหรับหลายบริษัท โดยแต่ละบริษัทมีข้อมูลแยกต่างหาก
-            ตัวเลือกเลือกบริษัทมีให้ในแถบด้านข้างสำหรับการเปลี่ยนอย่างราบรื่น
-          </p>
-          <p className="text-blue-600 font-semibold">
-            กำลังเลือก: บริษัท เริ่มต้น
-          </p>
+          )}
         </div>
       </div>
 
       {/* Footer */}
-      <footer className="bg-blue-950 text-blue-300 p-6 mt-16">
-        <div className="max-w-7xl mx-auto text-center text-sm">
-          <p>PPE Inventory System v1.0 | Deployed to tools.eashe.org</p>
-          <p className="mt-2">Shared database with eashe.org safety dashboard</p>
-        </div>
+      <footer className="p-4 text-center text-blue-400 text-xs">
+        EA SHE Tools Platform v1.0 | Powered by Next.js & Supabase
       </footer>
     </div>
   );

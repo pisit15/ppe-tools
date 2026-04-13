@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { BarChart3 } from 'lucide-react';
 import type { PPEStockSummary, PPETransaction } from '@/lib/types';
 
@@ -12,8 +12,8 @@ interface ReportData {
 }
 
 export default function ReportsPage() {
-  const searchParams = useSearchParams();
-  const companyId = searchParams.get('company_id') || 'default';
+  const params = useParams();
+  const companyId = params.companyId as string;
   const [reportData, setReportData] = useState<ReportData>({
     stocks: [],
     transactions: [],

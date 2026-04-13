@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { AlertTriangle, Package, TrendingUp, TrendingDown } from 'lucide-react';
 import type { PPEStockSummary } from '@/lib/types';
 
@@ -15,8 +15,8 @@ interface DashboardStats {
 }
 
 export default function PPEDashboard() {
-  const searchParams = useSearchParams();
-  const companyId = searchParams.get('company_id') || 'default';
+  const params = useParams();
+  const companyId = params.companyId as string;
   const [stats, setStats] = useState<DashboardStats>({
     total_products: 0,
     total_stock_in: 0,
@@ -196,28 +196,28 @@ export default function PPEDashboard() {
         <h2 className="text-lg font-bold text-gray-900 mb-4">ลิงก์ด่วน</h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           <a
-            href={`/ppe/inventory?company_id=${companyId}`}
+            href={`/${companyId}/ppe/inventory`}
             className="p-4 border rounded-lg hover:bg-blue-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">จัดการสต็อก</p>
             <p className="text-sm text-gray-600">ดูและแก้ไขรายการ PPE</p>
           </a>
           <a
-            href={`/ppe/stock-in?company_id=${companyId}`}
+            href={`/${companyId}/ppe/stock-in`}
             className="p-4 border rounded-lg hover:bg-green-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">รับเข้า</p>
             <p className="text-sm text-gray-600">บันทึกสต็อกเข้า</p>
           </a>
           <a
-            href={`/ppe/stock-out?company_id=${companyId}`}
+            href={`/${companyId}/ppe/stock-out`}
             className="p-4 border rounded-lg hover:bg-red-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">เบิกออก</p>
             <p className="text-sm text-gray-600">บันทึกการเบิก</p>
           </a>
           <a
-            href={`/ppe/history?company_id=${companyId}`}
+            href={`/${companyId}/ppe/history`}
             className="p-4 border rounded-lg hover:bg-purple-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">ประวัติ</p>
