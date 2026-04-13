@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, getSupabaseServer } from '@/lib/supabase';
 import type { CreateTransactionInput } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
@@ -62,14 +62,15 @@ export async function POST(request: NextRequest) {
       recorded_by,
     } = body;
 
-    if (!company_id || !product_id || !transaction_type || !quantity || !unit) {
+    if (!company_id || !transaction_type || !quantity) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields (company_id, transaction_type, quantity)' },
         { status: 400 }
       );
     }
 
-    const { data, error } = await supabase
+    const serverSupabase = getSupabaseServer();
+    const { data, error } = await serverSupabase
       .from('ppe_transactions')
       .insert([
         {

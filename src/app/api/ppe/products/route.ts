@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, getSupabaseServer } from '@/lib/supabase';
 import type { CreateProductInput } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
@@ -37,7 +37,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data, error } = await supabase
+    const serverSupabase = getSupabaseServer();
+    const { data, error } = await serverSupabase
       .from('ppe_products')
       .insert([
         {
