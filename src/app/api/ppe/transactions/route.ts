@@ -69,8 +69,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const serverSupabase = getSupabaseServer();
-    const { data, error } = await serverSupabase
+    let db;
+    try { db = getSupabaseServer(); } catch { db = supabase; }
+    const { data, error } = await db
       .from('ppe_transactions')
       .insert([
         {
@@ -93,10 +94,11 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ data: data[0] }, { status: 201 });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error creating transaction:', error);
+    const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Failed to create transaction' },
+      { error: 'Failed to create transaction', detail: msg },
       { status: 500 }
     );
   }

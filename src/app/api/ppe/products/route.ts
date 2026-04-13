@@ -37,8 +37,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const serverSupabase = getSupabaseServer();
-    const { data, error } = await serverSupabase
+    // Use service role key if available, fall back to anon key
+    let db;
+    try { db = getSupabaseServer(); } catch { db = supabase; }
+    const { data, error } = await db
       .from('ppe_products')
       .insert([
         {
@@ -56,10 +58,11 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ data: data[0] }, { status: 201 });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error creating product:', error);
+    const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Failed to create product' },
+      { error: 'Failed to create product', detail: msg },
       { status: 500 }
     );
   }
