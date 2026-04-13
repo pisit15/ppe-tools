@@ -11,10 +11,15 @@ export default function PPELayout({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const companyId = params.companyId as string;
 
-  // Auth gate
+  // Auth gate — small delay to allow state propagation
   useEffect(() => {
     if (!auth.isLoggedIn(companyId)) {
-      router.replace('/');
+      const timer = setTimeout(() => {
+        if (!auth.isLoggedIn(companyId)) {
+          router.replace('/');
+        }
+      }, 200);
+      return () => clearTimeout(timer);
     }
   }, [auth, companyId, router]);
 

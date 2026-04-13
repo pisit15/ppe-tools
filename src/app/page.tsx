@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Lock, Building2, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
@@ -13,6 +13,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingRedirect, setPendingRedirect] = useState('');
+
+  // Redirect after auth state is committed (fixes React batching race condition)
+  useEffect(() => {
+    if (pendingRedirect && auth.isLoggedIn(pendingRedirect)) {
+      router.push(`/${pendingRedirect}`);
+    }
+  }, [pendingRedirect, auth, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +41,8 @@ export default function LoginPage() {
 
     const success = auth.login(selectedCompany, password);
     if (success) {
-      router.push(`/${selectedCompany}`);
+      // Let useEffect handle redirect after state commits
+      setPendingRedirect(selectedCompany);
     } else {
       setError('รหัสผ่านไม่ถูกต้อง');
       setIsLoading(false);
