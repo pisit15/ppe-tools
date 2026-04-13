@@ -1,8 +1,8 @@
 -- Company Auth table for tools.eashe.org
 -- Uses same credentials as eashe.org Safety & Environment Dashboard
 
--- Create company_auth table (if not exists — eashe.org may already have it)
-CREATE TABLE IF NOT EXISTS company_auth (
+-- Create tools_users table (if not exists — eashe.org may already have it)
+CREATE TABLE IF NOT EXISTS tools_users (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   company_id TEXT NOT NULL,
   company_name TEXT NOT NULL,
@@ -20,23 +20,23 @@ CREATE TABLE IF NOT EXISTS company_auth (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXISTS idx_company_auth_username ON company_auth(username);
-CREATE INDEX IF NOT EXISTS idx_company_auth_company ON company_auth(company_id);
+CREATE INDEX IF NOT EXISTS idx_tools_users_username ON tools_users(username);
+CREATE INDEX IF NOT EXISTS idx_tools_users_company ON tools_users(company_id);
 
 -- Enable RLS
-ALTER TABLE company_auth ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tools_users ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Only service role can read (no anon access to passwords)
-CREATE POLICY "Service role only" ON company_auth
+CREATE POLICY "Service role only" ON tools_users
   FOR ALL USING (auth.role() = 'service_role');
 
 -- Insert admin user
-INSERT INTO company_auth (company_id, company_name, username, password, display_name, role)
+INSERT INTO tools_users (company_id, company_name, username, password, display_name, role)
 VALUES ('admin', 'EA SHE Admin', 'admin', 'admin@eashe', 'Administrator', 'admin')
 ON CONFLICT (username) DO NOTHING;
 
 -- Insert company users from EA HSE User Credentials
-INSERT INTO company_auth (company_id, company_name, username, password, display_name, nickname, position, email) VALUES
+INSERT INTO tools_users (company_id, company_name, username, password, display_name, nickname, position, email) VALUES
 ('ea-kabin', 'EA Kabin (โรงไฟฟ้ากบินทร์บุรี)', 'komsant', 'tpopC0lX', 'คมสันต์ ประภาพรดิลก', 'โต', 'HSE Manager', NULL),
 ('ea-kabin', 'EA Kabin (โรงไฟฟ้ากบินทร์บุรี)', 'nimnual', 'iTygPiI6', 'นิ่มนวล มงคลดี', 'นิ่ม', 'ผู้ช่วยผู้จัดการแผนกความปลอดภัย & DCC', 'nimnual.m@energyabsolute.co.th'),
 ('ea-kabin', 'EA Kabin (โรงไฟฟ้ากบินทร์บุรี)', 'sarawut', '4x9IEPhq', 'สราวุฒิ อรภาพ', 'หนุ่ย', NULL, 'sarawut.a@energyabsolute.co.th'),

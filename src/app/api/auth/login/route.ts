@@ -24,9 +24,9 @@ export async function POST(request: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
-    // Query company_auth table
+    // Query tools_users table
     const { data, error } = await supabase
-      .from('company_auth')
+      .from('tools_users')
       .select('*')
       .eq('username', username.toLowerCase().trim())
       .eq('is_active', true)

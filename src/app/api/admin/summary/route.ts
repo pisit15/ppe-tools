@@ -31,9 +31,9 @@ export async function GET() {
       .select('company_id')
       .eq('is_active', true);
 
-    // Get company names from company_auth
+    // Get company names from tools_users
     const { data: authUsers } = await supabase
-      .from('company_auth')
+      .from('tools_users')
       .select('company_id, company_name')
       .neq('role', 'admin');
 
