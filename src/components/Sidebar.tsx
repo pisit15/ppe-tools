@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useParams, useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import {
   Menu,
@@ -27,13 +27,10 @@ type NavItem = {
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
   const pathname = usePathname();
-  const params = useParams();
   const router = useRouter();
-  const auth = useAuth();
-  const companyId = (params.companyId as string) || 'default';
-  const companyName = auth.getCompanyName(companyId);
+  const { user, logout } = useAuth();
 
-  const basePath = `/${companyId}/ppe`;
+  const basePath = '/ppe';
 
   const navItems: NavItem[] = [
     { label: 'แดชบอร์ด', href: basePath, icon: <Home size={20} /> },
@@ -64,11 +61,12 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Company Info */}
-      {isOpen && (
+      {/* User / Company Info */}
+      {isOpen && user && (
         <div className="p-4 border-b border-blue-800">
           <label className="text-xs text-blue-300 block mb-1">บริษัท</label>
-          <p className="text-sm font-semibold text-white">{companyName}</p>
+          <p className="text-sm font-semibold text-white">{user.companyName}</p>
+          <p className="text-xs text-blue-300 mt-1">{user.nickname || user.displayName}</p>
         </div>
       )}
 
@@ -94,7 +92,7 @@ export default function Sidebar() {
       <div className="p-4 border-t border-blue-800 space-y-2">
         {/* Back to Hub */}
         <button
-          onClick={() => router.push(`/${companyId}`)}
+          onClick={() => router.push('/')}
           className="w-full flex items-center gap-3 px-4 py-2 text-blue-200 hover:text-white hover:bg-blue-800 rounded-lg transition-colors text-sm"
         >
           <ArrowLeft size={18} />
@@ -104,7 +102,7 @@ export default function Sidebar() {
         {/* Logout */}
         <button
           onClick={() => {
-            auth.logout(companyId);
+            logout();
             router.push('/');
           }}
           className="w-full flex items-center gap-3 px-4 py-2 text-blue-200 hover:text-red-300 hover:bg-blue-800 rounded-lg transition-colors text-sm"

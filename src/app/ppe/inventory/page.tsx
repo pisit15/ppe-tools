@@ -2,37 +2,38 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import { Plus, Trash2 } from 'lucide-react';
-import type { PPEEmployee } from '@/lib/types';
-import { DEPARTMENTS } from '@/lib/constants';
+import type { PPEProduct } from '@/lib/types';
+import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
 
-export default function EmployeesPage() {
-  const params = useParams();
-  const companyId = params.companyId as string;
-  const [employees, setEmployees] = useState<PPEEmployee[]>([]);
+export default function InventoryPage() {
+  const { user } = useAuth();
+  const companyId = user?.companyId || '';
+  const [products, setProducts] = useState<PPEProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
-    employee_code: '',
     name: '',
-    position: '',
-    department: '',
+    type: 'gloves',
+    unit: 'piece',
+    min_stock: 10,
+    image_url: '',
   });
 
   useEffect(() => {
-    fetchEmployees();
+    fetchProducts();
   }, [companyId]);
 
-  async function fetchEmployees() {
+  async function fetchProducts() {
     try {
-      const res = await fetch(`/api/ppe/employees?company_id=${companyId}`);
+      const res = await fetch(`/api/ppe/products?company_id=${companyId}`);
       const data = await res.json();
       if (data.data) {
-        setEmployees(data.data);
+        setProducts(data.data);
       }
     } catch (error) {
-      console.error('Error fetching employees:', error);
+      console.error('Error fetching products:', error);
     } finally {
       setIsLoading(false);
     }
@@ -41,7 +42,7 @@ export default function EmployeesPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      const res = await fetch('/api/ppe/employees', {
+      const res = await fetch('/api/ppe/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,16 +53,17 @@ export default function EmployeesPage() {
 
       if (res.ok) {
         setFormData({
-          employee_code: '',
           name: '',
-          position: '',
-          department: '',
+          type: 'gloves',
+          unit: 'piece',
+          min_stock: 10,
+          image_url: '',
         });
         setShowForm(false);
-        fetchEmployees();
+        fetchProducts();
       }
     } catch (error) {
-      console.error('Error creating employee:', error);
+      console.error('Error creating product:', error);
     }
   }
 
@@ -76,38 +78,24 @@ export default function EmployeesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">พนักงาน</h1>
+        <h1 className="text-3xl font-bold text-gray-900">จัดการสต็อก PPE</h1>
         <button
           onClick={() => setShowForm(!showForm)}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
         >
           <Plus size={20} />
-          เพิ่มพนักงาน
+          เพิ่มสินค้า
         </button>
       </div>
 
       {showForm && (
         <div className="bg-white rounded-lg p-6 shadow border-l-4 border-blue-600">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">เพิ่มพนักงานใหม่</h2>
+          <h2 className="text-lg font-bold text-gray-900 mb-4">เพิ่มสินค้า PPE ใหม่</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  รหัสพนักงาน *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.employee_code}
-                  onChange={(e) =>
-                    setFormData({ ...formData, employee_code: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  ชื่อ-นามสกุล *
+                  ชื่อสินค้า *
                 </label>
                 <input
                   type="text"
@@ -121,35 +109,56 @@ export default function EmployeesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  ตำแหน่ง
-                </label>
-                <input
-                  type="text"
-                  value={formData.position}
-                  onChange={(e) =>
-                    setFormData({ ...formData, position: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  แผนก
+                  ประเภท *
                 </label>
                 <select
-                  value={formData.department}
+                  value={formData.type}
                   onChange={(e) =>
-                    setFormData({ ...formData, department: e.target.value })
+                    setFormData({ ...formData, type: e.target.value })
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="">-- เลือกแผนก --</option>
-                  {DEPARTMENTS.map((dept) => (
-                    <option key={dept.value} value={dept.value}>
-                      {dept.label}
+                  {PPE_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  หน่วย *
+                </label>
+                <select
+                  value={formData.unit}
+                  onChange={(e) =>
+                    setFormData({ ...formData, unit: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {UNIT_TYPES.map((unit) => (
+                    <option key={unit.value} value={unit.value}>
+                      {unit.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  สต็อกขั้นต่ำ
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.min_stock}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      min_stock: parseInt(e.target.value),
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
               </div>
             </div>
             <div className="flex gap-2">
@@ -171,23 +180,26 @@ export default function EmployeesPage() {
         </div>
       )}
 
-      {/* Employees Table */}
+      {/* Products Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b">
                 <th className="px-6 py-3 text-left font-semibold text-gray-700">
-                  รหัสพนักงาน
+                  ชื่อสินค้า
                 </th>
                 <th className="px-6 py-3 text-left font-semibold text-gray-700">
-                  ชื่อ-นามสกุล
+                  ประเภท
                 </th>
                 <th className="px-6 py-3 text-left font-semibold text-gray-700">
-                  ตำแหน่ง
+                  หน่วย
                 </th>
-                <th className="px-6 py-3 text-left font-semibold text-gray-700">
-                  แผนก
+                <th className="px-6 py-3 text-center font-semibold text-gray-700">
+                  สต็อกขั้นต่ำ
+                </th>
+                <th className="px-6 py-3 text-center font-semibold text-gray-700">
+                  วันที่สร้าง
                 </th>
                 <th className="px-6 py-3 text-center font-semibold text-gray-700">
                   การจัดการ
@@ -195,18 +207,19 @@ export default function EmployeesPage() {
               </tr>
             </thead>
             <tbody>
-              {employees.length > 0 ? (
-                employees.map((employee) => (
-                  <tr key={employee.id} className="border-b hover:bg-gray-50">
+              {products.length > 0 ? (
+                products.map((product) => (
+                  <tr key={product.id} className="border-b hover:bg-gray-50">
                     <td className="px-6 py-3 text-gray-900 font-medium">
-                      {employee.employee_code}
+                      {product.name}
                     </td>
-                    <td className="px-6 py-3 text-gray-900">{employee.name}</td>
-                    <td className="px-6 py-3 text-gray-600">
-                      {employee.position}
+                    <td className="px-6 py-3 text-gray-600">{product.type}</td>
+                    <td className="px-6 py-3 text-gray-600">{product.unit}</td>
+                    <td className="px-6 py-3 text-center font-semibold">
+                      {product.min_stock}
                     </td>
-                    <td className="px-6 py-3 text-gray-600">
-                      {employee.department}
+                    <td className="px-6 py-3 text-center text-gray-600">
+                      {new Date(product.created_at).toLocaleDateString('th-TH')}
                     </td>
                     <td className="px-6 py-3 text-center">
                       <button className="text-red-600 hover:text-red-700 p-2 rounded hover:bg-red-50">
@@ -217,8 +230,8 @@ export default function EmployeesPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                    ไม่มีพนักงาน. คลิก "เพิ่มพนักงาน" เพื่อเริ่มต้น
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                    ไม่มีสินค้า. คลิก "เพิ่มสินค้า" เพื่อเริ่มต้น
                   </td>
                 </tr>
               )}

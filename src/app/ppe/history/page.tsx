@@ -2,12 +2,12 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import type { PPETransaction } from '@/lib/types';
 
 export default function HistoryPage() {
-  const params = useParams();
-  const companyId = params.companyId as string;
+  const { user } = useAuth();
+  const companyId = user?.companyId || '';
   const [transactions, setTransactions] = useState<PPETransaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<PPETransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);

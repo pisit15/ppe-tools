@@ -1,34 +1,30 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { validateCompanyPassword, getCompany } from '@/lib/companies';
-
-type AuthState = {
-  [companyId: string]: boolean;
-};
+import { AuthUser } from '@/lib/companies';
 
 type AuthContextType = {
-  isLoggedIn: (companyId: string) => boolean;
-  login: (companyId: string, password: string) => boolean;
-  logout: (companyId: string) => void;
-  logoutAll: () => void;
-  getCompanyName: (companyId: string) => string;
+  user: AuthUser | null;
+  isLoading: boolean;
+  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  logout: () => void;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const STORAGE_KEY = 'tools_auth';
+const STORAGE_KEY = 'tools_auth_user';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [authState, setAuthState] = useState<AuthState>({});
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Load auth state from sessionStorage on mount
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem(STORAGE_KEY);
       if (stored) {
-        setAuthState(JSON.parse(stored));
+        setUser(JSON.parse(stored));
       }
     } catch {
       // ignore
@@ -40,48 +36,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (loaded) {
       try {
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(authState));
+        if (user) {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+        } else {
+          sessionStorage.removeItem(STORAGE_KEY);
+        }
       } catch {
         // ignore
       }
     }
-  }, [authState, loaded]);
-
-  const isLoggedIn = useCallback(
-    (companyId: string) => !!authState[companyId],
-    [authState]
-  );
+  }, [user, loaded]);
 
   const login = useCallback(
-    (companyId: string, password: string): boolean => {
-      if (validateCompanyPassword(companyId, password)) {
-        setAuthState((prev) => ({ ...prev, [companyId]: true }));
-        return true;
+    async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+      setIsLoading(true);
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username.toLowerCase().trim(), password }),
+        });
+        const data = await res.json();
+        if (data.success && data.user) {
+          setUser(data.user as AuthUser);
+          return { success: true };
+        }
+        return { success: false, error: data.error || 'เข้าสู่ระบบไม่สำเร็จ' };
+      } catch {
+        return { success: false, error: 'เกิดข้อผิดพลาดในการเชื่อมต่อ' };
+      } finally {
+        setIsLoading(false);
       }
-      return false;
     },
     []
   );
 
-  const logout = useCallback((companyId: string) => {
-    setAuthState((prev) => {
-      const next = { ...prev };
-      delete next[companyId];
-      return next;
-    });
-  }, []);
-
-  const logoutAll = useCallback(() => {
-    setAuthState({});
+  const logout = useCallback(() => {
+    setUser(null);
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {
       // ignore
     }
-  }, []);
-
-  const getCompanyName = useCallback((companyId: string) => {
-    return getCompany(companyId)?.name || companyId;
   }, []);
 
   if (!loaded) {
@@ -93,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, login, logout, logoutAll, getCompanyName }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

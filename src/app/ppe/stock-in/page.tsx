@@ -2,45 +2,44 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
-import type { PPEProduct, PPEEmployee } from '@/lib/types';
-import { DEPARTMENTS } from '@/lib/constants';
+import { useAuth } from '@/components/AuthProvider';
+import type { PPEProduct } from '@/lib/types';
 
-export default function StockOutPage() {
-  const params = useParams();
-  const companyId = params.companyId as string;
+export default function StockInPage() {
+  const { user } = useAuth();
+  const companyId = user?.companyId || '';
   const [products, setProducts] = useState<PPEProduct[]>([]);
-  const [employees, setEmployees] = useState<PPEEmployee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [formData, setFormData] = useState({
     product_id: '',
-    transaction_type: 'stock_out',
+    transaction_type: 'stock_in',
     quantity: '',
     unit: '',
     transaction_date: new Date().toISOString().split('T')[0],
-    employee_code: '',
-    employee_name: '',
-    department: '',
+    po_number: '',
     notes: '',
     recorded_by: '',
   });
 
   useEffect(() => {
-    Promise.all([
-      fetch(`/api/ppe/products?company_id=${companyId}`),
-      fetch(`/api/ppe/employees?company_id=${companyId}`),
-    ])
-      .then(async ([prodRes, empRes]) => {
-        const prodData = await prodRes.json();
-        const empData = await empRes.json();
-        if (prodData.data) setProducts(prodData.data);
-        if (empData.data) setEmployees(empData.data);
-      })
-      .catch(console.error)
-      .finally(() => setIsLoading(false));
+    fetchProducts();
   }, [companyId]);
+
+  async function fetchProducts() {
+    try {
+      const res = await fetch(`/api/ppe/products?company_id=${companyId}`);
+      const data = await res.json();
+      if (data.data) {
+        setProducts(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,25 +60,21 @@ export default function StockOutPage() {
           quantity: parseInt(formData.quantity),
           unit: formData.unit,
           transaction_date: formData.transaction_date,
-          employee_code: formData.employee_code || null,
-          employee_name: formData.employee_name || null,
-          department: formData.department || null,
+          po_number: formData.po_number || null,
           notes: formData.notes || null,
           recorded_by: formData.recorded_by || null,
         }),
       });
 
       if (res.ok) {
-        setSuccessMessage('บันทึกการเบิกสำเร็จ!');
+        setSuccessMessage('บันทึกสต็อกเข้าสำเร็จ!');
         setFormData({
           product_id: '',
-          transaction_type: 'stock_out',
+          transaction_type: 'stock_in',
           quantity: '',
           unit: '',
           transaction_date: new Date().toISOString().split('T')[0],
-          employee_code: '',
-          employee_name: '',
-          department: '',
+          po_number: '',
           notes: '',
           recorded_by: '',
         });
@@ -94,9 +89,6 @@ export default function StockOutPage() {
   }
 
   const selectedProduct = products.find((p) => p.id === formData.product_id);
-  const selectedEmployee = employees.find(
-    (e) => e.employee_code === formData.employee_code
-  );
 
   if (isLoading) {
     return (
@@ -109,8 +101,8 @@ export default function StockOutPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">บันทึกเบิก/ยืม</h1>
-        <p className="text-gray-600 mt-2">บันทึกการเบิกหรือยืม PPE สำหรับพนักงาน</p>
+        <h1 className="text-3xl font-bold text-gray-900">บันทึกรับเข้า</h1>
+        <p className="text-gray-600 mt-2">บันทึกสต็อก PPE ที่รับเข้าหรือรับคืน</p>
       </div>
 
       {successMessage && (
@@ -161,8 +153,8 @@ export default function StockOutPage() {
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               >
-                <option value="stock_out">เบิก</option>
-                <option value="borrow">ยืม</option>
+                <option value="stock_in">รับเข้า</option>
+                <option value="return">รับคืน</option>
               </select>
             </div>
 
@@ -199,7 +191,7 @@ export default function StockOutPage() {
             {/* Date */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                วันที่เบิก *
+                วันที่รับเข้า *
               </label>
               <input
                 type="date"
@@ -215,54 +207,19 @@ export default function StockOutPage() {
               />
             </div>
 
-            {/* Employee Selection */}
+            {/* PO Number */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                พนักงาน
+                หมายเลข PO
               </label>
-              <select
-                value={formData.employee_code}
-                onChange={(event) => {
-                  const emp = employees.find(
-                    (e) => e.employee_code === event.target.value
-                  );
-                  setFormData({
-                    ...formData,
-                    employee_code: event.target.value,
-                    employee_name: emp?.name || '',
-                    department: emp?.department || '',
-                  });
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">-- เลือกพนักงาน --</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.employee_code}>
-                    {emp.name} ({emp.employee_code})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Department */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                แผนก
-              </label>
-              <select
-                value={formData.department}
+              <input
+                type="text"
+                value={formData.po_number}
                 onChange={(e) =>
-                  setFormData({ ...formData, department: e.target.value })
+                  setFormData({ ...formData, po_number: e.target.value })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">-- เลือกแผนก --</option>
-                {DEPARTMENTS.map((dept) => (
-                  <option key={dept.value} value={dept.value}>
-                    {dept.label}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           </div>
 
@@ -304,7 +261,7 @@ export default function StockOutPage() {
               disabled={isSubmitting}
               className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg transition-colors"
             >
-              {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกการเบิก'}
+              {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกรับเข้า'}
             </button>
             <button
               type="reset"

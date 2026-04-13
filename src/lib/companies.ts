@@ -1,38 +1,12 @@
-// Company configuration for multi-tenant tools platform
-export type Company = {
-  id: string;
-  name: string;
-  nameEn: string;
-  password: string; // simple auth per company
-  logo?: string;
-};
+// Project/tool configuration for tools.eashe.org platform
 
-export const COMPANIES: Company[] = [
-  { id: 'default', name: 'บริษัท เริ่มต้น', nameEn: 'Default Company', password: '1234' },
-  { id: 'eashe', name: 'EASHE Corp', nameEn: 'EASHE Corporation', password: 'eashe2024' },
-  { id: 'subsidiary', name: 'Subsidiary Co', nameEn: 'Subsidiary Company', password: 'sub2024' },
-];
-
-export const ADMIN_PASSWORD = 'admin@eashe';
-
-export function getCompany(id: string): Company | undefined {
-  return COMPANIES.find((c) => c.id === id);
-}
-
-export function validateCompanyPassword(companyId: string, password: string): boolean {
-  if (password === ADMIN_PASSWORD) return true;
-  const company = getCompany(companyId);
-  return company?.password === password;
-}
-
-// Available projects/tools on the platform
 export type Project = {
   id: string;
   name: string;
   description: string;
-  icon: string; // emoji or lucide icon name
+  icon: string; // lucide icon name
   color: string; // tailwind gradient
-  href: (companyId: string) => string;
+  href: string;
   ready: boolean;
 };
 
@@ -43,7 +17,7 @@ export const PROJECTS: Project[] = [
     description: 'จัดการสต็อกอุปกรณ์ป้องกันส่วนบุคคล (PPE) รับเข้า เบิกออก ดูรายงาน',
     icon: 'shield',
     color: 'from-blue-600 to-blue-800',
-    href: (companyId) => `/${companyId}/ppe`,
+    href: '/ppe',
     ready: true,
   },
   {
@@ -52,7 +26,7 @@ export const PROJECTS: Project[] = [
     description: 'จัดการสารเคมี SDS/MSDS ติดตามการใช้งานและการจัดเก็บ',
     icon: 'flask',
     color: 'from-purple-600 to-purple-800',
-    href: (companyId) => `/${companyId}/chemical`,
+    href: '/chemical',
     ready: false,
   },
   {
@@ -61,7 +35,7 @@ export const PROJECTS: Project[] = [
     description: 'ระบบใบอนุญาตทำงาน Hot Work, Confined Space, Working at Height',
     icon: 'clipboard',
     color: 'from-orange-500 to-red-600',
-    href: (companyId) => `/${companyId}/permit`,
+    href: '/permit',
     ready: false,
   },
   {
@@ -70,7 +44,19 @@ export const PROJECTS: Project[] = [
     description: 'ตรวจสอบความปลอดภัย Checklist ภาพถ่าย และติดตามการแก้ไข',
     icon: 'search',
     color: 'from-green-600 to-emerald-700',
-    href: (companyId) => `/${companyId}/inspection`,
+    href: '/inspection',
     ready: false,
   },
 ];
+
+// User type returned from auth
+export type AuthUser = {
+  id: string;
+  username: string;
+  companyId: string;
+  companyName: string;
+  displayName: string;
+  nickname: string;
+  position: string;
+  role: 'admin' | 'user';
+};

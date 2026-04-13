@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import { AlertTriangle, Package, TrendingUp, TrendingDown } from 'lucide-react';
 import type { PPEStockSummary } from '@/lib/types';
 
@@ -15,8 +15,8 @@ interface DashboardStats {
 }
 
 export default function PPEDashboard() {
-  const params = useParams();
-  const companyId = params.companyId as string;
+  const { user } = useAuth();
+  const companyId = user?.companyId || '';
   const [stats, setStats] = useState<DashboardStats>({
     total_products: 0,
     total_stock_in: 0,
@@ -74,7 +74,7 @@ export default function PPEDashboard() {
       <div>
         <h1 className="text-3xl font-bold text-gray-900">PPE Dashboard</h1>
         <p className="text-gray-600 mt-2">
-          บริษัท: <span className="font-semibold">{companyId}</span>
+          บริษัท: <span className="font-semibold">{user?.companyName || companyId}</span>
         </p>
       </div>
 
@@ -196,28 +196,28 @@ export default function PPEDashboard() {
         <h2 className="text-lg font-bold text-gray-900 mb-4">ลิงก์ด่วน</h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           <a
-            href={`/${companyId}/ppe/inventory`}
+            href={`/ppe/inventory`}
             className="p-4 border rounded-lg hover:bg-blue-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">จัดการสต็อก</p>
             <p className="text-sm text-gray-600">ดูและแก้ไขรายการ PPE</p>
           </a>
           <a
-            href={`/${companyId}/ppe/stock-in`}
+            href={`/ppe/stock-in`}
             className="p-4 border rounded-lg hover:bg-green-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">รับเข้า</p>
             <p className="text-sm text-gray-600">บันทึกสต็อกเข้า</p>
           </a>
           <a
-            href={`/${companyId}/ppe/stock-out`}
+            href={`/ppe/stock-out`}
             className="p-4 border rounded-lg hover:bg-red-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">เบิกออก</p>
             <p className="text-sm text-gray-600">บันทึกการเบิก</p>
           </a>
           <a
-            href={`/${companyId}/ppe/history`}
+            href={`/ppe/history`}
             className="p-4 border rounded-lg hover:bg-purple-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">ประวัติ</p>

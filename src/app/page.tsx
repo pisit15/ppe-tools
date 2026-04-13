@@ -1,177 +1,120 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Shield, Lock, Building2, ArrowRight } from 'lucide-react';
+import { Shield, FlaskConical, ClipboardCheck, Search, Lock, ArrowRight, User } from 'lucide-react';
+import { PROJECTS, Project } from '@/lib/companies';
 import { useAuth } from '@/components/AuthProvider';
-import { COMPANIES } from '@/lib/companies';
+import Link from 'next/link';
 
-export default function LoginPage() {
-  const router = useRouter();
-  const auth = useAuth();
-  const [selectedCompany, setSelectedCompany] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [pendingRedirect, setPendingRedirect] = useState('');
+const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  shield: Shield,
+  flask: FlaskConical,
+  clipboard: ClipboardCheck,
+  search: Search,
+};
 
-  // Redirect after auth state is committed (fixes React batching race condition)
-  useEffect(() => {
-    if (pendingRedirect && auth.isLoggedIn(pendingRedirect)) {
-      router.push(`/${pendingRedirect}`);
-    }
-  }, [pendingRedirect, auth, router]);
+function ProjectCard({ project }: { project: Project }) {
+  const Icon = ICON_MAP[project.icon] || Shield;
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCompany) {
-      setError('กรุณาเลือกบริษัท');
-      return;
-    }
-    if (!password) {
-      setError('กรุณาใส่รหัสผ่าน');
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-
-    // Small delay for UX
-    await new Promise((r) => setTimeout(r, 300));
-
-    const success = auth.login(selectedCompany, password);
-    if (success) {
-      // Let useEffect handle redirect after state commits
-      setPendingRedirect(selectedCompany);
-    } else {
-      setError('รหัสผ่านไม่ถูกต้อง');
-      setIsLoading(false);
-    }
-  };
-
-  // Check if already logged in to any company
-  const loggedInCompanies = COMPANIES.filter((c) => auth.isLoggedIn(c.id));
+  if (!project.ready) {
+    return (
+      <div className="bg-white rounded-2xl shadow-lg overflow-hidden opacity-60 cursor-not-allowed">
+        <div className={`h-2 bg-gradient-to-r ${project.color}`} />
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center">
+              <Icon size={24} className="text-gray-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-gray-400">{project.name}</h3>
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <Lock size={12} /> Coming Soon
+              </span>
+            </div>
+          </div>
+          <p className="text-sm text-gray-400">{project.description}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex flex-col">
+    <Link href={project.href}>
+      <div className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all hover:-translate-y-1 cursor-pointer group">
+        <div className={`h-2 bg-gradient-to-r ${project.color} group-hover:h-3 transition-all`} />
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <div className={`w-12 h-12 bg-gradient-to-br ${project.color} rounded-xl flex items-center justify-center`}>
+              <Icon size={24} className="text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-gray-900">{project.name}</h3>
+              <span className="text-xs text-green-600 font-medium">พร้อมใช้งาน</span>
+            </div>
+            <ArrowRight size={20} className="text-gray-400 group-hover:text-blue-600 transition-colors" />
+          </div>
+          <p className="text-sm text-gray-600">{project.description}</p>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+export default function HomePage() {
+  const { user, logout } = useAuth();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       {/* Nav */}
       <nav className="p-6">
-        <div className="max-w-7xl mx-auto flex items-center gap-3">
-          <Shield className="text-blue-400" size={28} />
-          <div>
-            <h1 className="text-xl font-bold text-white">EA SHE Tools</h1>
-            <p className="text-blue-300 text-xs">tools.eashe.org</p>
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Shield className="text-blue-400" size={28} />
+            <div>
+              <h1 className="text-xl font-bold text-white">EA SHE Tools</h1>
+              <p className="text-blue-300 text-xs">tools.eashe.org</p>
+            </div>
           </div>
+          {user && (
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-sm text-white font-medium">{user.displayName}</p>
+                <p className="text-xs text-blue-300">{user.companyName}</p>
+              </div>
+              <button
+                onClick={logout}
+                className="px-3 py-1.5 text-sm text-blue-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              >
+                ออกจากระบบ
+              </button>
+            </div>
+          )}
         </div>
       </nav>
 
-      {/* Main */}
-      <div className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          {/* Login Card */}
-          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div
-              className="px-8 py-6 text-center"
-              style={{
-                background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #1e40af 100%)',
-              }}
-            >
-              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                <Lock className="text-white" size={28} />
-              </div>
-              <h2 className="text-2xl font-bold text-white">เข้าสู่ระบบ</h2>
-              <p className="text-blue-200 text-sm mt-1">
-                Safety & Environment Tools Platform
-              </p>
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleLogin} className="p-8 space-y-5">
-              {/* Company Selector */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  <Building2 size={14} className="inline mr-1" />
-                  เลือกบริษัท
-                </label>
-                <select
-                  value={selectedCompany}
-                  onChange={(e) => {
-                    setSelectedCompany(e.target.value);
-                    setError('');
-                  }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                >
-                  <option value="">-- เลือกบริษัท --</option>
-                  {COMPANIES.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Password */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  <Lock size={14} className="inline mr-1" />
-                  รหัสผ่าน
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="ใส่รหัสผ่าน"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
-              </div>
-
-              {/* Error */}
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
-                  {error}
-                </div>
-              )}
-
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-                ) : (
-                  <>
-                    เข้าสู่ระบบ
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          {/* Quick access for already logged-in companies */}
-          {loggedInCompanies.length > 0 && (
-            <div className="mt-6 bg-white/10 backdrop-blur rounded-xl p-4">
-              <p className="text-blue-200 text-sm mb-3">เข้าสู่ระบบอยู่แล้ว:</p>
-              <div className="space-y-2">
-                {loggedInCompanies.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => router.push(`/${c.id}`)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
-                  >
-                    <span className="font-medium">{c.name}</span>
-                    <ArrowRight size={16} />
-                  </button>
-                ))}
-              </div>
+      {/* Hero */}
+      <div className="max-w-5xl mx-auto px-6 pt-8 pb-4">
+        <div className="text-center mb-10">
+          <h2 className="text-3xl font-bold text-white mb-2">
+            Safety & Environment Tools
+          </h2>
+          <p className="text-blue-200 text-lg">
+            เลือกเครื่องมือที่ต้องการใช้งาน
+          </p>
+          {user && (
+            <div className="mt-3 inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full">
+              <User size={16} className="text-blue-300" />
+              <span className="text-blue-200 text-sm">
+                เข้าสู่ระบบแล้ว: <span className="text-white font-medium">{user.nickname || user.displayName}</span> ({user.companyName})
+              </span>
             </div>
           )}
+        </div>
+
+        {/* Project Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
+          {PROJECTS.map((project) => (
+            <ProjectCard key={project.id} project={project} />
+          ))}
         </div>
       </div>
 
