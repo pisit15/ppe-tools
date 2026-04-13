@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import {
   Menu,
@@ -13,10 +13,11 @@ import {
   Users,
   History,
   BarChart3,
-  ArrowLeft,
-  LogOut,
+  Briefcase,
+  ShieldCheck,
+  FileText,
+  ClipboardList,
 } from 'lucide-react';
-import { useAuth } from '@/components/AuthProvider';
 
 type NavItem = {
   label: string;
@@ -27,22 +28,24 @@ type NavItem = {
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, logout } = useAuth();
+  const searchParams = useSearchParams();
+  const companyId = searchParams.get('company_id') || 'default';
 
-  const basePath = '/ppe';
-
-  const navItems: NavItem[] = [
-    { label: 'แดชบอร์ด', href: basePath, icon: <Home size={20} /> },
-    { label: 'จัดการสต็อก', href: `${basePath}/inventory`, icon: <Package size={20} /> },
-    { label: 'รับเข้า', href: `${basePath}/stock-in`, icon: <TrendingUp size={20} /> },
-    { label: 'เบิกออก', href: `${basePath}/stock-out`, icon: <TrendingDown size={20} /> },
-    { label: 'พนักงาน', href: `${basePath}/employees`, icon: <Users size={20} /> },
-    { label: 'ประวัติ', href: `${basePath}/history`, icon: <History size={20} /> },
-    { label: 'รายงาน', href: `${basePath}/reports`, icon: <BarChart3 size={20} /> },
+  const ppeItems: NavItem[] = [
+    { label: 'แดชบอร์ด', href: `/ppe?company_id=${companyId}`, icon: <Home size={20} /> },
+    { label: 'จัดการสต็อก', href: `/ppe/inventory?company_id=${companyId}`, icon: <Package size={20} /> },
+    { label: 'รับเข้า', href: `/ppe/stock-in?company_id=${companyId}`, icon: <TrendingUp size={20} /> },
+    { label: 'เบิกออก', href: `/ppe/stock-out?company_id=${companyId}`, icon: <TrendingDown size={20} /> },
+    { label: 'พนักงาน', href: `/ppe/employees?company_id=${companyId}`, icon: <Users size={20} /> },
+    { label: 'ประวัติ', href: `/ppe/history?company_id=${companyId}`, icon: <History size={20} /> },
+    { label: 'รายงาน', href: `/ppe/reports?company_id=${companyId}`, icon: <BarChart3 size={20} /> },
   ];
 
-  const isActive = (href: string) => pathname === href;
+  const sheItems: NavItem[] = [
+    { label: 'SHE Workforce', href: `/she-workforce?company_id=${companyId}`, icon: <Briefcase size={20} /> },
+  ];
+
+  const isActive = (href: string) => pathname === href.split('?')[0];
 
   return (
     <aside
@@ -52,7 +55,7 @@ export default function Sidebar() {
     >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-blue-800">
-        {isOpen && <h1 className="text-lg font-bold">PPE System</h1>}
+        {isOpen && <h1 className="text-lg font-bold">EA SHE Tools</h1>}
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="p-2 hover:bg-blue-800 rounded-lg transition-colors"
@@ -61,18 +64,46 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* User / Company Info */}
-      {isOpen && user && (
+      {/* Company Selector */}
+      {isOpen && (
         <div className="p-4 border-b border-blue-800">
-          <label className="text-xs text-blue-300 block mb-1">บริษัท</label>
-          <p className="text-sm font-semibold text-white">{user.companyName}</p>
-          <p className="text-xs text-blue-300 mt-1">{user.nickname || user.displayName}</p>
+          <label className="text-xs text-blue-300 block mb-2">บริษัท</label>
+          <select
+            value={companyId}
+            onChange={(e) => {
+              const newCompanyId = e.target.value;
+              window.location.href = pathname + `?company_id=${newCompanyId}`;
+            }}
+            className="w-full bg-blue-800 text-white text-sm rounded px-2 py-2 border border-blue-700"
+          >
+            <option value="default">บริษัท เริ่มต้น</option>
+            <option value="eashe">EASHE Corp</option>
+            <option value="subsidiary">Subsidiary Co</option>
+          </select>
         </div>
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-2">
-        {navItems.map((item) => (
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {isOpen && <div className="px-4 py-1 text-xs text-blue-400 font-semibold uppercase tracking-wider">PPE</div>}
+        {ppeItems.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`flex items-center gap-4 px-4 py-3 rounded-lg transition-colors ${
+              isActive(item.href)
+                ? 'bg-blue-700 text-white'
+                : 'text-blue-100 hover:bg-blue-800'
+            }`}
+          >
+            {item.icon}
+            {isOpen && <span className="text-sm font-medium">{item.label}</span>}
+          </Link>
+        ))}
+
+        <div className="my-2 border-t border-blue-800" />
+        {isOpen && <div className="px-4 py-1 text-xs text-blue-400 font-semibold uppercase tracking-wider">SHE</div>}
+        {sheItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
@@ -88,29 +119,13 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom Actions */}
-      <div className="p-4 border-t border-blue-800 space-y-2">
-        {/* Back to Hub */}
-        <button
-          onClick={() => router.push('/')}
-          className="w-full flex items-center gap-3 px-4 py-2 text-blue-200 hover:text-white hover:bg-blue-800 rounded-lg transition-colors text-sm"
-        >
-          <ArrowLeft size={18} />
-          {isOpen && <span>กลับหน้าเลือกเครื่องมือ</span>}
-        </button>
-
-        {/* Logout */}
-        <button
-          onClick={() => {
-            logout();
-            router.push('/');
-          }}
-          className="w-full flex items-center gap-3 px-4 py-2 text-blue-200 hover:text-red-300 hover:bg-blue-800 rounded-lg transition-colors text-sm"
-        >
-          <LogOut size={18} />
-          {isOpen && <span>ออกจากระบบ</span>}
-        </button>
-      </div>
+      {/* Footer */}
+      {isOpen && (
+        <div className="p-4 border-t border-blue-800 text-xs text-blue-300">
+          <p className="mb-2">EA SHE Tools</p>
+          <p>tools.eashe.org</p>
+        </div>
+      )}
     </aside>
   );
 }
