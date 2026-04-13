@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Use service role key for auth queries (company_auth has RLS blocking anon)
-function getSupabaseAdmin() {
+// Use service role key if available, fallback to anon key
+// tools_users RLS is set to allow all access
+function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  if (!url || !serviceKey) {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  if (!url || !key) {
     throw new Error('Missing Supabase config');
   }
-  return createClient(url, serviceKey);
+  return createClient(url, key);
 }
 
 export async function POST(request: NextRequest) {
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getSupabaseAdmin();
+    const supabase = getSupabase();
 
     // Query tools_users table
     const { data, error } = await supabase

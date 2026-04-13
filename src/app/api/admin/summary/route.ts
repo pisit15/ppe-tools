@@ -1,18 +1,18 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-function getSupabaseAdmin() {
+function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  if (!url || !serviceKey) {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  if (!url || !key) {
     throw new Error('Missing Supabase config');
   }
-  return createClient(url, serviceKey);
+  return createClient(url, key);
 }
 
 export async function GET() {
   try {
-    const supabase = getSupabaseAdmin();
+    const supabase = getSupabase();
 
     // Get all products grouped by company
     const { data: products } = await supabase
