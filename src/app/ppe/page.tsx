@@ -3,8 +3,9 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
-import { AlertTriangle, Package, TrendingUp, TrendingDown } from 'lucide-react';
+import { AlertTriangle, Package, TrendingUp, TrendingDown, Building2 } from 'lucide-react';
 import type { PPEStockSummary } from '@/lib/types';
 
 interface DashboardStats {
@@ -16,7 +17,14 @@ interface DashboardStats {
 
 export default function PPEDashboard() {
   const { user } = useAuth();
-  const companyId = user?.companyId || '';
+  const searchParams = useSearchParams();
+  const isAdmin = user?.role === 'admin';
+  const urlCompanyId = searchParams.get('company_id');
+  // Admin: default to 'all' overview; regular user: always own company
+  const companyId = isAdmin
+    ? (urlCompanyId || 'all')
+    : (user?.companyId || '');
+  const [companyMap, setCompanyMap] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<DashboardStats>({
     total_products: 0,
     total_stock_in: 0,
@@ -60,6 +68,26 @@ export default function PPEDashboard() {
     fetchDashboardData();
   }, [companyId]);
 
+  // Load company name map (admin)
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch('/api/companies')
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data?.data || []);
+        const map: Record<string, string> = {};
+        list.forEach((c: { company_id: string; company_name: string }) => {
+          map[c.company_id] = c.company_name;
+        });
+        setCompanyMap(map);
+      })
+      .catch(() => {});
+  }, [isAdmin]);
+
+  const headerCompanyLabel = isAdmin
+    ? (companyId === 'all' ? 'ทุกบริษัท (ภาพรวม)' : (companyMap[companyId] || companyId.toUpperCase()))
+    : (user?.companyName || companyId);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -72,9 +100,20 @@ export default function PPEDashboard() {
     <div className="space-y-6">
       {/* Page Title */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">PPE Dashboard</h1>
-        <p className="text-gray-600 mt-2">
-          บริษัท: <span className="font-semibold">{user?.companyName || companyId}</span>
+        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+          PPE Dashboard
+          {isAdmin && (
+            <span className="text-xs font-bold bg-yellow-400 text-yellow-900 px-2 py-1 rounded">
+              ADMIN VIEW
+            </span>
+          )}
+        </h1>
+        <p className="text-gray-600 mt-2 flex items-center gap-2">
+          <Building2 size={16} className="text-blue-600" />
+          บริษัท: <span className="font-semibold">{headerCompanyLabel}</span>
+          {isAdmin && companyId === 'all' && (
+            <span className="text-xs text-gray-500">— รวมทุกบริษัทในระบบ</span>
+          )}
         </p>
       </div>
 
@@ -196,28 +235,28 @@ export default function PPEDashboard() {
         <h2 className="text-lg font-bold text-gray-900 mb-4">ลิงก์ด่วน</h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           <a
-            href={`/ppe/inventory`}
+            href={`/ppe/inventory?company_id=${companyId}`}
             className="p-4 border rounded-lg hover:bg-blue-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">จัดการสต็อก</p>
             <p className="text-sm text-gray-600">ดูและแก้ไขรายการ PPE</p>
           </a>
           <a
-            href={`/ppe/stock-in`}
+            href={`/ppe/stock-in?company_id=${companyId}`}
             className="p-4 border rounded-lg hover:bg-green-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">รับเข้า</p>
             <p className="text-sm text-gray-600">บันทึกสต็อกเข้า</p>
           </a>
           <a
-            href={`/ppe/stock-out`}
+            href={`/ppe/stock-out?company_id=${companyId}`}
             className="p-4 border rounded-lg hover:bg-red-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">เบิกออก</p>
             <p className="text-sm text-gray-600">บันทึกการเบิก</p>
           </a>
           <a
-            href={`/ppe/history`}
+            href={`/ppe/history?company_id=${companyId}`}
             className="p-4 border rounded-lg hover:bg-purple-50 transition-colors"
           >
             <p className="font-semibold text-gray-900">ประวัติ</p>

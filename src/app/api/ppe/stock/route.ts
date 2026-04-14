@@ -7,10 +7,12 @@ export async function GET(request: NextRequest) {
     const companyId = searchParams.get('company_id') || 'default';
     const showLowStock = searchParams.get('low_stock') === 'true';
 
-    let query = supabase
-      .from('ppe_stock_summary')
-      .select('*')
-      .eq('company_id', companyId);
+    let query = supabase.from('ppe_stock_summary').select('*');
+
+    // Admin view: companyId 'all' or 'admin' returns data across all companies
+    if (companyId !== 'all' && companyId !== 'admin') {
+      query = query.eq('company_id', companyId);
+    }
 
     if (showLowStock) {
       query = query.lt('current_stock', 'min_stock');
