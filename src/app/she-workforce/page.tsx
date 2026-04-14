@@ -818,7 +818,7 @@ export default function SHEWorkforcePage() {
 
                       {/* Right: Utilization gauge (semicircle-like arc using SVG) */}
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                        <svg width="160" height="100" style={{ viewBox: '0 0 160 100' }} preserveAspectRatio="xMidYMid meet">
+                        <svg width="160" height="100" viewBox="0 0 160 100" preserveAspectRatio="xMidYMid meet">
                           <defs>
                             <linearGradient id="capacityGradient" x1="0%" x2="100%">
                               <stop offset="0%" stopColor={STATUS.ok} />
