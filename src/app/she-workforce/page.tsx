@@ -484,54 +484,59 @@ export default function SHEWorkforcePage() {
                   })()}
                 </div>
 
-                {/* ── Compliance: Bullet chart bars ── */}
+                {/* ── Compliance: Card Grid ── */}
                 <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, gap: 16 }}>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 6px' }}>ใบอนุญาตตามกฎหมาย</p>
-                      <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
-                        ปัจจุบัน {complianceMet}/{requiredReqs.length} ประเภทผ่านการตรวจสอบ
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <div>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: '#1f2937', margin: '0 0 4px' }}>ใบอนุญาตตามกฎหมาย</p>
+                      <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>
+                        {complianceMet}/{requiredReqs.length} ประเภทบังคับผ่าน · {licenses.filter(l => l.has_license).length} ใบรวม
                       </p>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-                      <div style={{ position: 'relative', width: 70, height: 70 }}>
-                        <svg viewBox="0 0 70 70" style={{ width: 70, height: 70 }}>
-                          <circle cx="35" cy="35" r="28" fill="none" stroke="#e5e7eb" strokeWidth="8" />
-                          <circle cx="35" cy="35" r="28" fill="none" stroke={complianceRate === 100 ? STATUS.ok : complianceRate >= 80 ? STATUS.warning : STATUS.critical} strokeWidth="8" strokeDasharray={`${(complianceRate / 100) * 176} 176`} strokeLinecap="round" style={{ transform: 'rotate(-90deg)', transformOrigin: '35px 35px', transition: 'stroke-dasharray 0.4s' }} />
-                        </svg>
-                        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
-                          <div style={{ fontSize: 18, fontWeight: 800, color: complianceRate === 100 ? STATUS.ok : complianceRate >= 80 ? STATUS.warning : STATUS.critical }}>{complianceRate}%</div>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10, color: '#6b7280' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 4, borderRadius: 2, background: BULLET.actual, display: 'inline-block' }} /> ประเภทผ่าน</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 1, height: 10, background: BULLET.target, display: 'inline-block' }} /> ต้องการ</span>
-                      </div>
+                    <div style={{ position: 'relative', width: 56, height: 56 }}>
+                      <svg viewBox="0 0 56 56" style={{ width: 56, height: 56 }}>
+                        <circle cx="28" cy="28" r="22" fill="none" stroke="#e5e7eb" strokeWidth="6" />
+                        <circle cx="28" cy="28" r="22" fill="none" stroke={complianceRate === 100 ? STATUS.ok : complianceRate >= 80 ? STATUS.warning : STATUS.critical} strokeWidth="6" strokeDasharray={`${(complianceRate / 100) * 138} 138`} strokeLinecap="round" style={{ transform: 'rotate(-90deg)', transformOrigin: '28px 28px' }} />
+                      </svg>
+                      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: 14, fontWeight: 800, color: complianceRate === 100 ? STATUS.ok : complianceRate >= 80 ? STATUS.warning : STATUS.critical }}>{complianceRate}%</div>
                     </div>
                   </div>
                   {requirements.length === 0 ? (
                     <p style={{ color: '#6b7280', fontSize: 13 }}>ยังไม่ได้ตั้งค่าประเภทใบอนุญาต — ไปที่แท็บ &quot;ใบอนุญาต&quot; เพื่อเพิ่ม</p>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
                       {requirements.map(req => {
                         const held = licenses.filter(l => l.requirement_type_id === req.id && l.has_license).length;
                         const needed = req.required_count || 0;
-                        const maxBar = Math.max(held, needed, 1);
                         const ok = needed === 0 ? held > 0 : held >= needed;
                         const catColor = CATEGORY_COLORS[req.category] || PALETTE.primary;
                         return (
-                          <div key={req.id}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: '#1f2937', minWidth: 120 }}>{req.short_name}</span>
-                              {req.category && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: `${catColor}15`, color: catColor, fontWeight: 600 }}>{req.category}</span>}
-                              {!req.is_required && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: `${PALETTE.muted}20`, color: PALETTE.muted, fontWeight: 600 }}>ไม่บังคับ</span>}
-                              <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: ok ? STATUS.ok : STATUS.warning }}>{held}{needed > 0 ? `/${needed}` : ''}</span>
+                          <div key={req.id} style={{
+                            padding: '12px 14px', borderRadius: 10,
+                            border: `1.5px solid ${ok ? `${STATUS.ok}30` : `${STATUS.warning}40`}`,
+                            background: ok ? `${STATUS.ok}06` : `${STATUS.warning}06`,
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#1f2937' }}>{req.short_name}</span>
+                              <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: `${catColor}15`, color: catColor, fontWeight: 600 }}>{req.category}</span>
                             </div>
-                            <div style={{ position: 'relative', height: 10, borderRadius: 5, background: BULLET.bgBand }}>
-                              <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${(held / maxBar) * 100}%`, borderRadius: 5, background: BULLET.actual, transition: 'width 0.3s' }} />
-                              {needed > 0 && (
-                                <div style={{ position: 'absolute', top: -2, left: `${(needed / maxBar) * 100}%`, width: 2, height: 14, background: BULLET.target, borderRadius: 1 }} />
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                              <span style={{ fontSize: 24, fontWeight: 800, color: ok ? STATUS.ok : STATUS.warning, lineHeight: 1 }}>{held}</span>
+                              {needed > 0 && <span style={{ fontSize: 12, color: '#6b7280' }}>/ {needed} คน</span>}
+                              {needed === 0 && held > 0 && <span style={{ fontSize: 10, color: STATUS.ok }}>มี</span>}
+                              {needed === 0 && held === 0 && <span style={{ fontSize: 10, color: STATUS.warning }}>ยังไม่มี</span>}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                              {ok ? (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: STATUS.ok, fontWeight: 600 }}>
+                                  <Check size={10} /> ผ่าน
+                                </span>
+                              ) : (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: STATUS.warning, fontWeight: 600 }}>
+                                  <AlertTriangle size={10} /> ขาด {needed - held}
+                                </span>
                               )}
+                              {!req.is_required && <span style={{ fontSize: 9, color: PALETTE.muted, marginLeft: 'auto' }}>ไม่บังคับ</span>}
                             </div>
                           </div>
                         );
@@ -874,75 +879,6 @@ export default function SHEWorkforcePage() {
                   );
                 })()}
 
-                {/* Workload Table (Simplified) */}
-                <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden', background: '#fff', marginBottom: 20 }}>
-                  <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 480px)' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                        <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-                          {['#', 'ส่วนงาน', 'Function', 'รายละเอียดงาน', 'ผู้รับผิดชอบ', 'เวลา(นาที)', 'ความถี่', 'รวม/ปี', ''].map((h, i) => (
-                            <th key={i} style={thStyle}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {workload.length === 0 ? (
-                          <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-                            <FileText size={32} style={{ margin: '0 auto 8px', opacity: 0.3 }} />
-                            <div>ยังไม่มีข้อมูลภาระงาน</div>
-                          </td></tr>
-                        ) : workload.map((w, i) => {
-                          const mult = w.worker_type === '6day' ? FREQ_MULTIPLIER_6DAY : FREQ_MULTIPLIER;
-                          const annual = w.time_usage_min * w.frequency_count * (mult[w.frequency] || 1);
-                          const assignedNames = (w.assigned_personnel_ids || []).map(pid => {
-                            const p = personnel.find(pp => pp.id === pid);
-                            return p ? (p.nick_name || p.full_name.split(' ')[0]) : '';
-                          }).filter(Boolean);
-                          const secColor = WORK_SECTION_COLORS[w.work_section] || '#6b7280';
-                          const wtInfo = WORKER_TYPE_INFO[w.worker_type as keyof typeof WORKER_TYPE_INFO] || WORKER_TYPE_INFO['5day'];
-                          // Build detail string from levels
-                          const details = [w.job_level1, w.job_level2, w.job_level3].filter(Boolean).join(' > ') || '-';
-                          return (
-                            <tr key={w.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                              <td style={{ ...tdStyle, color: '#6b7280', width: 40 }}>{i + 1}</td>
-                              <td style={tdStyle}><span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: `${secColor}15`, color: secColor, fontWeight: 600, whiteSpace: 'nowrap' }}>{w.work_section || 'SHE'}</span></td>
-                              <td style={{ ...tdStyle, fontWeight: 600, color: '#1f2937' }}>{w.function_name || '-'}</td>
-                              <td style={{ ...tdStyle, fontSize: 11, color: '#374151' }} title={`Rank: ${w.job_rank} | Type: ${w.job_type === 'fixed' ? 'Fixed' : 'Variable'} | Days: ${w.worker_type === '6day' ? '6 days' : '5 days'}`}>
-                                <div style={{ lineHeight: 1.3 }}>{details}</div>
-                              </td>
-                              <td style={{ ...tdStyle, fontSize: 11 }}>{assignedNames.length > 0 ? assignedNames.join(', ') : <span style={{ color: '#6b7280' }}>-</span>}</td>
-                              <td style={{ ...tdStyle, textAlign: 'right' }}>{w.time_usage_min.toLocaleString()}</td>
-                              <td style={{ ...tdStyle, fontSize: 11 }}>{FREQ_LABELS[w.frequency] || w.frequency} ×{w.frequency_count}</td>
-                              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#1f2937' }}>{annual.toLocaleString()}</td>
-                              <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                                <button onClick={() => { setEditW({ ...w }); setShowWModal(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="แก้ไข"><Pencil size={14} color={PALETTE.primary} /></button>
-                                <button onClick={() => w.id && deleteWorkload(w.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="ลบ"><Trash2 size={14} color={STATUS.critical} /></button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Working Hours Reference (Compact Strip) */}
-                <div style={{ padding: 12, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb', marginBottom: 20 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 11 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: 3, background: WORKER_TYPE_INFO['5day'].color }} />
-                      <span style={{ fontWeight: 600, color: '#1f2937' }}>5 วัน:</span>
-                      <span style={{ color: '#6b7280' }}>232 วัน / 1,624 ชม.</span>
-                    </div>
-                    <div style={{ width: 1, height: 16, background: '#e5e7eb' }} />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: 3, background: WORKER_TYPE_INFO['6day'].color }} />
-                      <span style={{ fontWeight: 600, color: '#1f2937' }}>6 วัน:</span>
-                      <span style={{ color: '#6b7280' }}>284 วัน / 1,988 ชม.</span>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Section Summary with percentages */}
                 {Object.keys(workloadBySection).length > 0 && (() => {
                   const secEntries = Object.entries(workloadBySection).sort((a, b) => b[1].totalMin - a[1].totalMin);
@@ -1005,6 +941,74 @@ export default function SHEWorkforcePage() {
                     </div>
                   );
                 })()}
+
+                {/* Working Hours Reference (Compact Strip) */}
+                <div style={{ padding: 12, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb', marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 11 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: 3, background: WORKER_TYPE_INFO['5day'].color }} />
+                      <span style={{ fontWeight: 600, color: '#1f2937' }}>5 วัน:</span>
+                      <span style={{ color: '#6b7280' }}>232 วัน / 1,624 ชม.</span>
+                    </div>
+                    <div style={{ width: 1, height: 16, background: '#e5e7eb' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: 3, background: WORKER_TYPE_INFO['6day'].color }} />
+                      <span style={{ fontWeight: 600, color: '#1f2937' }}>6 วัน:</span>
+                      <span style={{ color: '#6b7280' }}>284 วัน / 1,988 ชม.</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Workload Table (Full — no vertical scroll, at bottom) */}
+                <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden', background: '#fff', marginBottom: 20 }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                          {['#', 'ส่วนงาน', 'Function', 'รายละเอียดงาน', 'ผู้รับผิดชอบ', 'เวลา(นาที)', 'ความถี่', 'รวม/ปี', ''].map((h, i) => (
+                            <th key={i} style={thStyle}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {workload.length === 0 ? (
+                          <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+                            <FileText size={32} style={{ margin: '0 auto 8px', opacity: 0.3 }} />
+                            <div>ยังไม่มีข้อมูลภาระงาน</div>
+                          </td></tr>
+                        ) : workload.map((w, i) => {
+                          const mult = w.worker_type === '6day' ? FREQ_MULTIPLIER_6DAY : FREQ_MULTIPLIER;
+                          const annual = w.time_usage_min * w.frequency_count * (mult[w.frequency] || 1);
+                          const assignedNames = (w.assigned_personnel_ids || []).map(pid => {
+                            const p = personnel.find(pp => pp.id === pid);
+                            return p ? (p.nick_name || p.full_name.split(' ')[0]) : '';
+                          }).filter(Boolean);
+                          const secColor = WORK_SECTION_COLORS[w.work_section] || '#6b7280';
+                          const wtInfo = WORKER_TYPE_INFO[w.worker_type as keyof typeof WORKER_TYPE_INFO] || WORKER_TYPE_INFO['5day'];
+                          const details = [w.job_level1, w.job_level2, w.job_level3].filter(Boolean).join(' > ') || '-';
+                          return (
+                            <tr key={w.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                              <td style={{ ...tdStyle, color: '#6b7280', width: 40 }}>{i + 1}</td>
+                              <td style={tdStyle}><span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: `${secColor}15`, color: secColor, fontWeight: 600, whiteSpace: 'nowrap' }}>{w.work_section || 'SHE'}</span></td>
+                              <td style={{ ...tdStyle, fontWeight: 600, color: '#1f2937' }}>{w.function_name || '-'}</td>
+                              <td style={{ ...tdStyle, fontSize: 11, color: '#374151' }} title={`Rank: ${w.job_rank} | Type: ${w.job_type === 'fixed' ? 'Fixed' : 'Variable'} | Days: ${w.worker_type === '6day' ? '6 days' : '5 days'}`}>
+                                <div style={{ lineHeight: 1.3 }}>{details}</div>
+                              </td>
+                              <td style={{ ...tdStyle, fontSize: 11 }}>{assignedNames.length > 0 ? assignedNames.join(', ') : <span style={{ color: '#6b7280' }}>-</span>}</td>
+                              <td style={{ ...tdStyle, textAlign: 'right' }}>{w.time_usage_min.toLocaleString()}</td>
+                              <td style={{ ...tdStyle, fontSize: 11 }}>{FREQ_LABELS[w.frequency] || w.frequency} ×{w.frequency_count}</td>
+                              <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#1f2937' }}>{annual.toLocaleString()}</td>
+                              <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                                <button onClick={() => { setEditW({ ...w }); setShowWModal(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="แก้ไข"><Pencil size={14} color={PALETTE.primary} /></button>
+                                <button onClick={() => w.id && deleteWorkload(w.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="ลบ"><Trash2 size={14} color={STATUS.critical} /></button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             )}
           </>
