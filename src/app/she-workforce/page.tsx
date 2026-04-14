@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import {
   Users, ShieldCheck, Briefcase, Plus, Pencil, Trash2, X, Check,
-  Search, AlertTriangle, FileText, ChevronDown,
+  Search, AlertTriangle, FileText, ChevronDown, Building2,
 } from 'lucide-react';
 import {
   RESP_COLORS, EMP_TYPE_COLORS, EMP_TYPES, STATUS, LICENSE, BULLET,
@@ -146,8 +146,16 @@ function emptyWorkload(companyId: string): Workload {
 // ================================================================
 export default function SHEWorkforcePage() {
   const { user } = useAuth();
-  const companyId = user?.companyId || 'default';
-  const companyName = user?.companyName || companyId.toUpperCase();
+  const isAdmin = user?.role === 'admin';
+
+  // Admin company switcher
+  const [companies, setCompanies] = useState<Array<{ company_id: string; company_name: string }>>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  const [companiesLoading, setCompaniesLoading] = useState(isAdmin);
+
+  // Determine the active company ID and name
+  const activeCompanyId = isAdmin && selectedCompanyId ? selectedCompanyId : (user?.companyId || 'default');
+  const companyName = isAdmin && activeCompanyId === 'all' ? 'ทุกบริษัท (ภาพรวม)' : (user?.companyName || activeCompanyId.toUpperCase());
 
   // Data
   const [activeTab, setActiveTab] = useState(0);
@@ -169,11 +177,29 @@ export default function SHEWorkforcePage() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // ── Fetch companies (admin only) ──────────────────────────────
+  useEffect(() => {
+    if (!isAdmin) return;
+    const fetchCompanies = async () => {
+      try {
+        const res = await fetch('/api/companies');
+        const data = await res.json();
+        setCompanies(data || []);
+        // Set initial selected company to first company
+        if (data && data.length > 0 && !selectedCompanyId) {
+          setSelectedCompanyId(data[0].company_id);
+        }
+      } catch { /* ignore */ }
+      setCompaniesLoading(false);
+    };
+    fetchCompanies();
+  }, [isAdmin, selectedCompanyId]);
+
   // ── Fetch ────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/she-workforce?companyId=${companyId}`);
+      const res = await fetch(`/api/she-workforce?companyId=${activeCompanyId}`);
       const d = await res.json();
       setPersonnel(d.personnel || []);
       setRequirements(d.requirements || []);
@@ -182,7 +208,7 @@ export default function SHEWorkforcePage() {
       if (d.latestManHours) setEmployeeCount(d.latestManHours.employee_count || 0);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [companyId]);
+  }, [activeCompanyId]);
 
   useEffect(() => {
     fetchData();
@@ -364,8 +390,40 @@ export default function SHEWorkforcePage() {
         </div>
       </div>
 
+      {/* ── Admin Company Switcher ──────────────────────────────── */}
+      {isAdmin && !companiesLoading && (
+        <div style={{ maxWidth: 1200, margin: '16px auto 0', padding: '0 24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 10, background: PALETTE.primary + '15', border: `1px solid ${PALETTE.primary}33` }}>
+              <Building2 size={16} color={PALETTE.primary} />
+              <label style={{ fontSize: 13, fontWeight: 600, color: PALETTE.primary, marginRight: 8 }}>เลือกบริษัท:</label>
+              <select
+                value={activeCompanyId}
+                onChange={e => setSelectedCompanyId(e.target.value)}
+                style={{
+                  ...selectStyle,
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  background: '#fff',
+                  border: `1px solid ${PALETTE.primary}`,
+                  minWidth: 180,
+                }}
+              >
+                <option value="all">ทุกบริษัท (ภาพรวม)</option>
+                {companies.map(comp => (
+                  <option key={comp.company_id} value={comp.company_id}>
+                    {comp.company_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Tabs ────────────────────────────────────────────── */}
-      <div style={{ maxWidth: 1200, margin: '-28px auto 0', padding: '0 24px', position: 'relative', zIndex: 2 }}>
+      <div style={{ maxWidth: 1200, margin: '-12px auto 0', padding: '0 24px', position: 'relative', zIndex: 2 }}>
         <div style={{ display: 'inline-flex', borderRadius: 14, overflow: 'hidden', border: '1px solid #e5e7eb', background: '#fff' }}>
           {TABS.map((tab, i) => (
             <button key={i} onClick={() => setActiveTab(i)} style={{
@@ -620,7 +678,7 @@ export default function SHEWorkforcePage() {
                         <span style={{ fontSize: 15, fontWeight: 700, color: '#1f2937' }}>บุคลากรทีม SHE</span>
                         <span style={{ fontSize: 12, color: '#6b7280' }}>({sheFiltered.length} คน)</span>
                       </div>
-                      <button onClick={() => { setEditP(emptyPersonnel(companyId)); setShowPModal(true); }} style={{ ..._btnPrimary, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', fontSize: 13, padding: '8px 16px' }}>
+                      <button onClick={() => { setEditP(emptyPersonnel(activeCompanyId)); setShowPModal(true); }} style={{ ..._btnPrimary, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', fontSize: 13, padding: '8px 16px' }}>
                         <Plus size={14} /> เพิ่มบุคลากร SHE
                       </button>
                     </div>
@@ -637,7 +695,7 @@ export default function SHEWorkforcePage() {
                         <span style={{ fontSize: 15, fontWeight: 700, color: '#1f2937' }}>ผู้ได้รับแต่งตั้ง</span>
                         <span style={{ fontSize: 12, color: '#6b7280' }}>({appointedFiltered.length} คน) — จากแผนกอื่น ไม่นับเป็นบุคลากร SHE</span>
                       </div>
-                      <button onClick={() => { setEditP({ ...emptyPersonnel(companyId), is_she_team: false, department: '' }); setShowPModal(true); }} style={{ ..._btnSecondary, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', fontSize: 13, padding: '8px 16px' }}>
+                      <button onClick={() => { setEditP({ ...emptyPersonnel(activeCompanyId), is_she_team: false, department: '' }); setShowPModal(true); }} style={{ ..._btnSecondary, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', fontSize: 13, padding: '8px 16px' }}>
                         <Plus size={14} /> เพิ่มผู้ได้รับแต่งตั้ง
                       </button>
                     </div>
@@ -688,7 +746,7 @@ export default function SHEWorkforcePage() {
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: LICENSE.required, display: 'inline-block' }} /> บริษัทต้องมี</span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: LICENSE.optional, display: 'inline-block' }} /> บุคลากรมี (ไม่บังคับ)</span>
                   </div>
-                  <button onClick={() => { setEditR(emptyReq(companyId)); setShowRModal(true); }} style={{ ..._btnPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button onClick={() => { setEditR(emptyReq(activeCompanyId)); setShowRModal(true); }} style={{ ..._btnPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Plus size={16} /> เพิ่มประเภทใบอนุญาต
                   </button>
                 </div>
@@ -776,7 +834,7 @@ export default function SHEWorkforcePage() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <p style={{ fontSize: 13, color: '#6b7280' }}>วิเคราะห์ภาระงานและคำนวณจำนวนคนที่ต้องการ</p>
-                  <button onClick={() => { setEditW(emptyWorkload(companyId)); setShowWModal(true); }} style={{ ..._btnPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button onClick={() => { setEditW(emptyWorkload(activeCompanyId)); setShowWModal(true); }} style={{ ..._btnPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Plus size={16} /> เพิ่มรายการ
                   </button>
                 </div>

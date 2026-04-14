@@ -15,34 +15,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'companyId required' }, { status: 400 });
     }
 
+    const isAllCompanies = companyId === 'all' || companyId === 'admin';
     const result: Record<string, unknown> = {};
 
     if (type === 'all' || type === 'personnel') {
-      const { data, error } = await supabase
-        .from('she_personnel')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('full_name');
+      let query = supabase.from('she_personnel').select('*');
+      if (!isAllCompanies) {
+        query = query.eq('company_id', companyId);
+      }
+      const { data, error } = await query.order('full_name');
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       result.personnel = data || [];
     }
 
     if (type === 'all' || type === 'requirements') {
-      const { data, error } = await supabase
-        .from('legal_requirement_types')
-        .select('*')
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .order('sort_order');
+      let query = supabase.from('legal_requirement_types').select('*').eq('is_active', true);
+      if (!isAllCompanies) {
+        query = query.eq('company_id', companyId);
+      }
+      const { data, error } = await query.order('sort_order');
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       result.requirements = data || [];
     }
 
     if (type === 'all' || type === 'licenses') {
-      const { data, error } = await supabase
-        .from('personnel_licenses')
-        .select('*, she_personnel!inner(company_id)')
-        .eq('she_personnel.company_id', companyId);
+      let query = supabase.from('personnel_licenses').select('*, she_personnel!inner(company_id)');
+      if (!isAllCompanies) {
+        query = query.eq('she_personnel.company_id', companyId);
+      }
+      const { data, error } = await query;
       if (error) {
         // Fallback: simpler query
         const { data: fallback } = await supabase
@@ -59,11 +60,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (type === 'all' || type === 'workload') {
-      const { data, error } = await supabase
-        .from('she_workload')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('function_name');
+      let query = supabase.from('she_workload').select('*');
+      if (!isAllCompanies) {
+        query = query.eq('company_id', companyId);
+      }
+      const { data, error } = await query.order('function_name');
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       result.workload = data || [];
     }
@@ -71,13 +72,14 @@ export async function GET(request: NextRequest) {
     // Also fetch employee count from manhours for latest available month
     if (type === 'all') {
       const currentYear = new Date().getFullYear();
-      const { data: mh } = await supabase
+      let query = supabase
         .from('man_hours')
         .select('employee_count, contractor_count, month')
-        .eq('company_id', companyId)
-        .eq('year', currentYear)
-        .order('month', { ascending: false })
-        .limit(1);
+        .eq('year', currentYear);
+      if (!isAllCompanies) {
+        query = query.eq('company_id', companyId);
+      }
+      const { data: mh } = await query.order('month', { ascending: false }).limit(1);
       result.latestManHours = mh?.[0] || null;
     }
 
