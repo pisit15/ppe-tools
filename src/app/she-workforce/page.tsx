@@ -328,17 +328,22 @@ export default function SHEWorkforcePage() {
         </div>
       )}
       {/* ── Hero ────────────────────────────────────────────── */}
-      <div style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', padding: '40px 32px 60px', position: 'relative', margin: '-24px -24px 0' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Briefcase size={22} color="#fff" />
+      <div style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', padding: '24px 32px 36px', position: 'relative', margin: '-24px -24px 0' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Briefcase size={22} color="#fff" />
+              </div>
+              <h1 style={{ fontSize: 24, fontWeight: 800, color: '#fff', letterSpacing: -0.5, margin: 0 }}>SHE Workforce</h1>
             </div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: -0.5 }}>SHE Workforce</h1>
+            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15, marginLeft: 54, margin: '4px 0 0 54px' }}>
+              {companyName} — บุคลากรด้านความปลอดภัย อาชีวอนามัย และสิ่งแวดล้อม
+            </p>
           </div>
-          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15, marginLeft: 54 }}>
-            {companyName} — บุคลากรด้านความปลอดภัย อาชีวอนามัย และสิ่งแวดล้อม
-          </p>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap', marginTop: 4 }}>
+            อัปเดตล่าสุด: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: '2-digit' })}
+          </div>
         </div>
       </div>
 
@@ -375,11 +380,12 @@ export default function SHEWorkforcePage() {
                   {(() => {
                     const cColor = complianceRate === 100 ? STATUS.ok : complianceRate >= 80 ? STATUS.warning : STATUS.critical;
                     const cBg = complianceRate === 100 ? STATUS.okBg : complianceRate >= 80 ? STATUS.warningBg : STATUS.criticalBg;
+                    const complianceTitle = complianceRate === 100 ? 'Compliance ครบทุกรายการ' : `ยังขาดใบอนุญาต ${requiredReqs.length - complianceMet} ประเภท`;
                     return (
                       <div style={{ padding: '20px 18px', borderRadius: 12, border: `2px solid ${cColor}44`, background: cBg }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 8 }}>Compliance กฎหมาย</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 8 }}>Compliance</div>
                         <div style={{ fontSize: 38, fontWeight: 800, color: cColor, lineHeight: 1 }}>{complianceRate}<span style={{ fontSize: 18, fontWeight: 700 }}>%</span></div>
-                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}>{complianceMet}/{requiredReqs.length} ประเภทผ่าน</div>
+                        <div style={{ fontSize: 12, color: '#1f2937', marginTop: 6, fontWeight: 500 }}>{complianceTitle}</div>
                         <div style={{ height: 5, borderRadius: 3, background: PALETTE.border, marginTop: 8 }}>
                           <div style={{ height: '100%', borderRadius: 3, width: `${complianceRate}%`, background: cColor, transition: 'width 0.3s' }} />
                         </div>
@@ -389,33 +395,37 @@ export default function SHEWorkforcePage() {
                   {/* SHE : พนักงาน */}
                   {(() => {
                     const rColor = ratioNum > 200 ? STATUS.critical : ratioNum > 100 ? STATUS.warning : STATUS.ok;
+                    const ratioTitle = ratioNum > 100 ? `อัตราส่วน SHE เกิน 1:${ratioNum}` : (ratioNum > 0 ? `อัตราส่วน SHE ตามเกณฑ์` : 'ยังไม่มีข้อมูล');
                     return (
                       <div style={{ padding: 16, borderRadius: 12, border: `1.5px solid ${ratioNum > 100 ? rColor + '44' : '#e5e7eb'}`, background: ratioNum > 200 ? STATUS.criticalBg : '#fff' }}>
                         <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>SHE : พนักงาน</div>
                         <div style={{ fontSize: 28, fontWeight: 800, color: rColor, lineHeight: 1 }}>{ratio}</div>
-                        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>{employeeCount > 0 ? `${sheCount} SHE / ${employeeCount} คน` : 'ยังไม่มีข้อมูลพนักงาน'}</div>
-                        {ratioNum > 0 && <div style={{ fontSize: 10, color: rColor, fontWeight: 600, marginTop: 2 }}>{ratioNum <= 100 ? '● ตามเกณฑ์' : '▲ เกิน 1:100'}</div>}
+                        <div style={{ fontSize: 12, color: '#1f2937', marginTop: 4, fontWeight: 500 }}>{ratioTitle}</div>
                       </div>
                     );
                   })()}
                   {/* บุคลากร SHE */}
-                  <div style={{ padding: 16, borderRadius: 12, border: '1.5px solid #e5e7eb', background: '#fff' }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>บุคลากร SHE</div>
-                    <div style={{ fontSize: 28, fontWeight: 800, color: STATUS.ok, lineHeight: 1 }}>{sheCount}</div>
-                    <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>{Object.keys(respMap).length} Functions ครอบคลุม</div>
-                  </div>
+                  {(() => {
+                    const respBreakdown = Object.entries(respMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([r, c]) => `${r} ${c}`).join(', ');
+                    return (
+                      <div style={{ padding: 16, borderRadius: 12, border: '1.5px solid #e5e7eb', background: '#fff' }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>บุคลากร SHE</div>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: STATUS.ok, lineHeight: 1 }}>{sheCount}</div>
+                        <div style={{ fontSize: 11, color: '#1f2937', marginTop: 4, fontWeight: 500 }}>{respBreakdown || 'ยังไม่มีข้อมูล'}</div>
+                      </div>
+                    );
+                  })()}
                   {/* Workload Gap */}
                   {(() => {
                     const gColor = workload.length === 0 ? STATUS.neutral : manpowerGap < 0 ? STATUS.critical : STATUS.positive;
+                    const gapTitle = workload.length === 0 ? 'ยังไม่มีข้อมูลภาระงาน' : manpowerGap < 0 ? `ขาดกำลังคน ${Math.abs(manpowerGap).toFixed(1)} ตำแหน่ง` : 'กำลังคนเพียงพอ';
                     return (
                       <div style={{ padding: 16, borderRadius: 12, border: `1.5px solid ${manpowerGap < 0 ? gColor + '44' : '#e5e7eb'}`, background: manpowerGap < 0 ? STATUS.criticalBg : '#fff' }}>
                         <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>กำลังคน</div>
                         <div style={{ fontSize: 28, fontWeight: 800, color: gColor, lineHeight: 1 }}>
                           {workload.length === 0 ? '-' : manpowerGap >= 0 ? `+${manpowerGap.toFixed(1)}` : manpowerGap.toFixed(1)}
                         </div>
-                        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
-                          {workload.length === 0 ? 'ยังไม่มีข้อมูลภาระงาน' : `ต้องการ ${manpowerNeed.toFixed(1)} / มี ${sheCount}`}
-                        </div>
+                        <div style={{ fontSize: 12, color: '#1f2937', marginTop: 4, fontWeight: 500 }}>{gapTitle}</div>
                       </div>
                     );
                   })()}
@@ -424,49 +434,79 @@ export default function SHEWorkforcePage() {
                 {/* ── Charts Row ── */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
                   {/* Responsibility */}
-                  <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff' }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 14px' }}>หน้าที่หลัก (Responsibility)</p>
-                    {Object.entries(respMap).length === 0 ? (
-                      <p style={{ color: '#6b7280', fontSize: 13 }}>ยังไม่มีข้อมูล</p>
-                    ) : Object.entries(respMap).sort((a, b) => b[1] - a[1]).map(([resp, count]) => (
-                      <div key={resp} style={{ marginBottom: 10 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
-                          <span style={{ color: '#1f2937', fontWeight: 500 }}>{resp}</span>
-                          <span style={{ fontWeight: 700, color: RESP_COLORS[resp] || '#6b7280' }}>{count} <span style={{ fontWeight: 400, color: '#6b7280' }}>คน</span></span>
-                        </div>
-                        <div style={{ height: 7, borderRadius: 4, background: 'rgba(107,114,128,0.08)' }}>
-                          <div style={{ height: '100%', borderRadius: 4, width: `${(count / maxResp) * 100}%`, background: RESP_COLORS[resp] || '#6b7280', transition: 'width 0.3s ease' }} />
-                        </div>
+                  {(() => {
+                    const sortedResp = Object.entries(respMap).sort((a, b) => b[1] - a[1]);
+                    const topResp = sortedResp[0]?.[0] || 'ไม่ระบุ';
+                    const respTitle = sortedResp.length > 0 ? `${topResp} เป็นหน้าที่หลักที่มีบุคลากรมากที่สุด` : 'หน้าที่หลัก (Responsibility)';
+                    return (
+                      <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff' }}>
+                        <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 14px' }}>{respTitle}</p>
+                        {sortedResp.length === 0 ? (
+                          <p style={{ color: '#6b7280', fontSize: 13 }}>ยังไม่มีข้อมูล</p>
+                        ) : sortedResp.map(([resp, count]) => (
+                          <div key={resp} style={{ marginBottom: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3, alignItems: 'center' }}>
+                              <span style={{ color: '#1f2937', fontWeight: 500 }}>{resp}</span>
+                              <span style={{ fontWeight: 700, color: RESP_COLORS[resp] || '#6b7280' }}>{count} คน ({Math.round((count / sheCount) * 100)}%)</span>
+                            </div>
+                            <div style={{ height: 7, borderRadius: 4, background: 'rgba(107,114,128,0.08)' }}>
+                              <div style={{ height: '100%', borderRadius: 4, width: `${(count / maxResp) * 100}%`, background: RESP_COLORS[resp] || '#6b7280', transition: 'width 0.3s ease' }} />
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
 
                   {/* Employment Type */}
-                  <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff' }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 14px' }}>ประเภทการจ้าง</p>
-                    {Object.entries(empMap).length === 0 ? (
-                      <p style={{ color: '#6b7280', fontSize: 13 }}>ยังไม่มีข้อมูล</p>
-                    ) : Object.entries(empMap).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
-                      <div key={type} style={{ marginBottom: 10 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
-                          <span style={{ color: '#1f2937', fontWeight: 500 }}>{EMP_TYPES[type] || type}</span>
-                          <span style={{ fontWeight: 700, color: EMP_TYPE_COLORS[type] || '#6b7280' }}>{count} <span style={{ fontWeight: 400, color: '#6b7280' }}>คน</span></span>
-                        </div>
-                        <div style={{ height: 7, borderRadius: 4, background: 'rgba(107,114,128,0.08)' }}>
-                          <div style={{ height: '100%', borderRadius: 4, width: `${(count / maxEmp) * 100}%`, background: EMP_TYPE_COLORS[type] || '#6b7280', transition: 'width 0.3s ease' }} />
-                        </div>
+                  {(() => {
+                    const sortedEmp = Object.entries(empMap).sort((a, b) => b[1] - a[1]);
+                    const topEmp = sortedEmp[0]?.[0] || 'ไม่ระบุ';
+                    const empTitle = sortedEmp.length > 0 ? `${EMP_TYPES[topEmp] || topEmp} เป็นประเภทการจ้างที่มากที่สุด` : 'ประเภทการจ้าง';
+                    return (
+                      <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff' }}>
+                        <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 14px' }}>{empTitle}</p>
+                        {sortedEmp.length === 0 ? (
+                          <p style={{ color: '#6b7280', fontSize: 13 }}>ยังไม่มีข้อมูล</p>
+                        ) : sortedEmp.map(([type, count]) => (
+                          <div key={type} style={{ marginBottom: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3, alignItems: 'center' }}>
+                              <span style={{ color: '#1f2937', fontWeight: 500 }}>{EMP_TYPES[type] || type}</span>
+                              <span style={{ fontWeight: 700, color: EMP_TYPE_COLORS[type] || '#6b7280' }}>{count} คน ({Math.round((count / sheCount) * 100)}%)</span>
+                            </div>
+                            <div style={{ height: 7, borderRadius: 4, background: 'rgba(107,114,128,0.08)' }}>
+                              <div style={{ height: '100%', borderRadius: 4, width: `${(count / maxEmp) * 100}%`, background: EMP_TYPE_COLORS[type] || '#6b7280', transition: 'width 0.3s ease' }} />
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 {/* ── Compliance: Bullet chart bars ── */}
                 <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: 0 }}>ใบอนุญาตตามกฎหมาย</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 10, color: '#6b7280' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 14, height: 6, borderRadius: 3, background: BULLET.actual, display: 'inline-block' }} /> มี</span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 1, height: 14, background: BULLET.target, display: 'inline-block' }} /> ต้องการ</span>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, gap: 16 }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 6px' }}>ใบอนุญาตตามกฎหมาย</p>
+                      <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
+                        ปัจจุบัน {complianceMet}/{requiredReqs.length} ประเภทผ่านการตรวจสอบ
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                      <div style={{ position: 'relative', width: 70, height: 70 }}>
+                        <svg viewBox="0 0 70 70" style={{ width: 70, height: 70 }}>
+                          <circle cx="35" cy="35" r="28" fill="none" stroke="#e5e7eb" strokeWidth="8" />
+                          <circle cx="35" cy="35" r="28" fill="none" stroke={complianceRate === 100 ? STATUS.ok : complianceRate >= 80 ? STATUS.warning : STATUS.critical} strokeWidth="8" strokeDasharray={`${(complianceRate / 100) * 176} 176`} strokeLinecap="round" style={{ transform: 'rotate(-90deg)', transformOrigin: '35px 35px', transition: 'stroke-dasharray 0.4s' }} />
+                        </svg>
+                        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: complianceRate === 100 ? STATUS.ok : complianceRate >= 80 ? STATUS.warning : STATUS.critical }}>{complianceRate}%</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10, color: '#6b7280' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 4, borderRadius: 2, background: BULLET.actual, display: 'inline-block' }} /> ประเภทผ่าน</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 1, height: 10, background: BULLET.target, display: 'inline-block' }} /> ต้องการ</span>
+                      </div>
                     </div>
                   </div>
                   {requirements.length === 0 ? (
@@ -719,56 +759,135 @@ export default function SHEWorkforcePage() {
                   </button>
                 </div>
 
-                {/* ── Summary: Capacity vs Demand ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14, marginBottom: 20 }}>
-                  <div style={{ padding: 16, borderRadius: 12, border: `1.5px solid ${manpowerGap < 0 ? `${STATUS.critical}44` : '#e5e7eb'}`, background: manpowerGap < 0 ? `${STATUS.critical}06` : '#fff' }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 4px' }}>กำลังคน: ความต้องการ vs ปัจจุบัน</p>
-                    <p style={{ fontSize: 10, color: '#6b7280', margin: '0 0 12px' }}>
-                      ต้องการ <b style={{ color: BULLET.target }}>{manpowerNeed.toFixed(1)}</b> คน · มี <b style={{ color: BULLET.actual }}>{sheCount}</b> คน · {manpowerGap >= 0 ? <span style={{ color: STATUS.ok }}>เหลือ {manpowerGap.toFixed(1)}</span> : <span style={{ color: STATUS.critical, fontWeight: 700 }}>ขาด {Math.abs(manpowerGap).toFixed(1)}</span>}
-                    </p>
-                    {workload.length > 0 ? (
-                      <div style={{ position: 'relative', height: 28, borderRadius: 8, background: BULLET.bgBand, overflow: 'hidden' }}>
-                        <div style={{ position: 'absolute', top: 4, left: 0, height: 20, width: `${Math.min((sheCount / Math.max(sheCount, manpowerNeed)) * 100, 100)}%`, borderRadius: 6, background: BULLET.actual, transition: 'width 0.3s' }} />
-                        <div style={{ position: 'absolute', top: 0, left: `${(manpowerNeed / Math.max(sheCount, manpowerNeed)) * 100}%`, width: 2, height: '100%', background: BULLET.target, borderRadius: 1 }} />
-                        <div style={{ position: 'absolute', top: 6, left: 8, fontSize: 10, fontWeight: 700, color: '#fff' }}>มี {sheCount}</div>
+                {/* ── Hero Insight: Capacity vs Demand ── */}
+                {workload.length > 0 && (
+                  <div style={{ padding: 20, borderRadius: 12, border: `2px solid ${manpowerGap < 0 ? STATUS.critical : STATUS.ok}30`, background: manpowerGap < 0 ? `${STATUS.critical}08` : `${STATUS.ok}08`, marginBottom: 20 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'center' }}>
+                      {/* Left: Text insight + stats */}
+                      <div>
+                        <p style={{ fontSize: 16, fontWeight: 800, color: '#1f2937', margin: '0 0 8px' }}>
+                          {manpowerGap < 0 ? (
+                            <span style={{ color: STATUS.critical }}>ขาดกำลังคน {Math.abs(manpowerGap).toFixed(1)} ตำแหน่ง</span>
+                          ) : (
+                            <span style={{ color: STATUS.ok }}>กำลังคนเพียงพอ เหลือ {manpowerGap.toFixed(1)} ตำแหน่ง</span>
+                          )}
+                        </p>
+                        <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 12px', lineHeight: 1.4 }}>
+                          {manpowerGap < 0 ? 'ต้องเพิ่มบุคลากรเพื่อให้สามารถจัดการภาระงานทั้งหมด' : 'ทีมปัจจุบันสามารถจัดการภาระงานได้อย่างมีประสิทธิภาพ'}
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                          <div style={{ padding: 10, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>
+                            <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600 }}>ต้องการ</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: BULLET.target }}>{manpowerNeed.toFixed(1)}</div>
+                            <div style={{ fontSize: 9, color: '#9ca3af' }}>คน/ปี</div>
+                          </div>
+                          <div style={{ padding: 10, borderRadius: 8, background: '#fff', border: '1px solid #e5e7eb' }}>
+                            <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600 }}>มีอยู่</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: BULLET.actual }}>{sheCount}</div>
+                            <div style={{ fontSize: 9, color: '#9ca3af' }}>คน</div>
+                          </div>
+                          <div style={{ padding: 10, borderRadius: 8, background: manpowerGap < 0 ? `${STATUS.critical}15` : `${STATUS.ok}15`, border: `1px solid ${manpowerGap < 0 ? STATUS.critical : STATUS.ok}30` }}>
+                            <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600 }}>ผลต่าง</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: manpowerGap < 0 ? STATUS.critical : STATUS.ok }}>{Math.abs(manpowerGap).toFixed(1)}</div>
+                            <div style={{ fontSize: 9, color: '#6b7280' }}>คน</div>
+                          </div>
+                        </div>
                       </div>
-                    ) : (
-                      <div style={{ padding: 12, textAlign: 'center', color: '#6b7280', fontSize: 12, background: 'rgba(107,114,128,0.04)', borderRadius: 8 }}>เพิ่มข้อมูลภาระงานเพื่อคำนวณ</div>
-                    )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 8, fontSize: 10, color: '#6b7280' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 10, height: 6, borderRadius: 3, background: BULLET.actual, display: 'inline-block' }} /> กำลังคนปัจจุบัน</span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 2, height: 12, borderRadius: 1, background: BULLET.target, display: 'inline-block' }} /> เป้าหมาย</span>
-                      <span style={{ marginLeft: 'auto', fontSize: 9, color: '#999' }}>สูตร: เวลารวม ÷ 97,440 นาที/ปี/คน</span>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ flex: 1, padding: 14, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff' }}>
-                      <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>เวลารวม/ปี</div>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: '#1f2937' }}>{grandTotalMin > 0 ? `${(grandTotalMin / 60).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : '0'}</div>
-                      <div style={{ fontSize: 10, color: '#6b7280' }}>ชั่วโมง ({grandTotalMin.toLocaleString()} นาที)</div>
-                    </div>
-                    <div style={{ flex: 1, padding: 14, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff' }}>
-                      <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>รายการงาน</div>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: '#1f2937' }}>{workload.length}</div>
-                      <div style={{ fontSize: 10, color: '#6b7280' }}>{Object.keys(workloadByFn).length} Functions</div>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Workload Table */}
+                      {/* Right: Utilization gauge (semicircle-like arc using SVG) */}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                        <svg width="160" height="100" style={{ viewBox: '0 0 160 100' }} preserveAspectRatio="xMidYMid meet">
+                          <defs>
+                            <linearGradient id="capacityGradient" x1="0%" x2="100%">
+                              <stop offset="0%" stopColor={STATUS.ok} />
+                              <stop offset="100%" stopColor={manpowerGap < 0 ? STATUS.critical : STATUS.ok} />
+                            </linearGradient>
+                          </defs>
+                          {/* Background arc */}
+                          <path d="M 20 100 A 60 60 0 0 1 140 100" fill="none" stroke="#e5e7eb" strokeWidth="12" strokeLinecap="round" />
+                          {/* Utilization arc */}
+                          <path d="M 20 100 A 60 60 0 0 1 140 100" fill="none" stroke="url(#capacityGradient)" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${Math.min((sheCount / Math.max(sheCount, manpowerNeed)) * 120, 120)} 120`} style={{ transition: 'stroke-dasharray 0.3s' }} />
+                          {/* Center text */}
+                          <text x="80" y="50" textAnchor="middle" fontSize="28" fontWeight="800" fill="#1f2937">
+                            {(Math.min((sheCount / Math.max(sheCount, manpowerNeed)) * 100, 100)).toFixed(0)}%
+                          </text>
+                          <text x="80" y="68" textAnchor="middle" fontSize="11" fill="#6b7280">
+                            ใช้ประสิทธิภาพ
+                          </text>
+                        </svg>
+                        <div style={{ fontSize: 10, color: '#6b7280', textAlign: 'center' }}>
+                          สูตร: เวลารวม ÷ 97,440 นาที/ปี/คน
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Workload Distribution by Section ── */}
+                {workload.length > 0 && Object.keys(workloadBySection).length > 0 && (() => {
+                  const secEntries = Object.entries(workloadBySection).sort((a, b) => b[1].totalMin - a[1].totalMin);
+                  const total = secEntries.reduce((sum, [, data]) => sum + data.totalMin, 0);
+                  return (
+                    <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', marginBottom: 20 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 12px' }}>ภาระงานตามส่วนงาน</p>
+                      <div style={{ display: 'flex', height: 28, borderRadius: 8, overflow: 'hidden', background: '#f3f4f6', gap: 0 }}>
+                        {secEntries.map(([sec, data]) => {
+                          const pct = (data.totalMin / total) * 100;
+                          const sColor = WORK_SECTION_COLORS[sec] || '#6b7280';
+                          return (
+                            <div
+                              key={sec}
+                              style={{
+                                flex: pct,
+                                background: sColor,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                position: 'relative',
+                                overflow: 'hidden',
+                                minWidth: pct > 12 ? 'auto' : 0,
+                              }}
+                            >
+                              {pct > 12 && (
+                                <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', textAlign: 'center', zIndex: 1 }}>
+                                  {pct.toFixed(0)}%
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 10 }}>
+                        {secEntries.map(([sec, data]) => {
+                          const pct = (data.totalMin / total) * 100;
+                          const sColor = WORK_SECTION_COLORS[sec] || '#6b7280';
+                          return (
+                            <div key={sec} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                              <span style={{ width: 8, height: 8, borderRadius: 2, background: sColor }} />
+                              <span style={{ color: '#1f2937', fontWeight: 500 }}>{sec}</span>
+                              <span style={{ color: '#6b7280' }}>({pct.toFixed(0)}%)</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Workload Table (Simplified) */}
                 <div style={{ borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden', background: '#fff', marginBottom: 20 }}>
                   <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 480px)' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                         <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-                          {['#', 'ส่วนงาน', 'Function', 'Level 1', 'Level 2', 'Level 3', 'ผู้รับผิดชอบ', 'วันทำงาน', 'Rank', 'Type', 'เวลา(นาที)', 'ความถี่', 'รวม/ปี', ''].map((h, i) => (
+                          {['#', 'ส่วนงาน', 'Function', 'รายละเอียดงาน', 'ผู้รับผิดชอบ', 'เวลา(นาที)', 'ความถี่', 'รวม/ปี', ''].map((h, i) => (
                             <th key={i} style={thStyle}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {workload.length === 0 ? (
-                          <tr><td colSpan={14} style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
+                          <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
                             <FileText size={32} style={{ margin: '0 auto 8px', opacity: 0.3 }} />
                             <div>ยังไม่มีข้อมูลภาระงาน</div>
                           </td></tr>
@@ -781,24 +900,23 @@ export default function SHEWorkforcePage() {
                           }).filter(Boolean);
                           const secColor = WORK_SECTION_COLORS[w.work_section] || '#6b7280';
                           const wtInfo = WORKER_TYPE_INFO[w.worker_type as keyof typeof WORKER_TYPE_INFO] || WORKER_TYPE_INFO['5day'];
+                          // Build detail string from levels
+                          const details = [w.job_level1, w.job_level2, w.job_level3].filter(Boolean).join(' > ') || '-';
                           return (
                             <tr key={w.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
                               <td style={{ ...tdStyle, color: '#6b7280', width: 40 }}>{i + 1}</td>
                               <td style={tdStyle}><span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: `${secColor}15`, color: secColor, fontWeight: 600, whiteSpace: 'nowrap' }}>{w.work_section || 'SHE'}</span></td>
                               <td style={{ ...tdStyle, fontWeight: 600, color: '#1f2937' }}>{w.function_name || '-'}</td>
-                              <td style={{ ...tdStyle, fontSize: 12 }}>{w.job_level1 || '-'}</td>
-                              <td style={{ ...tdStyle, fontSize: 12 }}>{w.job_level2 || '-'}</td>
-                              <td style={{ ...tdStyle, fontSize: 12 }}>{w.job_level3 || '-'}</td>
+                              <td style={{ ...tdStyle, fontSize: 11, color: '#374151' }} title={`Rank: ${w.job_rank} | Type: ${w.job_type === 'fixed' ? 'Fixed' : 'Variable'} | Days: ${w.worker_type === '6day' ? '6 days' : '5 days'}`}>
+                                <div style={{ lineHeight: 1.3 }}>{details}</div>
+                              </td>
                               <td style={{ ...tdStyle, fontSize: 11 }}>{assignedNames.length > 0 ? assignedNames.join(', ') : <span style={{ color: '#6b7280' }}>-</span>}</td>
-                              <td style={tdStyle}><span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: `${wtInfo.color}15`, color: wtInfo.color, fontWeight: 600 }}>{w.worker_type === '6day' ? '6วัน' : '5วัน'}</span></td>
-                              <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: w.job_rank === 'A' ? `${STATUS.critical}15` : w.job_rank === 'B' ? `${STATUS.warning}15` : `${PALETTE.primary}15`, color: w.job_rank === 'A' ? STATUS.critical : w.job_rank === 'B' ? STATUS.warning : PALETTE.primary, fontWeight: 700 }}>{w.job_rank}</span></td>
-                              <td style={{ ...tdStyle, fontSize: 12 }}>{w.job_type === 'fixed' ? 'Fixed' : 'Variable'}</td>
                               <td style={{ ...tdStyle, textAlign: 'right' }}>{w.time_usage_min.toLocaleString()}</td>
-                              <td style={{ ...tdStyle, fontSize: 12 }}>{FREQ_LABELS[w.frequency] || w.frequency} ×{w.frequency_count}</td>
+                              <td style={{ ...tdStyle, fontSize: 11 }}>{FREQ_LABELS[w.frequency] || w.frequency} ×{w.frequency_count}</td>
                               <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#1f2937' }}>{annual.toLocaleString()}</td>
                               <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                                <button onClick={() => { setEditW({ ...w }); setShowWModal(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><Pencil size={14} color={PALETTE.primary} /></button>
-                                <button onClick={() => w.id && deleteWorkload(w.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><Trash2 size={14} color={STATUS.critical} /></button>
+                                <button onClick={() => { setEditW({ ...w }); setShowWModal(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="แก้ไข"><Pencil size={14} color={PALETTE.primary} /></button>
+                                <button onClick={() => w.id && deleteWorkload(w.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} title="ลบ"><Trash2 size={14} color={STATUS.critical} /></button>
                               </td>
                             </tr>
                           );
@@ -808,64 +926,45 @@ export default function SHEWorkforcePage() {
                   </div>
                 </div>
 
-                {/* Working Hours Reference Card */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
-                  {(['5day', '6day'] as const).map(wt => {
-                    const info = WORKER_TYPE_INFO[wt];
-                    return (
-                      <div key={wt} style={{ padding: 16, borderRadius: 12, border: `1.5px solid ${info.color}30`, background: `${info.color}05` }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: 4, background: info.color }} />
-                          <span style={{ fontSize: 13, fontWeight: 700, color: info.color }}>{info.label}</span>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                          <div style={{ textAlign: 'center', padding: 8, borderRadius: 8, background: `${info.color}10` }}>
-                            <div style={{ fontSize: 20, fontWeight: 800, color: info.color }}>{info.days}</div>
-                            <div style={{ fontSize: 10, color: '#666' }}>วัน/ปี</div>
-                          </div>
-                          <div style={{ textAlign: 'center', padding: 8, borderRadius: 8, background: `${info.color}10` }}>
-                            <div style={{ fontSize: 20, fontWeight: 800, color: info.color }}>{info.hours.toLocaleString()}</div>
-                            <div style={{ fontSize: 10, color: '#666' }}>ชม./ปี</div>
-                          </div>
-                          <div style={{ textAlign: 'center', padding: 8, borderRadius: 8, background: `${info.color}10` }}>
-                            <div style={{ fontSize: 20, fontWeight: 800, color: info.color }}>{info.minutes.toLocaleString()}</div>
-                            <div style={{ fontSize: 10, color: '#666' }}>นาที/ปี</div>
-                          </div>
-                        </div>
-                        {wt === '6day' && (
-                          <div style={{ marginTop: 8, fontSize: 10, color: '#888', lineHeight: 1.5 }}>
-                            365 วัน − วันหยุดนักขัตฤกษ์ 15 วัน − วันหยุด ส. 52 วัน − Heat break 6 วัน − ลาป่วย 5 วัน − ลาอื่น 3 วัน = 284 วัน
-                          </div>
-                        )}
-                        {wt === '5day' && (
-                          <div style={{ marginTop: 8, fontSize: 10, color: '#888', lineHeight: 1.5 }}>
-                            กำลังคน 1 คน × {info.days} วันทำงาน × 7 ชม./วัน = {info.hours.toLocaleString()} ชม. = {info.minutes.toLocaleString()} นาที/ปี
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                {/* Working Hours Reference (Compact Strip) */}
+                <div style={{ padding: 12, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb', marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontSize: 11 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: 3, background: WORKER_TYPE_INFO['5day'].color }} />
+                      <span style={{ fontWeight: 600, color: '#1f2937' }}>5 วัน:</span>
+                      <span style={{ color: '#6b7280' }}>232 วัน / 1,624 ชม.</span>
+                    </div>
+                    <div style={{ width: 1, height: 16, background: '#e5e7eb' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: 3, background: WORKER_TYPE_INFO['6day'].color }} />
+                      <span style={{ fontWeight: 600, color: '#1f2937' }}>6 วัน:</span>
+                      <span style={{ color: '#6b7280' }}>284 วัน / 1,988 ชม.</span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Section Summary */}
+                {/* Section Summary with percentages */}
                 {Object.keys(workloadBySection).length > 0 && (() => {
                   const secEntries = Object.entries(workloadBySection).sort((a, b) => b[1].totalMin - a[1].totalMin);
                   const secMax = secEntries[0]?.[1].totalMin || 1;
+                  const totalMin = secEntries.reduce((sum, [, data]) => sum + data.totalMin, 0);
                   return (
                     <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff', marginBottom: 14 }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 12px' }}>สรุปตามส่วนงาน</p>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#1f2937', margin: '0 0 12px' }}>ปริมาณงานตามส่วนงาน</p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {secEntries.map(([sec, data]) => {
                           const manpower = data.totalMin / ANNUAL_MINUTES_PER_PERSON;
+                          const pct = (data.totalMin / totalMin) * 100;
                           const sColor = WORK_SECTION_COLORS[sec] || '#6b7280';
                           return (
                             <div key={sec}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                 <span style={{ fontSize: 12, fontWeight: 600, color: sColor, flex: 1 }}>{sec}</span>
-                                <span style={{ fontSize: 10, color: '#6b7280' }}>{data.entries} งาน</span>
-                                <span style={{ fontSize: 11, fontWeight: 700, color: sColor, minWidth: 45, textAlign: 'right' }}>{manpower.toFixed(1)} คน</span>
+                                <span style={{ fontSize: 9, color: '#9ca3af' }}>{data.entries} งาน</span>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: sColor, minWidth: 50, textAlign: 'right' }}>{manpower.toFixed(1)} คน</span>
+                                <span style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', minWidth: 35, textAlign: 'right' }}>{pct.toFixed(0)}%</span>
                               </div>
-                              <div style={{ height: 7, borderRadius: 4, background: BULLET.bgBand }}>
+                              <div style={{ height: 8, borderRadius: 4, background: BULLET.bgBand }}>
                                 <div style={{ height: '100%', borderRadius: 4, width: `${(data.totalMin / secMax) * 100}%`, background: sColor, transition: 'width 0.3s' }} />
                               </div>
                             </div>
@@ -876,24 +975,27 @@ export default function SHEWorkforcePage() {
                   );
                 })()}
 
-                {/* Function Summary */}
+                {/* Function Summary with percentages */}
                 {Object.keys(workloadByFn).length > 0 && (() => {
                   const fnEntries = Object.entries(workloadByFn).sort((a, b) => b[1].totalMin - a[1].totalMin);
                   const fnMax = fnEntries[0]?.[1].totalMin || 1;
+                  const totalMin = fnEntries.reduce((sum, [, data]) => sum + data.totalMin, 0);
                   return (
                     <div style={{ padding: 16, borderRadius: 12, border: '1px solid #e5e7eb', background: '#fff' }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: '#1f2937', margin: '0 0 12px' }}>สรุปตาม Function</p>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#1f2937', margin: '0 0 12px' }}>ปริมาณงานตาม Function</p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {fnEntries.map(([fn, data]) => {
                           const manpower = data.totalMin / ANNUAL_MINUTES_PER_PERSON;
+                          const pct = (data.totalMin / totalMin) * 100;
                           return (
                             <div key={fn}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                                 <span style={{ fontSize: 12, fontWeight: 600, color: '#1f2937', flex: 1 }}>{fn}</span>
-                                <span style={{ fontSize: 10, color: '#6b7280' }}>{data.entries} งาน</span>
-                                <span style={{ fontSize: 11, fontWeight: 700, color: PALETTE.primary, minWidth: 45, textAlign: 'right' }}>{manpower.toFixed(1)} คน</span>
+                                <span style={{ fontSize: 9, color: '#9ca3af' }}>{data.entries} งาน</span>
+                                <span style={{ fontSize: 11, fontWeight: 700, color: PALETTE.primary, minWidth: 50, textAlign: 'right' }}>{manpower.toFixed(1)} คน</span>
+                                <span style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', minWidth: 35, textAlign: 'right' }}>{pct.toFixed(0)}%</span>
                               </div>
-                              <div style={{ height: 7, borderRadius: 4, background: BULLET.bgBand }}>
+                              <div style={{ height: 8, borderRadius: 4, background: BULLET.bgBand }}>
                                 <div style={{ height: '100%', borderRadius: 4, width: `${(data.totalMin / fnMax) * 100}%`, background: PALETTE.primary, transition: 'width 0.3s' }} />
                               </div>
                             </div>
