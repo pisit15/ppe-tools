@@ -22,6 +22,9 @@ interface Personnel {
   responsibility: string;
   department: string;
   employment_type: string;
+  employee_level: string;
+  hiring_type: string;
+  me_status: string;
   phone: string;
   email: string;
   is_active: boolean;
@@ -69,8 +72,22 @@ interface Workload {
 
 // ── Constants ──────────────────────────────────────────────────
 const TABS = ['ภาพรวม', 'บุคลากร', 'ใบอนุญาต', 'วิเคราะห์ภาระงาน'];
-const POSITIONS = ['HSE Manager', 'จป.วิชาชีพ', 'จป.เทคนิค', 'Safety Supervisor', 'พนักงานปฏิบัติการ', 'เจ้าหน้าที่สิ่งแวดล้อม', 'ผู้ควบคุมมลพิษ', 'อื่นๆ'];
-const RESPONSIBILITIES = ['Safety', 'Environment', 'Occupational Health', 'Admin', 'อื่นๆ'];
+const POSITIONS = [
+  'ผู้จัดการ', 'ผู้จัดการแผนก', 'ผู้ช่วยผู้จัดการแผนก',
+  'หัวหน้าแผนก', 'หัวหน้าแผนกความปลอดภัย', 'หัวหน้าแผนกสิ่งแวดล้อม',
+  'หัวหน้าแผนกอาชีวอนามัยเเละความปลอดภัย', 'หัวหน้าแผนกสิ่งแวดล้อมเเละชุมชนสัมพันธ์',
+  'หัวหน้าแผนกระบบคุณภาพ', 'หัวหน้ากะการจัดการของเสีย',
+  'เจ้าหน้าที่ความปลอดภัยระดับวิชาชีพ', 'จป.วิชาชีพ',
+  'เจ้าหน้าที่สิ่งแวดล้อม', 'เจ้าหน้าที่แผนกระบบคุณภาพ', 'เจ้าหน้าที่',
+  'พนักงานปฏิบัติการแผนกความปลอดภัยอาชีวอนามัย',
+  'พนักงานปฏิบัติการ วิเคราะห์และบำบัดคุณภาพสิ่งแวดล้อม',
+  'พนักงานปฏิบัติการผลิต', 'พนักงานปฏิบัติการ',
+  'อื่นๆ',
+];
+const RESPONSIBILITIES = ['SHE', 'Safety', 'Environment', 'ISO', 'Safety & ISO', 'อื่นๆ'];
+const EMPLOYEE_LEVELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+const HIRING_TYPES: Record<string, string> = { permanent: 'ประจำ', temporary: 'ชั่วคราว', outsource: 'Outsource', unspecified: 'ไม่ระบุ' };
+const ME_STATUSES = ['ไม่เปลี่ยน', 'LDL', 'OUT', 'ORG', 'TECH', 'NR', 'RET', 'TRF', 'DM', 'Overflow'];
 const FREQ_LABELS: Record<string, string> = { daily: 'รายวัน', weekly: 'รายสัปดาห์', monthly: 'รายเดือน', yearly: 'รายปี' };
 const FREQ_MULTIPLIER: Record<string, number> = { daily: 232, weekly: 48, monthly: 12, yearly: 1 };
 const FREQ_MULTIPLIER_6DAY: Record<string, number> = { daily: 284, weekly: 52, monthly: 12, yearly: 1 };
@@ -117,7 +134,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 // ── Helper ─────────────────────────────────────────────────────
 function emptyPersonnel(companyId: string): Personnel {
-  return { company_id: companyId, bu: '', full_name: '', nick_name: '', position: '', responsibility: '', department: 'HSE', employment_type: 'permanent', phone: '', email: '', is_active: true, is_she_team: true };
+  return { company_id: companyId, bu: '', full_name: '', nick_name: '', position: '', responsibility: '', department: 'HSE', employment_type: 'permanent', employee_level: '', hiring_type: 'permanent', me_status: 'ไม่เปลี่ยน', phone: '', email: '', is_active: true, is_she_team: true };
 }
 function emptyReq(companyId: string): LegalReq {
   return { company_id: companyId, name: '', short_name: '', category: 'safety', required_count: 0, description: '', law_reference: '', sort_order: 0, is_active: true, is_required: true };
@@ -1052,6 +1069,33 @@ export default function SHEWorkforcePage() {
                   <select style={selectStyle} value={editP.responsibility} onChange={e => setEditP({ ...editP, responsibility: e.target.value })}>
                     <option value="">เลือก...</option>
                     {RESPONSIBILITIES.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <ChevronDown size={14} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#6b7280' }} />
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <div><FieldLabel>Employee Level</FieldLabel>
+                <div style={{ position: 'relative' }}>
+                  <select style={selectStyle} value={editP.employee_level} onChange={e => setEditP({ ...editP, employee_level: e.target.value })}>
+                    <option value="">เลือก...</option>
+                    {EMPLOYEE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                  <ChevronDown size={14} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#6b7280' }} />
+                </div>
+              </div>
+              <div><FieldLabel>การจ้าง</FieldLabel>
+                <div style={{ position: 'relative' }}>
+                  <select style={selectStyle} value={editP.hiring_type} onChange={e => setEditP({ ...editP, hiring_type: e.target.value })}>
+                    {Object.entries(HIRING_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                  <ChevronDown size={14} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#6b7280' }} />
+                </div>
+              </div>
+              <div><FieldLabel>ME Status</FieldLabel>
+                <div style={{ position: 'relative' }}>
+                  <select style={selectStyle} value={editP.me_status} onChange={e => setEditP({ ...editP, me_status: e.target.value })}>
+                    {ME_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                   <ChevronDown size={14} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#6b7280' }} />
                 </div>
