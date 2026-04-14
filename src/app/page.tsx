@@ -1,6 +1,6 @@
 'use client';
 
-import { Shield, FlaskConical, ClipboardCheck, Search, Lock, ArrowRight, User } from 'lucide-react';
+import { Shield, FlaskConical, ClipboardCheck, Search, Lock, ArrowRight, User, Briefcase } from 'lucide-react';
 import { PROJECTS, Project } from '@/lib/companies';
 import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
@@ -10,6 +10,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: 
   flask: FlaskConical,
   clipboard: ClipboardCheck,
   search: Search,
+  briefcase: Briefcase,
 };
 
 function ProjectCard({ project }: { project: Project }) {

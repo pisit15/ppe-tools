@@ -47,6 +47,15 @@ export const PROJECTS: Project[] = [
     href: '/inspection',
     ready: false,
   },
+  {
+    id: 'she-workforce',
+    name: 'SHE Workforce',
+    description: 'บริหารบุคลากรด้านความปลอดภัย อาชีวอนามัย สิ่งแวดล้อม ใบอนุญาต และวิเคราะห์ภาระงาน',
+    icon: 'briefcase',
+    color: 'from-teal-600 to-cyan-700',
+    href: '/she-workforce',
+    ready: true,
+  },
 ];
 
 // User type returned from auth

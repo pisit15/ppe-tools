@@ -14,9 +14,7 @@ import {
   History,
   BarChart3,
   Briefcase,
-  ShieldCheck,
-  FileText,
-  ClipboardList,
+  ArrowLeft,
 } from 'lucide-react';
 
 type NavItem = {
@@ -25,7 +23,11 @@ type NavItem = {
   icon: React.ReactNode;
 };
 
-export default function Sidebar() {
+type SidebarProps = {
+  mode?: 'ppe' | 'she';
+};
+
+export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -45,6 +47,9 @@ export default function Sidebar() {
     { label: 'SHE Workforce', href: `/she-workforce?company_id=${companyId}`, icon: <Briefcase size={20} /> },
   ];
 
+  const navItems = mode === 'she' ? sheItems : ppeItems;
+  const sectionTitle = mode === 'she' ? 'SHE Workforce' : 'PPE Inventory';
+
   const isActive = (href: string) => pathname === href.split('?')[0];
 
   return (
@@ -55,7 +60,7 @@ export default function Sidebar() {
     >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-blue-800">
-        {isOpen && <h1 className="text-lg font-bold">EA SHE Tools</h1>}
+        {isOpen && <h1 className="text-lg font-bold">{sectionTitle}</h1>}
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="p-2 hover:bg-blue-800 rounded-lg transition-colors"
@@ -85,25 +90,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {isOpen && <div className="px-4 py-1 text-xs text-blue-400 font-semibold uppercase tracking-wider">PPE</div>}
-        {ppeItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`flex items-center gap-4 px-4 py-3 rounded-lg transition-colors ${
-              isActive(item.href)
-                ? 'bg-blue-700 text-white'
-                : 'text-blue-100 hover:bg-blue-800'
-            }`}
-          >
-            {item.icon}
-            {isOpen && <span className="text-sm font-medium">{item.label}</span>}
-          </Link>
-        ))}
-
-        <div className="my-2 border-t border-blue-800" />
-        {isOpen && <div className="px-4 py-1 text-xs text-blue-400 font-semibold uppercase tracking-wider">SHE</div>}
-        {sheItems.map((item) => (
+        {navItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
@@ -118,6 +105,17 @@ export default function Sidebar() {
           </Link>
         ))}
       </nav>
+
+      {/* Back to Home */}
+      <div className="p-4 border-t border-blue-800">
+        <Link
+          href="/"
+          className="flex items-center gap-3 px-4 py-2 text-blue-300 hover:text-white hover:bg-blue-800 rounded-lg transition-colors"
+        >
+          <ArrowLeft size={18} />
+          {isOpen && <span className="text-sm">กลับหน้าหลัก</span>}
+        </Link>
+      </div>
 
       {/* Footer */}
       {isOpen && (
