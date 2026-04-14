@@ -145,8 +145,39 @@ function emptyWorkload(companyId: string): Workload {
 
 // ================================================================
 export default function SHEWorkforcePage() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const isAdmin = user?.role === 'admin';
+
+  // Admin-only access guard
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+        กำลังโหลด...
+      </div>
+    );
+  }
+  if (!user || !isAdmin) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ maxWidth: 480, background: '#fff', border: '1px solid #fecaca', borderRadius: 12, padding: 32, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <AlertTriangle size={48} color="#dc2626" style={{ margin: '0 auto 16px' }} />
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>ไม่มีสิทธิ์เข้าถึง</h2>
+          <p style={{ color: '#6b7280', margin: '0 0 16px', lineHeight: 1.6 }}>
+            หน้านี้สำหรับผู้ดูแลระบบ (Admin) เท่านั้น<br />
+            กรุณาเข้าสู่ระบบด้วยบัญชี Admin เพื่อใช้งาน SHE Workforce Dashboard
+          </p>
+          <a href="/login" style={{ display: 'inline-block', background: '#0f172a', color: '#fff', padding: '10px 20px', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
+            ไปหน้าเข้าสู่ระบบ
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return <SHEWorkforceDashboard user={user} isAdmin={isAdmin} />;
+}
+
+function SHEWorkforceDashboard({ user, isAdmin }: { user: NonNullable<ReturnType<typeof useAuth>['user']>; isAdmin: boolean }) {
 
   // Admin company switcher
   const [companies, setCompanies] = useState<Array<{ company_id: string; company_name: string }>>([]);
