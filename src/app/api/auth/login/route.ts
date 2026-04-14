@@ -49,13 +49,30 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 2) Check company_users table
-    const { data: userData } = await supabase
+    // 2) Check company_users table first, then tools_users as fallback
+    let userData: Record<string, unknown> | null = null;
+
+    const { data: cuData } = await supabase
       .from('company_users')
       .select('*')
       .eq('username', trimmedUsername)
       .eq('is_active', true)
       .single();
+
+    if (cuData) {
+      userData = cuData;
+    } else {
+      // Fallback: check tools_users table
+      const { data: tuData } = await supabase
+        .from('tools_users')
+        .select('*')
+        .eq('username', trimmedUsername)
+        .eq('is_active', true)
+        .single();
+      if (tuData) {
+        userData = tuData;
+      }
+    }
 
     if (!userData) {
       return NextResponse.json(
@@ -72,8 +89,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3) Get company_name from company_settings
-    let companyName = userData.display_name || userData.company_id;
+    // 3) Get company_name from company_settings or from user record
+    let companyName = (userData.company_name as string) || (userData.display_name as string) || (userData.company_id as string);
     const { data: companyData } = await supabase
       .from('company_settings')
       .select('company_name')
@@ -92,10 +109,10 @@ export async function POST(request: NextRequest) {
         username: userData.username,
         companyId: userData.company_id,
         companyName: companyName,
-        displayName: userData.display_name || userData.username,
-        nickname: '',
-        position: '',
-        role: 'user',
+        displayName: (userData.display_name as string) || (userData.username as string),
+        nickname: (userData.nickname as string) || '',
+        position: (userData.position as string) || '',
+        role: (userData.role as string) || 'user',
       },
     });
   } catch (err) {
