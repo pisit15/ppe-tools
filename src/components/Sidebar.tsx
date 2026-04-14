@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
   Menu,
@@ -15,7 +15,10 @@ import {
   BarChart3,
   Briefcase,
   ArrowLeft,
+  Building2,
+  LogOut,
 } from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
 
 type NavItem = {
   label: string;
@@ -30,8 +33,11 @@ type SidebarProps = {
 export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const companyId = searchParams.get('company_id') || 'default';
+  const { user, logout } = useAuth();
+
+  // Use company from logged-in user
+  const companyId = user?.companyId || 'default';
+  const companyName = user?.companyName || 'ไม่ทราบบริษัท';
 
   const ppeItems: NavItem[] = [
     { label: 'แดชบอร์ด', href: `/ppe?company_id=${companyId}`, icon: <Home size={20} /> },
@@ -44,47 +50,54 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
   ];
 
   const sheItems: NavItem[] = [
-    { label: 'SHE Workforce', href: `/she-workforce?company_id=${companyId}`, icon: <Briefcase size={20} /> },
+    { label: 'ภาพรวม', href: `/she-workforce?company_id=${companyId}`, icon: <Briefcase size={20} /> },
   ];
 
   const navItems = mode === 'she' ? sheItems : ppeItems;
   const sectionTitle = mode === 'she' ? 'SHE Workforce' : 'PPE Inventory';
+  const bgColor = mode === 'she' ? 'bg-teal-900' : 'bg-blue-900';
+  const borderColor = mode === 'she' ? 'border-teal-800' : 'border-blue-800';
+  const hoverBg = mode === 'she' ? 'hover:bg-teal-800' : 'hover:bg-blue-800';
+  const activeBg = mode === 'she' ? 'bg-teal-700' : 'bg-blue-700';
+  const mutedText = mode === 'she' ? 'text-teal-300' : 'text-blue-300';
 
   const isActive = (href: string) => pathname === href.split('?')[0];
+
+  const handleLogout = () => {
+    logout();
+    window.location.href = '/';
+  };
 
   return (
     <aside
       className={`${
         isOpen ? 'w-64' : 'w-20'
-      } bg-blue-900 text-white transition-all duration-300 min-h-screen flex flex-col`}
+      } ${bgColor} text-white transition-all duration-300 min-h-screen flex flex-col`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-blue-800">
+      <div className={`flex items-center justify-between p-4 border-b ${borderColor}`}>
         {isOpen && <h1 className="text-lg font-bold">{sectionTitle}</h1>}
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="p-2 hover:bg-blue-800 rounded-lg transition-colors"
+          className={`p-2 ${hoverBg} rounded-lg transition-colors`}
         >
           {isOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
-      {/* Company Selector */}
-      {isOpen && (
-        <div className="p-4 border-b border-blue-800">
-          <label className="text-xs text-blue-300 block mb-2">บริษัท</label>
-          <select
-            value={companyId}
-            onChange={(e) => {
-              const newCompanyId = e.target.value;
-              window.location.href = pathname + `?company_id=${newCompanyId}`;
-            }}
-            className="w-full bg-blue-800 text-white text-sm rounded px-2 py-2 border border-blue-700"
-          >
-            <option value="default">บริษัท เริ่มต้น</option>
-            <option value="eashe">EASHE Corp</option>
-            <option value="subsidiary">Subsidiary Co</option>
-          </select>
+      {/* Company Display */}
+      {isOpen && user && (
+        <div className={`p-4 border-b ${borderColor}`}>
+          <label className={`text-xs ${mutedText} block mb-1`}>บริษัท</label>
+          <div className="flex items-center gap-2">
+            <Building2 size={16} className={mutedText} />
+            <span className="text-sm font-medium text-white truncate">{companyName}</span>
+          </div>
+          {user.displayName && (
+            <p className={`text-xs ${mutedText} mt-2 truncate`}>
+              เข้าสู่ระบบ: {user.displayName}
+            </p>
+          )}
         </div>
       )}
 
@@ -96,8 +109,8 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
             href={item.href}
             className={`flex items-center gap-4 px-4 py-3 rounded-lg transition-colors ${
               isActive(item.href)
-                ? 'bg-blue-700 text-white'
-                : 'text-blue-100 hover:bg-blue-800'
+                ? `${activeBg} text-white`
+                : `text-blue-100 ${hoverBg}`
             }`}
           >
             {item.icon}
@@ -106,11 +119,24 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
         ))}
       </nav>
 
+      {/* Logout */}
+      {user && (
+        <div className={`px-4 pb-2`}>
+          <button
+            onClick={handleLogout}
+            className={`w-full flex items-center gap-3 px-4 py-2 ${mutedText} hover:text-white ${hoverBg} rounded-lg transition-colors`}
+          >
+            <LogOut size={18} />
+            {isOpen && <span className="text-sm">ออกจากระบบ</span>}
+          </button>
+        </div>
+      )}
+
       {/* Back to Home */}
-      <div className="p-4 border-t border-blue-800">
+      <div className={`px-4 pb-4 border-t ${borderColor} pt-3`}>
         <Link
           href="/"
-          className="flex items-center gap-3 px-4 py-2 text-blue-300 hover:text-white hover:bg-blue-800 rounded-lg transition-colors"
+          className={`flex items-center gap-3 px-4 py-2 ${mutedText} hover:text-white ${hoverBg} rounded-lg transition-colors`}
         >
           <ArrowLeft size={18} />
           {isOpen && <span className="text-sm">กลับหน้าหลัก</span>}
@@ -119,8 +145,8 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
 
       {/* Footer */}
       {isOpen && (
-        <div className="p-4 border-t border-blue-800 text-xs text-blue-300">
-          <p className="mb-2">EA SHE Tools</p>
+        <div className={`p-4 border-t ${borderColor} text-xs ${mutedText}`}>
+          <p className="mb-1">EA SHE Tools</p>
           <p>tools.eashe.org</p>
         </div>
       )}

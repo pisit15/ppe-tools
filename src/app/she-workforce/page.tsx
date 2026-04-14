@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import {
   Users, ShieldCheck, Briefcase, Plus, Pencil, Trash2, X, Check,
   Search, AlertTriangle, FileText, ChevronDown,
@@ -128,9 +128,9 @@ function emptyWorkload(companyId: string): Workload {
 
 // ================================================================
 export default function SHEWorkforcePage() {
-  const searchParams = useSearchParams();
-  const companyId = searchParams.get('company_id') || 'default';
-  const companyName = companyId.toUpperCase();
+  const { user } = useAuth();
+  const companyId = user?.companyId || 'default';
+  const companyName = user?.companyName || companyId.toUpperCase();
 
   // Data
   const [activeTab, setActiveTab] = useState(0);
