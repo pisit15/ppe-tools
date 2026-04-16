@@ -13,6 +13,7 @@ import {
   Users,
   History,
   BarChart3,
+  FileBarChart,
   Briefcase,
   ArrowLeft,
   Building2,
@@ -78,6 +79,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     { label: 'พนักงาน', href: `/ppe/employees${q}`, icon: <Users size={20} /> },
     { label: 'ประวัติ', href: `/ppe/history${q}`, icon: <History size={20} /> },
     { label: 'รายงาน', href: `/ppe/reports${q}`, icon: <BarChart3 size={20} /> },
+    { label: 'รายงานสินค้า', href: `/ppe/reports/product${q}`, icon: <FileBarChart size={20} /> },
   ];
 
   const sheItems: NavItem[] = [
