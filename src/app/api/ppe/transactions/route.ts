@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     try { db = getSupabaseServer(); } catch { db = supabase; }
     let query = db
       .from('ppe_transactions')
-      .select('*')
+      .select('*, ppe_products(name, type, image_url)')
       .eq('company_id', companyId);
 
     if (productId) {
