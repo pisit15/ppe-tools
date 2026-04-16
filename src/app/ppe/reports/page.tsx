@@ -1,9 +1,9 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { BarChart3, Calendar, ArrowUp, ArrowDown, Minus, AlertTriangle } from 'lucide-react';
+import { BarChart3, ArrowUp, ArrowDown, Minus, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, X } from 'lucide-react';
 import type { PPEStockSummary, PPETransaction } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
 
@@ -24,16 +24,243 @@ const VIZ = {
 /* ── helpers ── */
 function getTypeLabel(v: string) { return PPE_TYPES.find(t => t.value === v)?.label ?? v; }
 function getTypeEmoji(v: string) { return PPE_TYPES.find(t => t.value === v)?.icon ?? '📦'; }
-function getUnitLabel(v: string) { return UNIT_TYPES.find(u => u.value === v)?.label ?? v; }
 function fmtNum(n: number) { return n.toLocaleString('th-TH'); }
 function fmtCompact(n: number) {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 }
 
+/** Format a month key (YYYY-MM) to Thai short label */
+function monthKeyToLabel(key: string) {
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString('th-TH', { month: 'short', year: '2-digit' });
+}
+function monthKeyToFullLabel(key: string) {
+  const [y, m] = key.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+}
+function makeMonthKey(year: number, month: number) {
+  return `${year}-${String(month + 1).padStart(2, '0')}`;
+}
+
+const THAI_MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+/* ═══════════════════════════ Month Range Picker ═══════════════════════════ */
+
+interface DateRange {
+  from: string; // YYYY-MM
+  to: string;   // YYYY-MM
+}
+
+function MonthRangePicker({
+  range,
+  onChange,
+  minDate,
+  maxDate,
+}: {
+  range: DateRange;
+  onChange: (r: DateRange) => void;
+  minDate: string; // earliest YYYY-MM with data
+  maxDate: string; // latest YYYY-MM
+}) {
+  const [open, setOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(() => parseInt(range.to.split('-')[0]));
+  const [selecting, setSelecting] = useState<'from' | 'to' | null>(null);
+  const [tempFrom, setTempFrom] = useState(range.from);
+  const [tempTo, setTempTo] = useState(range.to);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // close on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  // Quick presets
+  const now = new Date();
+  const presets = [
+    { label: 'เดือนนี้', from: makeMonthKey(now.getFullYear(), now.getMonth()), to: makeMonthKey(now.getFullYear(), now.getMonth()) },
+    { label: 'เดือนที่แล้ว', from: makeMonthKey(now.getFullYear(), now.getMonth() - 1), to: makeMonthKey(now.getFullYear(), now.getMonth() - 1) },
+    { label: '3 เดือนล่าสุด', from: makeMonthKey(now.getFullYear(), now.getMonth() - 2), to: makeMonthKey(now.getFullYear(), now.getMonth()) },
+    { label: '6 เดือนล่าสุด', from: makeMonthKey(now.getFullYear(), now.getMonth() - 5), to: makeMonthKey(now.getFullYear(), now.getMonth()) },
+    { label: 'ปีนี้', from: `${now.getFullYear()}-01`, to: makeMonthKey(now.getFullYear(), now.getMonth()) },
+    { label: 'ปีที่แล้ว', from: `${now.getFullYear() - 1}-01`, to: `${now.getFullYear() - 1}-12` },
+  ];
+
+  function applyPreset(p: { from: string; to: string }) {
+    onChange(p);
+    setTempFrom(p.from);
+    setTempTo(p.to);
+    setOpen(false);
+  }
+
+  function handleMonthClick(monthKey: string) {
+    if (selecting === 'from' || !selecting) {
+      setTempFrom(monthKey);
+      if (monthKey > tempTo) setTempTo(monthKey);
+      setSelecting('to');
+    } else {
+      if (monthKey < tempFrom) {
+        setTempFrom(monthKey);
+        setTempTo(tempFrom);
+      } else {
+        setTempTo(monthKey);
+      }
+      // Apply
+      const newFrom = monthKey < tempFrom ? monthKey : tempFrom;
+      const newTo = monthKey < tempFrom ? tempFrom : monthKey;
+      onChange({ from: newFrom, to: newTo });
+      setTempFrom(newFrom);
+      setTempTo(newTo);
+      setSelecting(null);
+      setOpen(false);
+    }
+  }
+
+  function isInRange(mk: string) {
+    const f = selecting === 'to' ? tempFrom : range.from;
+    const t = selecting === 'to' ? tempTo : range.to;
+    return mk >= f && mk <= t;
+  }
+
+  function isStart(mk: string) {
+    return mk === (selecting === 'to' ? tempFrom : range.from);
+  }
+  function isEnd(mk: string) {
+    return mk === (selecting === 'to' ? tempTo : range.to);
+  }
+
+  // Display label
+  const fromLabel = monthKeyToFullLabel(range.from);
+  const toLabel = monthKeyToFullLabel(range.to);
+  const isSameMonth = range.from === range.to;
+  const displayLabel = isSameMonth ? fromLabel : `${monthKeyToLabel(range.from)} — ${monthKeyToLabel(range.to)}`;
+
+  // Count months in range
+  const [fy, fm] = range.from.split('-').map(Number);
+  const [ty, tm] = range.to.split('-').map(Number);
+  const monthCount = (ty - fy) * 12 + (tm - fm) + 1;
+
+  return (
+    <div ref={ref} className="relative">
+      {/* Trigger button */}
+      <button
+        onClick={() => { setOpen(!open); setSelecting(null); setTempFrom(range.from); setTempTo(range.to); }}
+        className={`
+          flex items-center gap-2 px-3 py-2 rounded-lg border text-sm
+          transition-all duration-150
+          ${open
+            ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100'
+            : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+          }
+        `}
+      >
+        <CalendarRange size={16} className={open ? 'text-blue-500' : 'text-gray-400'} />
+        <span className="font-medium text-gray-800">{displayLabel}</span>
+        <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{monthCount} เดือน</span>
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl shadow-xl border border-gray-200 flex overflow-hidden"
+          style={{ minWidth: 520 }}>
+
+          {/* Left: Presets */}
+          <div className="w-40 bg-gray-50 border-r border-gray-100 p-2 flex flex-col gap-0.5">
+            <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider px-2 py-1">ช่วงเวลาด่วน</span>
+            {presets.map((p, i) => {
+              const isActive = range.from === p.from && range.to === p.to;
+              return (
+                <button
+                  key={i}
+                  onClick={() => applyPreset(p)}
+                  className={`text-left text-xs px-2.5 py-1.5 rounded-md transition-colors
+                    ${isActive ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right: Month grid */}
+          <div className="flex-1 p-4">
+            {/* Range display */}
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                onClick={() => setSelecting('from')}
+                className={`flex-1 text-center text-xs py-1.5 rounded-md border transition-colors
+                  ${selecting === 'from' ? 'border-blue-400 bg-blue-50 text-blue-700 font-semibold' : 'border-gray-200 text-gray-600'}`}
+              >
+                {monthKeyToFullLabel(selecting ? tempFrom : range.from)}
+              </button>
+              <span className="text-gray-300">→</span>
+              <button
+                onClick={() => setSelecting('to')}
+                className={`flex-1 text-center text-xs py-1.5 rounded-md border transition-colors
+                  ${selecting === 'to' ? 'border-blue-400 bg-blue-50 text-blue-700 font-semibold' : 'border-gray-200 text-gray-600'}`}
+              >
+                {monthKeyToFullLabel(selecting ? tempTo : range.to)}
+              </button>
+            </div>
+
+            {/* Year nav */}
+            <div className="flex items-center justify-between mb-2">
+              <button onClick={() => setViewYear(y => y - 1)} className="p-1 hover:bg-gray-100 rounded">
+                <ChevronLeft size={16} className="text-gray-500" />
+              </button>
+              <span className="text-sm font-bold text-gray-700">{viewYear} ({viewYear + 543})</span>
+              <button onClick={() => setViewYear(y => y + 1)} className="p-1 hover:bg-gray-100 rounded">
+                <ChevronRight size={16} className="text-gray-500" />
+              </button>
+            </div>
+
+            {/* Month grid 4x3 */}
+            <div className="grid grid-cols-4 gap-1">
+              {THAI_MONTHS_SHORT.map((name, idx) => {
+                const mk = makeMonthKey(viewYear, idx);
+                const inRange = isInRange(mk);
+                const start = isStart(mk);
+                const end = isEnd(mk);
+                const isFuture = mk > makeMonthKey(now.getFullYear(), now.getMonth());
+                return (
+                  <button
+                    key={idx}
+                    disabled={isFuture}
+                    onClick={() => handleMonthClick(mk)}
+                    className={`
+                      text-xs py-2 rounded-md transition-all duration-100
+                      ${isFuture ? 'text-gray-300 cursor-not-allowed' : 'cursor-pointer'}
+                      ${start || end ? 'bg-blue-600 text-white font-bold shadow-sm' : ''}
+                      ${inRange && !start && !end ? 'bg-blue-50 text-blue-700 font-medium' : ''}
+                      ${!inRange && !isFuture ? 'text-gray-600 hover:bg-gray-100' : ''}
+                    `}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Hint */}
+            <p className="text-[10px] text-gray-400 mt-2 text-center">
+              {selecting === 'to' ? 'เลือกเดือนสิ้นสุด' : 'คลิกเดือนเริ่มต้น แล้วเลือกเดือนสิ้นสุด'}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ═══════════════════════════ SVG Chart Components ═══════════════════════════ */
 
-/** Horizontal bar chart — "Gray + One" strategy: top bar highlighted, rest gray */
+/** Horizontal bar chart — "Gray + One" strategy */
 function HBarChart({
   data,
   maxVal,
@@ -75,7 +302,7 @@ function HBarChart({
   );
 }
 
-/** Combined dual-line trend chart with shared x-axis — shows in/out on same view */
+/** Combined dual-line trend chart */
 function DualLineChart({
   months,
   dataA,
@@ -114,13 +341,11 @@ function DualLineChart({
   const makeArea = (pts: { x: number; y: number }[]) =>
     `${makeLine(pts)} L${pts[pts.length - 1].x},${PY + chartH} L${pts[0].x},${PY + chartH} Z`;
 
-  // Y-axis gridlines (3 lines)
   const gridVals = [0, Math.round(max / 2), max];
 
   return (
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 140 }}>
-        {/* Gridlines */}
         {gridVals.map((v, i) => {
           const y = PY + (1 - v / max) * chartH;
           return (
@@ -130,16 +355,12 @@ function DualLineChart({
             </g>
           );
         })}
-        {/* Area fills */}
         <path d={makeArea(ptsA)} fill={colorA} fillOpacity={0.08} />
         <path d={makeArea(ptsB)} fill={colorB} fillOpacity={0.08} />
-        {/* Lines */}
         <path d={makeLine(ptsA)} fill="none" stroke={colorA} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
         <path d={makeLine(ptsB)} fill="none" stroke={colorB} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        {/* Dots */}
         {ptsA.map((p, i) => <circle key={`a${i}`} cx={p.x} cy={p.y} r={2.5} fill={colorA} />)}
         {ptsB.map((p, i) => <circle key={`b${i}`} cx={p.x} cy={p.y} r={2.5} fill={colorB} />)}
-        {/* End value labels */}
         {dataA[dataA.length - 1] > 0 && (
           <text x={ptsA[ptsA.length - 1].x + 4} y={ptsA[ptsA.length - 1].y - 6}
             className="text-[8px] font-bold" fill={colorA}>{fmtNum(dataA[dataA.length - 1])}</text>
@@ -148,17 +369,14 @@ function DualLineChart({
           <text x={ptsB[ptsB.length - 1].x + 4} y={ptsB[ptsB.length - 1].y + 12}
             className="text-[8px] font-bold" fill={colorB}>{fmtNum(dataB[dataB.length - 1])}</text>
         )}
-        {/* X-axis labels */}
         {months.map((m, i) => {
           const x = PX + (i / Math.max(months.length - 1, 1)) * (W - PX - 8);
-          // Show only some labels to avoid clutter
           const show = months.length <= 6 || i % 2 === 0 || i === months.length - 1;
           return show ? (
             <text key={i} x={x} y={H - 4} textAnchor="middle" className="text-[8px]" fill={VIZ.lightText}>{m}</text>
           ) : null;
         })}
       </svg>
-      {/* Direct legend (no separate legend box) */}
       <div className="flex items-center gap-4 mt-1 ml-9">
         <span className="flex items-center gap-1.5 text-[11px]" style={{ color: colorA }}>
           <span className="w-3 h-0.5 rounded" style={{ background: colorA, display: 'inline-block' }} /> {labelA}
@@ -195,20 +413,19 @@ interface ReportData {
   transactions: PPETransaction[];
 }
 
-const PERIOD_OPTIONS = [
-  { value: 1, label: '1 เดือน', short: '1M' },
-  { value: 2, label: '2 เดือน', short: '2M' },
-  { value: 3, label: '3 เดือน', short: '3M' },
-  { value: 6, label: '6 เดือน', short: '6M' },
-  { value: 12, label: '1 ปี', short: '1Y' },
-];
-
 export default function ReportsPage() {
   const { user } = useAuth();
   const companyId = user?.companyId || '';
   const [reportData, setReportData] = useState<ReportData>({ stocks: [], transactions: [] });
   const [isLoading, setIsLoading] = useState(true);
-  const [period, setPeriod] = useState(6);
+
+  // Default: last 6 months (current month inclusive)
+  const now = new Date();
+  const defaultRange: DateRange = {
+    from: makeMonthKey(now.getFullYear(), now.getMonth() - 5),
+    to: makeMonthKey(now.getFullYear(), now.getMonth()),
+  };
+  const [dateRange, setDateRange] = useState<DateRange>(defaultRange);
 
   useEffect(() => {
     Promise.all([
@@ -228,19 +445,26 @@ export default function ReportsPage() {
   const analytics = useMemo(() => {
     const { stocks, transactions: allTransactions } = reportData;
 
-    const now = new Date();
-    const cutoff = new Date(now.getFullYear(), now.getMonth() - period, 1);
+    // Parse date range to cutoff dates
+    const [fromY, fromM] = dateRange.from.split('-').map(Number);
+    const [toY, toM] = dateRange.to.split('-').map(Number);
+    const cutoffStart = new Date(fromY, fromM - 1, 1);
+    const cutoffEnd = new Date(toY, toM, 0, 23, 59, 59); // last day of "to" month
+
     const transactions = allTransactions.filter((t) => {
       if (!t.transaction_date) return false;
-      return new Date(t.transaction_date) >= cutoff;
+      const d = new Date(t.transaction_date);
+      return d >= cutoffStart && d <= cutoffEnd;
     });
 
-    // Previous period for comparison
-    const prevCutoff = new Date(now.getFullYear(), now.getMonth() - period * 2, 1);
+    // Previous period of same length for comparison
+    const monthCount = (toY - fromY) * 12 + (toM - fromM) + 1;
+    const prevStart = new Date(fromY, fromM - 1 - monthCount, 1);
+    const prevEnd = new Date(fromY, fromM - 1, 0, 23, 59, 59);
     const prevTransactions = allTransactions.filter((t) => {
       if (!t.transaction_date) return false;
       const d = new Date(t.transaction_date);
-      return d >= prevCutoff && d < cutoff;
+      return d >= prevStart && d <= prevEnd;
     });
 
     // type breakdown (from current stock)
@@ -259,13 +483,14 @@ export default function ReportsPage() {
     const prevTransMap: Record<string, number> = {};
     prevTransactions.forEach((t) => { prevTransMap[t.transaction_type] = (prevTransMap[t.transaction_type] || 0) + t.quantity; });
 
-    // monthly trends
+    // monthly trends — iterate through each month in range
     const months: string[] = [];
     const monthlyIn: number[] = [];
     const monthlyOut: number[] = [];
-    for (let i = period - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    let curY = fromY, curM = fromM - 1; // 0-indexed month
+    while (curY < toY || (curY === toY && curM <= toM - 1)) {
+      const key = `${curY}-${String(curM + 1).padStart(2, '0')}`;
+      const d = new Date(curY, curM, 1);
       months.push(d.toLocaleDateString('th-TH', { month: 'short' }));
       const mIn = transactions
         .filter(t => (t.transaction_type === 'stock_in' || t.transaction_type === 'return') && t.transaction_date?.startsWith(key))
@@ -275,6 +500,8 @@ export default function ReportsPage() {
         .reduce((s, t) => s + t.quantity, 0);
       monthlyIn.push(mIn);
       monthlyOut.push(mOut);
+      curM++;
+      if (curM > 11) { curM = 0; curY++; }
     }
 
     // top products by stock-out
@@ -301,24 +528,19 @@ export default function ReportsPage() {
     const prevTotalIn = (prevTransMap['stock_in'] || 0) + (prevTransMap['return'] || 0);
     const prevTotalOut = (prevTransMap['stock_out'] || 0) + (prevTransMap['borrow'] || 0);
 
-    // Find top type by stock
     const topType = Object.entries(typeMap).sort((a, b) => b[1].total - a[1].total)[0];
     const topTypeName = topType ? getTypeLabel(topType[0]) : '';
-
-    // Find top dept
     const topDept = Object.entries(deptUsage).sort((a, b) => b[1] - a[1])[0];
     const topDeptName = topDept ? topDept[0] : '';
-
-    // Find top product
     const topProduct = Object.values(outByProduct).sort((a, b) => b.qty - a.qty)[0];
 
     return {
-      typeMap, transMap, months, monthlyIn, monthlyOut,
+      typeMap, transMap, months, monthlyIn, monthlyOut, monthCount,
       outByProduct, deptUsage, lowStock,
       totalIn, totalOut, prevTotalIn, prevTotalOut,
       topTypeName, topDeptName, topProduct,
     };
-  }, [reportData, period]);
+  }, [reportData, dateRange]);
 
   if (isLoading) {
     return (
@@ -331,9 +553,18 @@ export default function ReportsPage() {
   const { stocks } = reportData;
   const totalStock = stocks.reduce((s, st) => s + st.current_stock, 0);
 
-  // Compute change percentages
   const inChange = analytics.prevTotalIn > 0 ? ((analytics.totalIn - analytics.prevTotalIn) / analytics.prevTotalIn * 100) : 0;
   const outChange = analytics.prevTotalOut > 0 ? ((analytics.totalOut - analytics.prevTotalOut) / analytics.prevTotalOut * 100) : 0;
+
+  // Find data range for picker
+  const allDates = reportData.transactions.filter(t => t.transaction_date).map(t => t.transaction_date!.slice(0, 7));
+  const minDate = allDates.length > 0 ? allDates.sort()[0] : makeMonthKey(now.getFullYear(), 0);
+  const maxDate = makeMonthKey(now.getFullYear(), now.getMonth());
+
+  // Range label for subtitles
+  const rangeLabel = dateRange.from === dateRange.to
+    ? monthKeyToFullLabel(dateRange.from)
+    : `${monthKeyToLabel(dateRange.from)} – ${monthKeyToLabel(dateRange.to)}`;
 
   return (
     <div className="space-y-4 max-w-[1400px]">
@@ -344,38 +575,10 @@ export default function ReportsPage() {
           <h1 className="text-xl font-bold text-gray-900">รายงาน PPE</h1>
           <span className="text-sm text-gray-400 ml-1">{stocks.length} รายการ</span>
         </div>
-
-        {/* ── Period Filter — pill-style segmented control ── */}
-        <div className="flex items-center gap-2.5">
-          <span className="text-xs text-gray-400 hidden sm:inline">ช่วงเวลา</span>
-          <div className="relative flex items-center bg-gray-100 rounded-full p-[3px]">
-            {PERIOD_OPTIONS.map((opt) => {
-              const isActive = period === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => setPeriod(opt.value)}
-                  className={`
-                    relative z-10 px-3.5 py-1.5 rounded-full text-xs font-semibold
-                    transition-all duration-200 ease-out select-none
-                    ${isActive
-                      ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200/60'
-                      : 'text-gray-500 hover:text-gray-700'
-                    }
-                  `}
-                  title={opt.label}
-                >
-                  {/* Full label on desktop, short on mobile */}
-                  <span className="hidden sm:inline">{opt.label}</span>
-                  <span className="sm:hidden">{opt.short}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <MonthRangePicker range={dateRange} onChange={setDateRange} minDate={minDate} maxDate={maxDate} />
       </div>
 
-      {/* ── KPI cards — 4 key metrics with context ── */}
+      {/* ── KPI cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPICard
           label="สต็อกคงเหลือ"
@@ -393,7 +596,7 @@ export default function ReportsPage() {
           color={VIZ.positive}
           sparkData={analytics.monthlyIn}
           change={inChange}
-          changePeriod={`vs ${period} ด.ก่อน`}
+          changePeriod="vs ช่วงก่อนหน้า"
         />
         <KPICard
           label="เบิกออก"
@@ -402,7 +605,7 @@ export default function ReportsPage() {
           color={VIZ.secondary}
           sparkData={analytics.monthlyOut}
           change={outChange}
-          changePeriod={`vs ${period} ด.ก่อน`}
+          changePeriod="vs ช่วงก่อนหน้า"
         />
         <KPICard
           label="สต็อกต่ำ"
@@ -417,19 +620,17 @@ export default function ReportsPage() {
         />
       </div>
 
-      {/* ── Row 1: Trend chart (main insight) + Stock by type ── */}
+      {/* ── Row 1: Trend + Stock by type ── */}
       <div className="grid lg:grid-cols-5 gap-4">
-        {/* Trend — takes 3 cols */}
         <div className="lg:col-span-3 bg-white rounded-lg border border-gray-100 p-5">
           <h2 className="text-sm font-bold text-gray-900">
             {analytics.totalOut > analytics.totalIn
               ? `เบิกออกมากกว่ารับเข้า ${fmtNum(analytics.totalOut - analytics.totalIn)} ชิ้น`
               : analytics.totalIn > analytics.totalOut
                 ? `รับเข้ามากกว่าเบิกออก ${fmtNum(analytics.totalIn - analytics.totalOut)} ชิ้น`
-                : `รับเข้า-เบิกออกสมดุล`
-            }
+                : `รับเข้า-เบิกออกสมดุล`}
           </h2>
-          <p className="text-[11px] text-gray-400 mb-3">เทรนด์ {period} เดือนล่าสุด</p>
+          <p className="text-[11px] text-gray-400 mb-3">{rangeLabel}</p>
           <DualLineChart
             months={analytics.months}
             dataA={analytics.monthlyIn}
@@ -440,8 +641,6 @@ export default function ReportsPage() {
             labelB="เบิก + ยืม"
           />
         </div>
-
-        {/* Stock by type — takes 2 cols */}
         <div className="lg:col-span-2 bg-white rounded-lg border border-gray-100 p-5">
           <h2 className="text-sm font-bold text-gray-900">
             {analytics.topTypeName ? `${analytics.topTypeName}มีสต็อกมากที่สุด` : 'สต็อกตามประเภท'}
@@ -460,14 +659,13 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* ── Row 2: Top products + Dept usage + Low stock alerts ── */}
+      {/* ── Row 2: Top products + Dept usage + Low stock ── */}
       <div className="grid lg:grid-cols-3 gap-4">
-        {/* Top products by usage */}
         <div className="bg-white rounded-lg border border-gray-100 p-5">
           <h2 className="text-sm font-bold text-gray-900">
             {analytics.topProduct ? `"${analytics.topProduct.name}" เบิกบ่อยสุด` : 'สินค้าเบิกบ่อยสุด'}
           </h2>
-          <p className="text-[11px] text-gray-400 mb-3">Top 8 เบิก/ยืม ({period} เดือน)</p>
+          <p className="text-[11px] text-gray-400 mb-3">Top 8 เบิก/ยืม · {rangeLabel}</p>
           <HBarChart
             data={Object.values(analytics.outByProduct)
               .sort((a, b) => b.qty - a.qty)
@@ -477,15 +675,13 @@ export default function ReportsPage() {
             accentColor={VIZ.secondary}
           />
         </div>
-
-        {/* Department usage */}
         <div className="bg-white rounded-lg border border-gray-100 p-5">
           <h2 className="text-sm font-bold text-gray-900">
             {analytics.topDeptName && analytics.topDeptName !== 'ไม่ระบุ'
               ? `${analytics.topDeptName}ใช้ PPE มากที่สุด`
               : 'การใช้งานตามแผนก'}
           </h2>
-          <p className="text-[11px] text-gray-400 mb-3">จำนวนเบิก/ยืมแยกตามแผนก ({period} เดือน)</p>
+          <p className="text-[11px] text-gray-400 mb-3">จำนวนเบิก/ยืมแยกตามแผนก · {rangeLabel}</p>
           <HBarChart
             data={Object.entries(analytics.deptUsage)
               .sort((a, b) => b[1] - a[1])
@@ -494,8 +690,6 @@ export default function ReportsPage() {
             accentColor="#76B7B2"
           />
         </div>
-
-        {/* Low stock alerts */}
         <div className="bg-white rounded-lg border border-gray-100 p-5">
           <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
             {analytics.lowStock.length > 0 && <AlertTriangle size={14} className="text-amber-500" />}
@@ -538,7 +732,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* ── Detailed stock table (collapsible for space) ── */}
+      {/* ── Detailed stock table ── */}
       <details className="bg-white rounded-lg border border-gray-100">
         <summary className="px-5 py-3 cursor-pointer text-sm font-bold text-gray-900 hover:bg-gray-50 select-none">
           ตารางสต็อกละเอียด ({stocks.length} รายการ)
@@ -559,7 +753,6 @@ export default function ReportsPage() {
             <tbody>
               {stocks.length > 0 ? stocks
                 .sort((a, b) => {
-                  // Low stock items first
                   const aLow = a.current_stock <= a.min_stock && a.min_stock > 0;
                   const bLow = b.current_stock <= b.min_stock && b.min_stock > 0;
                   if (aLow !== bLow) return aLow ? -1 : 1;
@@ -604,7 +797,7 @@ export default function ReportsPage() {
   );
 }
 
-/* ── KPI Card — compact with sparkline and comparison ── */
+/* ── KPI Card ── */
 function KPICard({
   label, value, suffix, color, sparkData, change, changePeriod, note, noteColor,
 }: {
@@ -628,7 +821,6 @@ function KPICard({
         <span className="text-2xl font-bold tabular-nums" style={{ color }}>{value}</span>
         <span className="text-[11px] text-gray-400">{suffix}</span>
       </div>
-      {/* Comparison vs previous period */}
       {change !== undefined && change !== 0 && (
         <div className="flex items-center gap-1 mt-1">
           {change > 0 ? (
@@ -648,7 +840,6 @@ function KPICard({
           <span className="text-[10px] text-gray-400">ไม่เปลี่ยนแปลง</span>
         </div>
       )}
-      {/* Custom note */}
       {note && (
         <p className="text-[10px] mt-1 truncate" style={{ color: noteColor || VIZ.lightText }}>{note}</p>
       )}
