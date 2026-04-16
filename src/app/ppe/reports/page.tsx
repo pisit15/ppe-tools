@@ -196,11 +196,11 @@ interface ReportData {
 }
 
 const PERIOD_OPTIONS = [
-  { value: 1, label: '1 ด.' },
-  { value: 2, label: '2 ด.' },
-  { value: 3, label: '3 ด.' },
-  { value: 6, label: '6 ด.' },
-  { value: 12, label: '1 ปี' },
+  { value: 1, label: '1 เดือน', short: '1M' },
+  { value: 2, label: '2 เดือน', short: '2M' },
+  { value: 3, label: '3 เดือน', short: '3M' },
+  { value: 6, label: '6 เดือน', short: '6M' },
+  { value: 12, label: '1 ปี', short: '1Y' },
 ];
 
 export default function ReportsPage() {
@@ -344,21 +344,34 @@ export default function ReportsPage() {
           <h1 className="text-xl font-bold text-gray-900">รายงาน PPE</h1>
           <span className="text-sm text-gray-400 ml-1">{stocks.length} รายการ</span>
         </div>
-        <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-0.5">
-          <Calendar size={14} className="text-gray-400 ml-2" />
-          {PERIOD_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setPeriod(opt.value)}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                period === opt.value
-                  ? 'bg-gray-800 text-white'
-                  : 'text-gray-500 hover:bg-gray-100'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+
+        {/* ── Period Filter — pill-style segmented control ── */}
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs text-gray-400 hidden sm:inline">ช่วงเวลา</span>
+          <div className="relative flex items-center bg-gray-100 rounded-full p-[3px]">
+            {PERIOD_OPTIONS.map((opt) => {
+              const isActive = period === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => setPeriod(opt.value)}
+                  className={`
+                    relative z-10 px-3.5 py-1.5 rounded-full text-xs font-semibold
+                    transition-all duration-200 ease-out select-none
+                    ${isActive
+                      ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200/60'
+                      : 'text-gray-500 hover:text-gray-700'
+                    }
+                  `}
+                  title={opt.label}
+                >
+                  {/* Full label on desktop, short on mobile */}
+                  <span className="hidden sm:inline">{opt.label}</span>
+                  <span className="sm:hidden">{opt.short}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
