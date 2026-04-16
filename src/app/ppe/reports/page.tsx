@@ -3,117 +3,192 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { BarChart3, Shield, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, TrendingUp, Calendar } from 'lucide-react';
+import { BarChart3, Calendar, ArrowUp, ArrowDown, Minus, AlertTriangle } from 'lucide-react';
 import type { PPEStockSummary, PPETransaction } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
 
-/* ── palette ── */
+/* ── Professional Palette (Tableau-inspired) ── */
 const VIZ = {
-  green:  '#2B8C3E',
-  orange: '#F28E2B',
-  blue:   '#4E79A7',
-  red:    '#E15759',
-  purple: '#B07AA1',
-  teal:   '#59A14F',
-  gray:   '#BAB0AC',
-  yellow: '#EDC948',
+  primary:  '#4E79A7',
+  secondary:'#F28E2B',
+  accent:   '#E15759',
+  positive: '#59A14F',
+  neutral:  '#BAB0AC',
+  muted:    '#D4D4D4',
+  bg:       '#EEEEEE',
+  text:     '#333333',
+  lightText:'#666666',
+  grid:     '#EEEEEE',
 };
-const CHART_COLORS = [VIZ.blue, VIZ.orange, VIZ.green, VIZ.red, VIZ.purple, VIZ.teal, VIZ.yellow, VIZ.gray];
 
 /* ── helpers ── */
 function getTypeLabel(v: string) { return PPE_TYPES.find(t => t.value === v)?.label ?? v; }
 function getTypeEmoji(v: string) { return PPE_TYPES.find(t => t.value === v)?.icon ?? '📦'; }
 function getUnitLabel(v: string) { return UNIT_TYPES.find(u => u.value === v)?.label ?? v; }
 function fmtNum(n: number) { return n.toLocaleString('th-TH'); }
+function fmtCompact(n: number) {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
 
-/* ─────────────────────────── SVG Charts ─────────────────────────── */
+/* ═══════════════════════════ SVG Chart Components ═══════════════════════════ */
 
-/** Horizontal bar chart — best for comparing categories */
-function HBarChart({ data, maxVal }: { data: { label: string; value: number; color: string }[]; maxVal: number }) {
-  if (!data.length || maxVal === 0) return <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูล</p>;
+/** Horizontal bar chart — "Gray + One" strategy: top bar highlighted, rest gray */
+function HBarChart({
+  data,
+  maxVal,
+  highlightTop = true,
+  maxBars = 8,
+  accentColor = VIZ.primary,
+}: {
+  data: { label: string; value: number }[];
+  maxVal: number;
+  highlightTop?: boolean;
+  maxBars?: number;
+  accentColor?: string;
+}) {
+  const display = data.slice(0, maxBars);
+  if (!display.length || maxVal === 0) return <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูล</p>;
   return (
-    <div className="space-y-2.5">
-      {data.map((d, i) => (
-        <div key={i} className="flex items-center gap-3">
-          <span className="w-28 text-xs text-gray-600 text-right truncate flex-shrink-0">{d.label}</span>
-          <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.max((d.value / maxVal) * 100, 2)}%`, background: d.color }}
-            />
+    <div className="space-y-1.5">
+      {display.map((d, i) => {
+        const isTop = highlightTop && i === 0;
+        const barColor = isTop ? accentColor : VIZ.neutral;
+        return (
+          <div key={i} className="flex items-center gap-2">
+            <span className={`w-24 text-[11px] text-right truncate flex-shrink-0 ${isTop ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+              {d.label}
+            </span>
+            <div className="flex-1 bg-gray-50 rounded h-4 overflow-hidden">
+              <div
+                className="h-full rounded transition-all duration-500"
+                style={{ width: `${Math.max((d.value / maxVal) * 100, 2)}%`, background: barColor }}
+              />
+            </div>
+            <span className={`w-11 text-[11px] text-right tabular-nums ${isTop ? 'font-bold text-gray-900' : 'text-gray-500'}`}>
+              {fmtCompact(d.value)}
+            </span>
           </div>
-          <span className="w-12 text-xs font-semibold text-gray-700 text-right">{fmtNum(d.value)}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-/** Sparkline area chart (SVG) for 6-month trend */
-function SparkArea({ data, color, label }: { data: number[]; color: string; label: string }) {
-  if (!data.length || data.every(d => d === 0)) return <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูล</p>;
-  const W = 320, H = 80, PX = 4, PY = 8;
-  const max = Math.max(...data, 1);
-  const pts = data.map((v, i) => {
-    const x = PX + (i / Math.max(data.length - 1, 1)) * (W - 2 * PX);
-    const y = PY + (1 - v / max) * (H - 2 * PY);
-    return { x, y };
-  });
-  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-  const area = `${line} L${pts[pts.length - 1].x},${H} L${pts[0].x},${H} Z`;
+/** Combined dual-line trend chart with shared x-axis — shows in/out on same view */
+function DualLineChart({
+  months,
+  dataA,
+  dataB,
+  colorA,
+  colorB,
+  labelA,
+  labelB,
+}: {
+  months: string[];
+  dataA: number[];
+  dataB: number[];
+  colorA: string;
+  colorB: string;
+  labelA: string;
+  labelB: string;
+}) {
+  const allVals = [...dataA, ...dataB];
+  if (!allVals.length || allVals.every(v => v === 0))
+    return <p className="text-gray-400 text-sm py-6 text-center">ไม่มีข้อมูลในช่วงนี้</p>;
+
+  const W = 400, H = 120, PX = 36, PY = 16, PB = 24;
+  const max = Math.max(...allVals, 1);
+  const chartH = H - PY - PB;
+
+  const toPoints = (data: number[]) =>
+    data.map((v, i) => ({
+      x: PX + (i / Math.max(data.length - 1, 1)) * (W - PX - 8),
+      y: PY + (1 - v / max) * chartH,
+    }));
+
+  const ptsA = toPoints(dataA);
+  const ptsB = toPoints(dataB);
+  const makeLine = (pts: { x: number; y: number }[]) =>
+    pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const makeArea = (pts: { x: number; y: number }[]) =>
+    `${makeLine(pts)} L${pts[pts.length - 1].x},${PY + chartH} L${pts[0].x},${PY + chartH} Z`;
+
+  // Y-axis gridlines (3 lines)
+  const gridVals = [0, Math.round(max / 2), max];
+
   return (
     <div>
-      <div className="flex items-center gap-2 mb-1">
-        <span className="w-3 h-3 rounded-full" style={{ background: color }} />
-        <span className="text-xs text-gray-500">{label}</span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 80 }}>
-        <path d={area} fill={color} fillOpacity={0.15} />
-        <path d={line} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={color} />)}
-      </svg>
-    </div>
-  );
-}
-
-/** Donut chart (SVG) */
-function DonutChart({ data }: { data: { label: string; value: number; color: string }[] }) {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  if (!total) return <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูล</p>;
-  const R = 40, CX = 50, CY = 50, C = 2 * Math.PI * R;
-  let offset = 0;
-  return (
-    <div className="flex items-center gap-6">
-      <svg viewBox="0 0 100 100" className="w-28 h-28 flex-shrink-0">
-        {data.map((d, i) => {
-          const pct = d.value / total;
-          const dash = pct * C;
-          const gap = C - dash;
-          const el = (
-            <circle key={i} cx={CX} cy={CY} r={R} fill="none" stroke={d.color} strokeWidth={16}
-              strokeDasharray={`${dash} ${gap}`} strokeDashoffset={-offset}
-              transform={`rotate(-90 ${CX} ${CY})`} />
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 140 }}>
+        {/* Gridlines */}
+        {gridVals.map((v, i) => {
+          const y = PY + (1 - v / max) * chartH;
+          return (
+            <g key={i}>
+              <line x1={PX} y1={y} x2={W - 8} y2={y} stroke={VIZ.grid} strokeWidth={0.5} />
+              <text x={PX - 4} y={y + 3} textAnchor="end" className="text-[8px]" fill={VIZ.lightText}>{fmtCompact(v)}</text>
+            </g>
           );
-          offset += dash;
-          return el;
         })}
-        <text x={CX} y={CY - 4} textAnchor="middle" className="text-[10px] font-bold fill-gray-700">{fmtNum(total)}</text>
-        <text x={CX} y={CY + 8} textAnchor="middle" className="text-[6px] fill-gray-400">รายการ</text>
+        {/* Area fills */}
+        <path d={makeArea(ptsA)} fill={colorA} fillOpacity={0.08} />
+        <path d={makeArea(ptsB)} fill={colorB} fillOpacity={0.08} />
+        {/* Lines */}
+        <path d={makeLine(ptsA)} fill="none" stroke={colorA} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        <path d={makeLine(ptsB)} fill="none" stroke={colorB} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {/* Dots */}
+        {ptsA.map((p, i) => <circle key={`a${i}`} cx={p.x} cy={p.y} r={2.5} fill={colorA} />)}
+        {ptsB.map((p, i) => <circle key={`b${i}`} cx={p.x} cy={p.y} r={2.5} fill={colorB} />)}
+        {/* End value labels */}
+        {dataA[dataA.length - 1] > 0 && (
+          <text x={ptsA[ptsA.length - 1].x + 4} y={ptsA[ptsA.length - 1].y - 6}
+            className="text-[8px] font-bold" fill={colorA}>{fmtNum(dataA[dataA.length - 1])}</text>
+        )}
+        {dataB[dataB.length - 1] > 0 && (
+          <text x={ptsB[ptsB.length - 1].x + 4} y={ptsB[ptsB.length - 1].y + 12}
+            className="text-[8px] font-bold" fill={colorB}>{fmtNum(dataB[dataB.length - 1])}</text>
+        )}
+        {/* X-axis labels */}
+        {months.map((m, i) => {
+          const x = PX + (i / Math.max(months.length - 1, 1)) * (W - PX - 8);
+          // Show only some labels to avoid clutter
+          const show = months.length <= 6 || i % 2 === 0 || i === months.length - 1;
+          return show ? (
+            <text key={i} x={x} y={H - 4} textAnchor="middle" className="text-[8px]" fill={VIZ.lightText}>{m}</text>
+          ) : null;
+        })}
       </svg>
-      <div className="space-y-1.5 min-w-0">
-        {data.map((d, i) => (
-          <div key={i} className="flex items-center gap-2 text-xs">
-            <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: d.color }} />
-            <span className="text-gray-600 truncate">{d.label}</span>
-            <span className="ml-auto font-semibold text-gray-700">{fmtNum(d.value)}</span>
-          </div>
-        ))}
+      {/* Direct legend (no separate legend box) */}
+      <div className="flex items-center gap-4 mt-1 ml-9">
+        <span className="flex items-center gap-1.5 text-[11px]" style={{ color: colorA }}>
+          <span className="w-3 h-0.5 rounded" style={{ background: colorA, display: 'inline-block' }} /> {labelA}
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px]" style={{ color: colorB }}>
+          <span className="w-3 h-0.5 rounded" style={{ background: colorB, display: 'inline-block' }} /> {labelB}
+        </span>
       </div>
     </div>
   );
 }
 
-/* ─────────────────────────── Page ─────────────────────────── */
+/** Mini sparkline for KPI cards */
+function MiniSpark({ data, color }: { data: number[]; color: string }) {
+  if (!data.length || data.every(d => d === 0)) return null;
+  const W = 64, H = 20, PX = 1, PY = 2;
+  const max = Math.max(...data, 1);
+  const pts = data.map((v, i) => ({
+    x: PX + (i / Math.max(data.length - 1, 1)) * (W - 2 * PX),
+    y: PY + (1 - v / max) * (H - 2 * PY),
+  }));
+  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-16 h-5 flex-shrink-0">
+      <path d={line} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/* ═══════════════════════════ Page ═══════════════════════════ */
 
 interface ReportData {
   stocks: PPEStockSummary[];
@@ -121,11 +196,11 @@ interface ReportData {
 }
 
 const PERIOD_OPTIONS = [
-  { value: 1, label: '1 เดือน' },
-  { value: 2, label: '2 เดือน' },
-  { value: 3, label: '3 เดือน' },
-  { value: 6, label: '6 เดือน' },
-  { value: 12, label: '12 เดือน' },
+  { value: 1, label: '1 ด.' },
+  { value: 2, label: '2 ด.' },
+  { value: 3, label: '3 ด.' },
+  { value: 6, label: '6 ด.' },
+  { value: 12, label: '1 ปี' },
 ];
 
 export default function ReportsPage() {
@@ -133,7 +208,7 @@ export default function ReportsPage() {
   const companyId = user?.companyId || '';
   const [reportData, setReportData] = useState<ReportData>({ stocks: [], transactions: [] });
   const [isLoading, setIsLoading] = useState(true);
-  const [period, setPeriod] = useState(6); // months
+  const [period, setPeriod] = useState(6);
 
   useEffect(() => {
     Promise.all([
@@ -153,7 +228,6 @@ export default function ReportsPage() {
   const analytics = useMemo(() => {
     const { stocks, transactions: allTransactions } = reportData;
 
-    // filter transactions by selected period
     const now = new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth() - period, 1);
     const transactions = allTransactions.filter((t) => {
@@ -161,7 +235,15 @@ export default function ReportsPage() {
       return new Date(t.transaction_date) >= cutoff;
     });
 
-    // type breakdown
+    // Previous period for comparison
+    const prevCutoff = new Date(now.getFullYear(), now.getMonth() - period * 2, 1);
+    const prevTransactions = allTransactions.filter((t) => {
+      if (!t.transaction_date) return false;
+      const d = new Date(t.transaction_date);
+      return d >= prevCutoff && d < cutoff;
+    });
+
+    // type breakdown (from current stock)
     const typeMap: Record<string, { count: number; total: number }> = {};
     stocks.forEach((s) => {
       if (!typeMap[s.type]) typeMap[s.type] = { count: 0, total: 0 };
@@ -169,11 +251,15 @@ export default function ReportsPage() {
       typeMap[s.type].total += s.current_stock;
     });
 
-    // transaction breakdown
+    // transaction breakdown (current period)
     const transMap: Record<string, number> = {};
     transactions.forEach((t) => { transMap[t.transaction_type] = (transMap[t.transaction_type] || 0) + t.quantity; });
 
-    // monthly trends (dynamic period)
+    // previous period totals
+    const prevTransMap: Record<string, number> = {};
+    prevTransactions.forEach((t) => { prevTransMap[t.transaction_type] = (prevTransMap[t.transaction_type] || 0) + t.quantity; });
+
+    // monthly trends
     const months: string[] = [];
     const monthlyIn: number[] = [];
     const monthlyOut: number[] = [];
@@ -181,8 +267,12 @@ export default function ReportsPage() {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       months.push(d.toLocaleDateString('th-TH', { month: 'short' }));
-      const mIn = transactions.filter(t => (t.transaction_type === 'stock_in' || t.transaction_type === 'return') && t.transaction_date?.startsWith(key)).reduce((s, t) => s + t.quantity, 0);
-      const mOut = transactions.filter(t => (t.transaction_type === 'stock_out' || t.transaction_type === 'borrow') && t.transaction_date?.startsWith(key)).reduce((s, t) => s + t.quantity, 0);
+      const mIn = transactions
+        .filter(t => (t.transaction_type === 'stock_in' || t.transaction_type === 'return') && t.transaction_date?.startsWith(key))
+        .reduce((s, t) => s + t.quantity, 0);
+      const mOut = transactions
+        .filter(t => (t.transaction_type === 'stock_out' || t.transaction_type === 'borrow') && t.transaction_date?.startsWith(key))
+        .reduce((s, t) => s + t.quantity, 0);
       monthlyIn.push(mIn);
       monthlyOut.push(mOut);
     }
@@ -208,44 +298,62 @@ export default function ReportsPage() {
 
     const totalIn = (transMap['stock_in'] || 0) + (transMap['return'] || 0);
     const totalOut = (transMap['stock_out'] || 0) + (transMap['borrow'] || 0);
-    const ratio = totalIn > 0 ? (totalOut / totalIn) : 0;
+    const prevTotalIn = (prevTransMap['stock_in'] || 0) + (prevTransMap['return'] || 0);
+    const prevTotalOut = (prevTransMap['stock_out'] || 0) + (prevTransMap['borrow'] || 0);
 
-    return { typeMap, transMap, months, monthlyIn, monthlyOut, outByProduct, deptUsage, lowStock, totalIn, totalOut, ratio };
+    // Find top type by stock
+    const topType = Object.entries(typeMap).sort((a, b) => b[1].total - a[1].total)[0];
+    const topTypeName = topType ? getTypeLabel(topType[0]) : '';
+
+    // Find top dept
+    const topDept = Object.entries(deptUsage).sort((a, b) => b[1] - a[1])[0];
+    const topDeptName = topDept ? topDept[0] : '';
+
+    // Find top product
+    const topProduct = Object.values(outByProduct).sort((a, b) => b.qty - a.qty)[0];
+
+    return {
+      typeMap, transMap, months, monthlyIn, monthlyOut,
+      outByProduct, deptUsage, lowStock,
+      totalIn, totalOut, prevTotalIn, prevTotalOut,
+      topTypeName, topDeptName, topProduct,
+    };
   }, [reportData, period]);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
       </div>
     );
   }
 
-  const { stocks, transactions } = reportData;
+  const { stocks } = reportData;
+  const totalStock = stocks.reduce((s, st) => s + st.current_stock, 0);
+
+  // Compute change percentages
+  const inChange = analytics.prevTotalIn > 0 ? ((analytics.totalIn - analytics.prevTotalIn) / analytics.prevTotalIn * 100) : 0;
+  const outChange = analytics.prevTotalOut > 0 ? ((analytics.totalOut - analytics.prevTotalOut) / analytics.prevTotalOut * 100) : 0;
 
   return (
-    <div className="space-y-6">
-      {/* ── header ── */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <BarChart3 size={32} />
-            รายงาน PPE
-          </h1>
-          <p className="text-gray-500 mt-1">
-            สรุปและวิเคราะห์ข้อมูล PPE · {stocks.length} สินค้า · {transactions.length} รายการเคลื่อนไหว
-          </p>
+    <div className="space-y-4 max-w-[1400px]">
+      {/* ── header row ── */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 size={22} className="text-gray-600" />
+          <h1 className="text-xl font-bold text-gray-900">รายงาน PPE</h1>
+          <span className="text-sm text-gray-400 ml-1">{stocks.length} รายการ</span>
         </div>
-        <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-1">
-          <Calendar size={16} className="text-gray-400 ml-2" />
+        <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-200 p-0.5">
+          <Calendar size={14} className="text-gray-400 ml-2" />
           {PERIOD_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => setPeriod(opt.value)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                 period === opt.value
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
+                  ? 'bg-gray-800 text-white'
+                  : 'text-gray-500 hover:bg-gray-100'
               }`}
             >
               {opt.label}
@@ -254,180 +362,283 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* ── KPI cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <KPI icon={<Shield size={20} />} label="สต็อกรวม" value={fmtNum(stocks.reduce((s, st) => s + st.current_stock, 0))} suffix="ชิ้น" color="text-blue-600" bg="bg-blue-50" />
-        <KPI icon={<ArrowDownToLine size={20} />} label="รับเข้า" value={fmtNum(analytics.totalIn)} suffix="ชิ้น" color="text-green-600" bg="bg-green-50" />
-        <KPI icon={<ArrowUpFromLine size={20} />} label="เบิกออก" value={fmtNum(analytics.totalOut)} suffix="ชิ้น" color="text-red-600" bg="bg-red-50" />
-        <KPI icon={<AlertTriangle size={20} />} label="สต็อกต่ำ" value={String(analytics.lowStock.length)} suffix="รายการ" color="text-amber-600" bg="bg-amber-50" />
-        <KPI icon={<TrendingUp size={20} />} label="อัตราเข้า/ออก" value={analytics.ratio.toFixed(1)} suffix="x" color="text-purple-600" bg="bg-purple-50" />
+      {/* ── KPI cards — 4 key metrics with context ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KPICard
+          label="สต็อกคงเหลือ"
+          value={fmtNum(totalStock)}
+          suffix="ชิ้น"
+          color={VIZ.primary}
+          sparkData={null}
+          note={analytics.lowStock.length > 0 ? `${analytics.lowStock.length} รายการต่ำกว่าขั้นต่ำ` : 'สต็อกปกติทุกรายการ'}
+          noteColor={analytics.lowStock.length > 0 ? VIZ.accent : VIZ.positive}
+        />
+        <KPICard
+          label="รับเข้า"
+          value={fmtNum(analytics.totalIn)}
+          suffix="ชิ้น"
+          color={VIZ.positive}
+          sparkData={analytics.monthlyIn}
+          change={inChange}
+          changePeriod={`vs ${period} ด.ก่อน`}
+        />
+        <KPICard
+          label="เบิกออก"
+          value={fmtNum(analytics.totalOut)}
+          suffix="ชิ้น"
+          color={VIZ.secondary}
+          sparkData={analytics.monthlyOut}
+          change={outChange}
+          changePeriod={`vs ${period} ด.ก่อน`}
+        />
+        <KPICard
+          label="สต็อกต่ำ"
+          value={String(analytics.lowStock.length)}
+          suffix="รายการ"
+          color={analytics.lowStock.length > 0 ? VIZ.accent : VIZ.neutral}
+          sparkData={null}
+          note={analytics.lowStock.length > 0
+            ? analytics.lowStock.slice(0, 2).map(s => s.name).join(', ')
+            : 'ไม่มีรายการที่ต้องเติม'}
+          noteColor={analytics.lowStock.length > 0 ? VIZ.accent : VIZ.positive}
+        />
       </div>
 
-      {/* ── row 1: trend + donut ── */}
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 bg-white rounded-lg shadow p-6">
-          <h2 className="text-base font-bold text-gray-900 mb-1">เทรนด์รับเข้า-เบิกออก {period} เดือนล่าสุด</h2>
-          <p className="text-xs text-gray-400 mb-4">เทียบจำนวนรับเข้า (สีเขียว) กับเบิกออก (สีส้ม) แต่ละเดือน</p>
-          <SparkArea data={analytics.monthlyIn} color={VIZ.green} label="รับเข้า+คืน" />
-          <div className="mt-3" />
-          <SparkArea data={analytics.monthlyOut} color={VIZ.orange} label="เบิก+ยืม" />
-          <div className="flex justify-between mt-2 text-[10px] text-gray-400 px-1">
-            {analytics.months.map((m, i) => <span key={i}>{m}</span>)}
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-base font-bold text-gray-900 mb-1">สัดส่วนรายการ</h2>
-          <p className="text-xs text-gray-400 mb-4">จำนวนแยกตามประเภท</p>
-          <DonutChart
-            data={Object.entries(analytics.typeMap)
-              .sort((a, b) => b[1].total - a[1].total)
-              .map(([type, d], i) => ({
-                label: `${getTypeEmoji(type)} ${getTypeLabel(type)}`,
-                value: d.total,
-                color: CHART_COLORS[i % CHART_COLORS.length],
-              }))}
+      {/* ── Row 1: Trend chart (main insight) + Stock by type ── */}
+      <div className="grid lg:grid-cols-5 gap-4">
+        {/* Trend — takes 3 cols */}
+        <div className="lg:col-span-3 bg-white rounded-lg border border-gray-100 p-5">
+          <h2 className="text-sm font-bold text-gray-900">
+            {analytics.totalOut > analytics.totalIn
+              ? `เบิกออกมากกว่ารับเข้า ${fmtNum(analytics.totalOut - analytics.totalIn)} ชิ้น`
+              : analytics.totalIn > analytics.totalOut
+                ? `รับเข้ามากกว่าเบิกออก ${fmtNum(analytics.totalIn - analytics.totalOut)} ชิ้น`
+                : `รับเข้า-เบิกออกสมดุล`
+            }
+          </h2>
+          <p className="text-[11px] text-gray-400 mb-3">เทรนด์ {period} เดือนล่าสุด</p>
+          <DualLineChart
+            months={analytics.months}
+            dataA={analytics.monthlyIn}
+            dataB={analytics.monthlyOut}
+            colorA={VIZ.positive}
+            colorB={VIZ.secondary}
+            labelA="รับเข้า + คืน"
+            labelB="เบิก + ยืม"
           />
         </div>
-      </div>
 
-      {/* ── row 2: stock by type + top products ── */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-base font-bold text-gray-900 mb-1">สต็อกตามประเภท PPE</h2>
-          <p className="text-xs text-gray-400 mb-4">จำนวนสต็อกรวมของแต่ละประเภทอุปกรณ์</p>
+        {/* Stock by type — takes 2 cols */}
+        <div className="lg:col-span-2 bg-white rounded-lg border border-gray-100 p-5">
+          <h2 className="text-sm font-bold text-gray-900">
+            {analytics.topTypeName ? `${analytics.topTypeName}มีสต็อกมากที่สุด` : 'สต็อกตามประเภท'}
+          </h2>
+          <p className="text-[11px] text-gray-400 mb-3">จำนวนคงเหลือแยกตามประเภท PPE</p>
           <HBarChart
             data={Object.entries(analytics.typeMap)
               .sort((a, b) => b[1].total - a[1].total)
-              .map(([type, d], i) => ({
+              .map(([type, d]) => ({
                 label: `${getTypeEmoji(type)} ${getTypeLabel(type)}`,
                 value: d.total,
-                color: CHART_COLORS[i % CHART_COLORS.length],
               }))}
             maxVal={Math.max(...Object.values(analytics.typeMap).map(d => d.total), 1)}
+            accentColor={VIZ.primary}
           />
         </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-base font-bold text-gray-900 mb-1">สินค้าที่เบิกบ่อยที่สุด</h2>
-          <p className="text-xs text-gray-400 mb-4">Top 8 อุปกรณ์ที่มีการเบิก/ยืมมากที่สุด (จำนวนชิ้น)</p>
+      </div>
+
+      {/* ── Row 2: Top products + Dept usage + Low stock alerts ── */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        {/* Top products by usage */}
+        <div className="bg-white rounded-lg border border-gray-100 p-5">
+          <h2 className="text-sm font-bold text-gray-900">
+            {analytics.topProduct ? `"${analytics.topProduct.name}" เบิกบ่อยสุด` : 'สินค้าเบิกบ่อยสุด'}
+          </h2>
+          <p className="text-[11px] text-gray-400 mb-3">Top 8 เบิก/ยืม ({period} เดือน)</p>
           <HBarChart
             data={Object.values(analytics.outByProduct)
               .sort((a, b) => b.qty - a.qty)
               .slice(0, 8)
-              .map((d, i) => ({ label: d.name, value: d.qty, color: CHART_COLORS[i % CHART_COLORS.length] }))}
+              .map((d) => ({ label: d.name, value: d.qty }))}
             maxVal={Math.max(...Object.values(analytics.outByProduct).map(d => d.qty), 1)}
+            accentColor={VIZ.secondary}
           />
         </div>
-      </div>
 
-      {/* ── row 3: dept + low stock ── */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-base font-bold text-gray-900 mb-1">การใช้งานตามแผนก</h2>
-          <p className="text-xs text-gray-400 mb-4">จำนวนเบิก/ยืม แยกตามแผนก</p>
+        {/* Department usage */}
+        <div className="bg-white rounded-lg border border-gray-100 p-5">
+          <h2 className="text-sm font-bold text-gray-900">
+            {analytics.topDeptName && analytics.topDeptName !== 'ไม่ระบุ'
+              ? `${analytics.topDeptName}ใช้ PPE มากที่สุด`
+              : 'การใช้งานตามแผนก'}
+          </h2>
+          <p className="text-[11px] text-gray-400 mb-3">จำนวนเบิก/ยืมแยกตามแผนก ({period} เดือน)</p>
           <HBarChart
             data={Object.entries(analytics.deptUsage)
               .sort((a, b) => b[1] - a[1])
-              .map(([dept, qty], i) => ({ label: dept, value: qty, color: CHART_COLORS[i % CHART_COLORS.length] }))}
+              .map(([dept, qty]) => ({ label: dept, value: qty }))}
             maxVal={Math.max(...Object.values(analytics.deptUsage), 1)}
+            accentColor="#76B7B2"
           />
         </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-base font-bold text-gray-900 mb-1">
-            <AlertTriangle size={16} className="inline mr-1 text-amber-500" />
-            แจ้งเตือนสต็อกต่ำ
+
+        {/* Low stock alerts */}
+        <div className="bg-white rounded-lg border border-gray-100 p-5">
+          <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+            {analytics.lowStock.length > 0 && <AlertTriangle size={14} className="text-amber-500" />}
+            {analytics.lowStock.length > 0
+              ? `${analytics.lowStock.length} รายการต้องเติมสต็อก`
+              : 'สต็อกอยู่ในเกณฑ์ปกติ'}
           </h2>
-          <p className="text-xs text-gray-400 mb-4">สินค้าที่สต็อกต่ำกว่าหรือเท่ากับขั้นต่ำ</p>
+          <p className="text-[11px] text-gray-400 mb-3">สินค้าที่คงเหลือต่ำกว่าขั้นต่ำ</p>
           {analytics.lowStock.length > 0 ? (
-            <div className="space-y-2">
-              {analytics.lowStock.map((s) => (
-                <div key={s.product_id} className="flex items-center justify-between p-2.5 bg-amber-50 rounded-lg border border-amber-200">
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">{getTypeEmoji(s.type)} {s.name}</span>
-                    <p className="text-xs text-gray-500">{getTypeLabel(s.type)} · {getUnitLabel(s.unit)}</p>
+            <div className="space-y-1.5">
+              {analytics.lowStock.slice(0, 8).map((s) => {
+                const pct = s.min_stock > 0 ? Math.round((s.current_stock / s.min_stock) * 100) : 0;
+                return (
+                  <div key={s.product_id} className="flex items-center gap-2">
+                    <span className="w-24 text-[11px] text-gray-600 truncate flex-shrink-0">
+                      {getTypeEmoji(s.type)} {s.name}
+                    </span>
+                    <div className="flex-1 bg-gray-50 rounded h-4 overflow-hidden">
+                      <div
+                        className="h-full rounded transition-all"
+                        style={{
+                          width: `${Math.max(pct, 4)}%`,
+                          background: pct <= 30 ? VIZ.accent : pct <= 70 ? VIZ.secondary : VIZ.positive,
+                        }}
+                      />
+                    </div>
+                    <span className="w-14 text-[10px] text-right text-gray-500 tabular-nums flex-shrink-0">
+                      <span className="font-bold" style={{ color: VIZ.accent }}>{s.current_stock}</span>/{s.min_stock}
+                    </span>
                   </div>
-                  <div className="text-right">
-                    <span className="text-sm font-bold text-red-600">{s.current_stock}</span>
-                    <span className="text-xs text-gray-400"> / {s.min_stock}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
-            <p className="text-gray-400 text-sm py-4 text-center">ไม่มีสินค้าที่ต่ำกว่าขั้นต่ำ ✓</p>
+            <div className="flex flex-col items-center justify-center py-6 text-gray-400">
+              <span className="text-2xl mb-1">✓</span>
+              <span className="text-xs">ไม่มีสินค้าต่ำกว่าขั้นต่ำ</span>
+            </div>
           )}
         </div>
       </div>
 
-      {/* ── detailed stock table ── */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-base font-bold text-gray-900 mb-4">ตารางสต็อกละเอียด</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+      {/* ── Detailed stock table (collapsible for space) ── */}
+      <details className="bg-white rounded-lg border border-gray-100">
+        <summary className="px-5 py-3 cursor-pointer text-sm font-bold text-gray-900 hover:bg-gray-50 select-none">
+          ตารางสต็อกละเอียด ({stocks.length} รายการ)
+        </summary>
+        <div className="px-5 pb-4 overflow-x-auto">
+          <table className="w-full text-xs">
             <thead>
-              <tr className="bg-gray-50 border-b">
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">สินค้า</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">ประเภท</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">รับเข้า</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">เบิกออก</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">คงเหลือ</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">ขั้นต่ำ</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">สถานะ</th>
+              <tr className="border-b border-gray-100">
+                <th className="px-3 py-2 text-left font-semibold text-gray-500">สินค้า</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-500">ประเภท</th>
+                <th className="px-3 py-2 text-center font-semibold text-gray-500">รับเข้า</th>
+                <th className="px-3 py-2 text-center font-semibold text-gray-500">เบิกออก</th>
+                <th className="px-3 py-2 text-center font-semibold text-gray-500">คงเหลือ</th>
+                <th className="px-3 py-2 text-center font-semibold text-gray-500">ขั้นต่ำ</th>
+                <th className="px-3 py-2 text-center font-semibold text-gray-500">สถานะ</th>
               </tr>
             </thead>
             <tbody>
               {stocks.length > 0 ? stocks
-                .sort((a, b) => a.current_stock - b.current_stock)
+                .sort((a, b) => {
+                  // Low stock items first
+                  const aLow = a.current_stock <= a.min_stock && a.min_stock > 0;
+                  const bLow = b.current_stock <= b.min_stock && b.min_stock > 0;
+                  if (aLow !== bLow) return aLow ? -1 : 1;
+                  return a.current_stock - b.current_stock;
+                })
                 .map((s) => {
                   const isLow = s.current_stock <= s.min_stock && s.min_stock > 0;
                   return (
-                    <tr key={s.product_id} className={`border-b ${isLow ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
-                      <td className="px-4 py-3 font-medium text-gray-900">
+                    <tr key={s.product_id} className={`border-b border-gray-50 ${isLow ? 'bg-red-50/50' : 'hover:bg-gray-50/50'}`}>
+                      <td className="px-3 py-2 font-medium text-gray-900">
                         {s.image_url ? (
-                          <span className="inline-flex items-center gap-2">
-                            <img src={s.image_url} alt="" className="w-6 h-6 rounded object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          <span className="inline-flex items-center gap-1.5">
+                            <img src={s.image_url} alt="" className="w-5 h-5 rounded object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                             {s.name}
                           </span>
                         ) : (
                           <span>{getTypeEmoji(s.type)} {s.name}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{getTypeLabel(s.type)}</td>
-                      <td className="px-4 py-3 text-center text-green-600 font-semibold">{fmtNum(s.total_in)}</td>
-                      <td className="px-4 py-3 text-center text-red-600 font-semibold">{fmtNum(s.total_out)}</td>
-                      <td className="px-4 py-3 text-center font-bold">{fmtNum(s.current_stock)}</td>
-                      <td className="px-4 py-3 text-center text-gray-500">{s.min_stock}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-3 py-2 text-gray-500">{getTypeLabel(s.type)}</td>
+                      <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.positive }}>{fmtNum(s.total_in)}</td>
+                      <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.secondary }}>{fmtNum(s.total_out)}</td>
+                      <td className="px-3 py-2 text-center font-bold tabular-nums">{fmtNum(s.current_stock)}</td>
+                      <td className="px-3 py-2 text-center text-gray-400 tabular-nums">{s.min_stock}</td>
+                      <td className="px-3 py-2 text-center">
                         {isLow ? (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">ต่ำ</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#FEE2E2', color: VIZ.accent }}>ต่ำ</span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">ปกติ</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#DCFCE7', color: VIZ.positive }}>ปกติ</span>
                         )}
                       </td>
                     </tr>
                   );
                 }) : (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">ไม่มีข้อมูล</td></tr>
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400 text-sm">ไม่มีข้อมูล</td></tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
+      </details>
     </div>
   );
 }
 
-/* ── KPI card component ── */
-function KPI({ icon, label, value, suffix, color, bg }: { icon: React.ReactNode; label: string; value: string; suffix: string; color: string; bg: string }) {
+/* ── KPI Card — compact with sparkline and comparison ── */
+function KPICard({
+  label, value, suffix, color, sparkData, change, changePeriod, note, noteColor,
+}: {
+  label: string;
+  value: string;
+  suffix: string;
+  color: string;
+  sparkData: number[] | null;
+  change?: number;
+  changePeriod?: string;
+  note?: string;
+  noteColor?: string;
+}) {
   return (
-    <div className={`${bg} rounded-lg p-4 flex flex-col gap-1`}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500">{label}</span>
-        <span className={color}>{icon}</span>
+    <div className="bg-white rounded-lg border border-gray-100 p-3.5">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[11px] text-gray-500">{label}</span>
+        {sparkData && <MiniSpark data={sparkData} color={color} />}
       </div>
       <div className="flex items-baseline gap-1">
-        <span className={`text-2xl font-bold ${color}`}>{value}</span>
-        <span className="text-xs text-gray-400">{suffix}</span>
+        <span className="text-2xl font-bold tabular-nums" style={{ color }}>{value}</span>
+        <span className="text-[11px] text-gray-400">{suffix}</span>
       </div>
+      {/* Comparison vs previous period */}
+      {change !== undefined && change !== 0 && (
+        <div className="flex items-center gap-1 mt-1">
+          {change > 0 ? (
+            <ArrowUp size={11} style={{ color: VIZ.accent }} />
+          ) : (
+            <ArrowDown size={11} style={{ color: VIZ.positive }} />
+          )}
+          <span className="text-[10px]" style={{ color: change > 0 ? VIZ.accent : VIZ.positive }}>
+            {Math.abs(change).toFixed(0)}%
+          </span>
+          {changePeriod && <span className="text-[10px] text-gray-400">{changePeriod}</span>}
+        </div>
+      )}
+      {change === 0 && changePeriod && (
+        <div className="flex items-center gap-1 mt-1">
+          <Minus size={11} className="text-gray-400" />
+          <span className="text-[10px] text-gray-400">ไม่เปลี่ยนแปลง</span>
+        </div>
+      )}
+      {/* Custom note */}
+      {note && (
+        <p className="text-[10px] mt-1 truncate" style={{ color: noteColor || VIZ.lightText }}>{note}</p>
+      )}
     </div>
   );
 }
