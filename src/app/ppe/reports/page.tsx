@@ -829,7 +829,7 @@ export default function ReportsPage() {
                       <td className="px-3 py-2 text-gray-500">{getTypeLabel(s.type)}</td>
                       <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.positive }}>{fmtNum(s.total_in)}</td>
                       <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.secondary }}>{fmtNum(s.total_out)}</td>
-                      <td className="px-3 py-2 text-center font-bold tabular-nums">{fmtNum(s.current_stock)}</td>
+                      <td className="px-3 py-2 text-center font-bold tabular-nums" style={{ color: VIZ.primary }}>{fmtNum(s.current_stock)}</td>
                       <td className="px-3 py-2 text-center text-gray-400 tabular-nums">{s.min_stock}</td>
                       <td className="px-3 py-2 text-center">
                         {isLow ? (
