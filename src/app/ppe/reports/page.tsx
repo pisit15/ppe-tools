@@ -84,6 +84,7 @@ function MonthRangePicker({
   // Quick presets
   const now = new Date();
   const presets = [
+    { label: 'ทั้งหมด', from: minDate, to: maxDate },
     { label: 'เดือนนี้', from: makeMonthKey(now.getFullYear(), now.getMonth()), to: makeMonthKey(now.getFullYear(), now.getMonth()) },
     { label: 'เดือนที่แล้ว', from: makeMonthKey(now.getFullYear(), now.getMonth() - 1), to: makeMonthKey(now.getFullYear(), now.getMonth() - 1) },
     { label: '3 เดือนล่าสุด', from: makeMonthKey(now.getFullYear(), now.getMonth() - 2), to: makeMonthKey(now.getFullYear(), now.getMonth()) },
