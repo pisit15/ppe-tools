@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { Plus, Trash2, Package, Search, Image as ImageIcon } from 'lucide-react';
+import { Plus, Trash2, Package, Search, Image as ImageIcon, X, Check } from 'lucide-react';
 import type { PPEProduct } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
 
@@ -35,6 +35,11 @@ export default function InventoryPage() {
     image_url: '',
   });
   const [imgError, setImgError] = useState(false);
+
+  // inline image edit state
+  const [editingImgId, setEditingImgId] = useState<string | null>(null);
+  const [editImgUrl, setEditImgUrl] = useState('');
+  const [savingImg, setSavingImg] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -68,6 +73,28 @@ export default function InventoryPage() {
       }
     } catch (error) {
       console.error('Error creating product:', error);
+    }
+  }
+
+  async function handleSaveImage(productId: string) {
+    setSavingImg(true);
+    try {
+      const res = await fetch('/api/ppe/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: productId, image_url: editImgUrl || null }),
+      });
+      if (res.ok) {
+        setProducts((prev) =>
+          prev.map((p) => (p.id === productId ? { ...p, image_url: editImgUrl || null } : p))
+        );
+        setEditingImgId(null);
+        setEditImgUrl('');
+      }
+    } catch (error) {
+      console.error('Error updating image:', error);
+    } finally {
+      setSavingImg(false);
     }
   }
 
@@ -226,6 +253,44 @@ export default function InventoryPage() {
         </select>
       </div>
 
+      {/* ── inline image edit popup ── */}
+      {editingImgId && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+          <ImageIcon size={18} className="text-blue-600 flex-shrink-0" />
+          <span className="text-sm text-blue-800 font-medium flex-shrink-0">แก้ไขรูปภาพ:</span>
+          <input
+            type="url"
+            autoFocus
+            placeholder="วาง URL รูปภาพ เช่น https://example.com/gloves.jpg"
+            value={editImgUrl}
+            onChange={(e) => setEditImgUrl(e.target.value)}
+            className="flex-1 px-3 py-1.5 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSaveImage(editingImgId);
+              if (e.key === 'Escape') { setEditingImgId(null); setEditImgUrl(''); }
+            }}
+          />
+          {editImgUrl && (
+            <div className="w-10 h-10 rounded border border-blue-200 overflow-hidden flex-shrink-0 bg-white">
+              <img src={editImgUrl} alt="preview" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            </div>
+          )}
+          <button
+            onClick={() => handleSaveImage(editingImgId)}
+            disabled={savingImg}
+            className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm transition-colors disabled:opacity-50"
+          >
+            <Check size={14} /> {savingImg ? 'กำลังบันทึก...' : 'บันทึก'}
+          </button>
+          <button
+            onClick={() => { setEditingImgId(null); setEditImgUrl(''); }}
+            className="text-gray-400 hover:text-gray-600 p-1"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
       {/* ── products table ── */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
@@ -244,10 +309,17 @@ export default function InventoryPage() {
             <tbody>
               {filtered.length > 0 ? (
                 filtered.map((product) => (
-                  <tr key={product.id} className="border-b hover:bg-gray-50">
-                    {/* thumbnail */}
+                  <tr key={product.id} className={`border-b hover:bg-gray-50 ${editingImgId === product.id ? 'bg-blue-50' : ''}`}>
+                    {/* thumbnail — click to edit */}
                     <td className="px-4 py-3 text-center">
-                      <div className="w-10 h-10 rounded-lg border border-gray-200 overflow-hidden mx-auto bg-gray-50 flex items-center justify-center">
+                      <button
+                        title="คลิกเพื่อแก้ไขรูปภาพ"
+                        onClick={() => {
+                          setEditingImgId(product.id);
+                          setEditImgUrl(product.image_url || '');
+                        }}
+                        className="w-10 h-10 rounded-lg border border-gray-200 overflow-hidden mx-auto bg-gray-50 flex items-center justify-center cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all group relative"
+                      >
                         {product.image_url ? (
                           <img
                             src={product.image_url}
@@ -256,13 +328,20 @@ export default function InventoryPage() {
                             onError={(e) => {
                               const el = e.currentTarget;
                               el.style.display = 'none';
-                              el.parentElement!.innerHTML = `<span style="font-size:1.4rem">${PPE_EMOJI[product.type] || '📦'}</span>`;
+                              if (el.nextElementSibling) (el.nextElementSibling as HTMLElement).style.display = 'block';
                             }}
                           />
-                        ) : (
-                          <span className="text-xl">{PPE_EMOJI[product.type] || '📦'}</span>
-                        )}
-                      </div>
+                        ) : null}
+                        <span
+                          className="text-xl"
+                          style={{ display: product.image_url ? 'none' : 'block' }}
+                        >
+                          {PPE_EMOJI[product.type] || '📦'}
+                        </span>
+                        <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
+                          <ImageIcon size={12} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </span>
+                      </button>
                     </td>
                     <td className="px-6 py-3 text-gray-900 font-medium">{product.name}</td>
                     <td className="px-6 py-3 text-gray-600">{getTypeLabel(product.type)}</td>

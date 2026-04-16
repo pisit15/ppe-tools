@@ -75,3 +75,39 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, ...updates } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'Missing product id' }, { status: 400 });
+    }
+
+    let db;
+    try { db = getSupabaseServer(); } catch { db = supabase; }
+    const { data, error } = await db
+      .from('ppe_products')
+      .update(updates)
+      .eq('id', id)
+      .select();
+
+    if (error) {
+      console.error('Supabase update error:', error);
+      return NextResponse.json(
+        { error: 'Failed to update product', detail: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ data: data?.[0] });
+  } catch (error: unknown) {
+    console.error('Error updating product:', error);
+    const msg = error instanceof Error ? error.message : JSON.stringify(error);
+    return NextResponse.json(
+      { error: 'Failed to update product', detail: msg },
+      { status: 500 }
+    );
+  }
+}

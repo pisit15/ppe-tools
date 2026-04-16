@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { BarChart3, Shield, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, TrendingUp } from 'lucide-react';
+import { BarChart3, Shield, ArrowDownToLine, ArrowUpFromLine, AlertTriangle, TrendingUp, Calendar } from 'lucide-react';
 import type { PPEStockSummary, PPETransaction } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
 
@@ -120,16 +120,25 @@ interface ReportData {
   transactions: PPETransaction[];
 }
 
+const PERIOD_OPTIONS = [
+  { value: 1, label: '1 เดือน' },
+  { value: 2, label: '2 เดือน' },
+  { value: 3, label: '3 เดือน' },
+  { value: 6, label: '6 เดือน' },
+  { value: 12, label: '12 เดือน' },
+];
+
 export default function ReportsPage() {
   const { user } = useAuth();
   const companyId = user?.companyId || '';
   const [reportData, setReportData] = useState<ReportData>({ stocks: [], transactions: [] });
   const [isLoading, setIsLoading] = useState(true);
+  const [period, setPeriod] = useState(6); // months
 
   useEffect(() => {
     Promise.all([
       fetch(`/api/ppe/stock?company_id=${companyId}`),
-      fetch(`/api/ppe/transactions?company_id=${companyId}&limit=500`),
+      fetch(`/api/ppe/transactions?company_id=${companyId}&limit=2000`),
     ])
       .then(async ([stockRes, transRes]) => {
         const stockData = await stockRes.json();
@@ -142,7 +151,15 @@ export default function ReportsPage() {
 
   /* ── computed analytics ── */
   const analytics = useMemo(() => {
-    const { stocks, transactions } = reportData;
+    const { stocks, transactions: allTransactions } = reportData;
+
+    // filter transactions by selected period
+    const now = new Date();
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - period, 1);
+    const transactions = allTransactions.filter((t) => {
+      if (!t.transaction_date) return false;
+      return new Date(t.transaction_date) >= cutoff;
+    });
 
     // type breakdown
     const typeMap: Record<string, { count: number; total: number }> = {};
@@ -156,12 +173,11 @@ export default function ReportsPage() {
     const transMap: Record<string, number> = {};
     transactions.forEach((t) => { transMap[t.transaction_type] = (transMap[t.transaction_type] || 0) + t.quantity; });
 
-    // monthly trends (last 6 months)
-    const now = new Date();
+    // monthly trends (dynamic period)
     const months: string[] = [];
     const monthlyIn: number[] = [];
     const monthlyOut: number[] = [];
-    for (let i = 5; i >= 0; i--) {
+    for (let i = period - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       months.push(d.toLocaleDateString('th-TH', { month: 'short' }));
@@ -195,7 +211,7 @@ export default function ReportsPage() {
     const ratio = totalIn > 0 ? (totalOut / totalIn) : 0;
 
     return { typeMap, transMap, months, monthlyIn, monthlyOut, outByProduct, deptUsage, lowStock, totalIn, totalOut, ratio };
-  }, [reportData]);
+  }, [reportData, period]);
 
   if (isLoading) {
     return (
@@ -210,14 +226,32 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       {/* ── header ── */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-          <BarChart3 size={32} />
-          รายงาน PPE
-        </h1>
-        <p className="text-gray-500 mt-1">
-          สรุปและวิเคราะห์ข้อมูล PPE · {stocks.length} สินค้า · {transactions.length} รายการเคลื่อนไหว
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <BarChart3 size={32} />
+            รายงาน PPE
+          </h1>
+          <p className="text-gray-500 mt-1">
+            สรุปและวิเคราะห์ข้อมูล PPE · {stocks.length} สินค้า · {transactions.length} รายการเคลื่อนไหว
+          </p>
+        </div>
+        <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-1">
+          <Calendar size={16} className="text-gray-400 ml-2" />
+          {PERIOD_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setPeriod(opt.value)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                period === opt.value
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── KPI cards ── */}
@@ -232,7 +266,7 @@ export default function ReportsPage() {
       {/* ── row 1: trend + donut ── */}
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-2 bg-white rounded-lg shadow p-6">
-          <h2 className="text-base font-bold text-gray-900 mb-1">เทรนด์รับเข้า-เบิกออก 6 เดือนล่าสุด</h2>
+          <h2 className="text-base font-bold text-gray-900 mb-1">เทรนด์รับเข้า-เบิกออก {period} เดือนล่าสุด</h2>
           <p className="text-xs text-gray-400 mb-4">เทียบจำนวนรับเข้า (สีเขียว) กับเบิกออก (สีส้ม) แต่ละเดือน</p>
           <SparkArea data={analytics.monthlyIn} color={VIZ.green} label="รับเข้า+คืน" />
           <div className="mt-3" />
