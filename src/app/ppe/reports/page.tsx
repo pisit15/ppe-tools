@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { BarChart3, ArrowUp, ArrowDown, Minus, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, X } from 'lucide-react';
+import { BarChart3, ArrowUp, ArrowDown, Minus, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, X, ChevronDown, Users, Building2, Package } from 'lucide-react';
 import type { PPEStockSummary, PPETransaction } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
 
@@ -535,11 +535,56 @@ export default function ReportsPage() {
     const topDeptName = topDept ? topDept[0] : '';
     const topProduct = Object.values(outByProduct).sort((a, b) => b.qty - a.qty)[0];
 
+    // ── Drill-down data ──
+    // Department → products breakdown
+    const outTx = transactions.filter(t => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow');
+
+    const deptDetail: Record<string, { total: number; products: Record<string, { name: string; qty: number }>; employees: Record<string, { name: string; qty: number; code: string }> }> = {};
+    outTx.forEach(t => {
+      const dept = t.department || 'ไม่ระบุ';
+      if (!deptDetail[dept]) deptDetail[dept] = { total: 0, products: {}, employees: {} };
+      deptDetail[dept].total += t.quantity;
+      const prod = stocks.find(s => s.product_id === t.product_id);
+      const pName = prod?.name || t.product_id;
+      if (!deptDetail[dept].products[pName]) deptDetail[dept].products[pName] = { name: pName, qty: 0 };
+      deptDetail[dept].products[pName].qty += t.quantity;
+      const empKey = t.employee_name || t.employee_code || 'ไม่ระบุ';
+      if (!deptDetail[dept].employees[empKey]) deptDetail[dept].employees[empKey] = { name: empKey, qty: 0, code: t.employee_code || '' };
+      deptDetail[dept].employees[empKey].qty += t.quantity;
+    });
+
+    // Employee ranking (all)
+    const empUsage: Record<string, { name: string; code: string; dept: string; qty: number; products: Record<string, { name: string; qty: number }> }> = {};
+    outTx.forEach(t => {
+      const empKey = t.employee_name || t.employee_code || 'ไม่ระบุ';
+      if (!empUsage[empKey]) empUsage[empKey] = { name: empKey, code: t.employee_code || '', dept: t.department || 'ไม่ระบุ', qty: 0, products: {} };
+      empUsage[empKey].qty += t.quantity;
+      const prod = stocks.find(s => s.product_id === t.product_id);
+      const pName = prod?.name || t.product_id;
+      if (!empUsage[empKey].products[pName]) empUsage[empKey].products[pName] = { name: pName, qty: 0 };
+      empUsage[empKey].products[pName].qty += t.quantity;
+    });
+
+    // Product → who withdrew
+    const productDetail: Record<string, { name: string; totalOut: number; depts: Record<string, number>; employees: Record<string, { name: string; qty: number }> }> = {};
+    outTx.forEach(t => {
+      const prod = stocks.find(s => s.product_id === t.product_id);
+      const pName = prod?.name || t.product_id;
+      if (!productDetail[pName]) productDetail[pName] = { name: pName, totalOut: 0, depts: {}, employees: {} };
+      productDetail[pName].totalOut += t.quantity;
+      const dept = t.department || 'ไม่ระบุ';
+      productDetail[pName].depts[dept] = (productDetail[pName].depts[dept] || 0) + t.quantity;
+      const empKey = t.employee_name || t.employee_code || 'ไม่ระบุ';
+      if (!productDetail[pName].employees[empKey]) productDetail[pName].employees[empKey] = { name: empKey, qty: 0 };
+      productDetail[pName].employees[empKey].qty += t.quantity;
+    });
+
     return {
       typeMap, transMap, months, monthlyIn, monthlyOut, monthCount,
       outByProduct, deptUsage, lowStock,
       totalIn, totalOut, prevTotalIn, prevTotalOut,
       topTypeName, topDeptName, topProduct,
+      deptDetail, empUsage, productDetail,
     };
   }, [reportData, dateRange]);
 
@@ -733,6 +778,14 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {/* ── Drill-down Analysis ── */}
+      <DrillDownSection
+        deptDetail={analytics.deptDetail}
+        empUsage={analytics.empUsage}
+        productDetail={analytics.productDetail}
+        rangeLabel={rangeLabel}
+      />
+
       {/* ── Detailed stock table ── */}
       <details className="bg-white rounded-lg border border-gray-100">
         <summary className="px-5 py-3 cursor-pointer text-sm font-bold text-gray-900 hover:bg-gray-50 select-none">
@@ -794,6 +847,256 @@ export default function ReportsPage() {
           </table>
         </div>
       </details>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ Drill-Down Section ═══════════════════════════ */
+
+type DeptDetailMap = Record<string, { total: number; products: Record<string, { name: string; qty: number }>; employees: Record<string, { name: string; qty: number; code: string }> }>;
+type EmpUsageMap = Record<string, { name: string; code: string; dept: string; qty: number; products: Record<string, { name: string; qty: number }> }>;
+type ProductDetailMap = Record<string, { name: string; totalOut: number; depts: Record<string, number>; employees: Record<string, { name: string; qty: number }> }>;
+
+function DrillDownSection({
+  deptDetail,
+  empUsage,
+  productDetail,
+  rangeLabel,
+}: {
+  deptDetail: DeptDetailMap;
+  empUsage: EmpUsageMap;
+  productDetail: ProductDetailMap;
+  rangeLabel: string;
+}) {
+  const [activeTab, setActiveTab] = useState<'dept' | 'emp' | 'product'>('dept');
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+  const tabs = [
+    { key: 'dept' as const, label: 'แผนก', icon: <Building2 size={14} />, count: Object.keys(deptDetail).length },
+    { key: 'emp' as const, label: 'พนักงาน', icon: <Users size={14} />, count: Object.keys(empUsage).length },
+    { key: 'product' as const, label: 'สินค้า', icon: <Package size={14} />, count: Object.keys(productDetail).length },
+  ];
+
+  function toggle(key: string) {
+    setExpandedRow(expandedRow === key ? null : key);
+  }
+
+  // Sort helpers
+  const sortedDepts = Object.entries(deptDetail).sort((a, b) => b[1].total - a[1].total);
+  const sortedEmps = Object.values(empUsage).sort((a, b) => b.qty - a.qty);
+  const sortedProducts = Object.values(productDetail).sort((a, b) => b.totalOut - a.totalOut);
+
+  const maxDept = sortedDepts[0]?.[1]?.total || 1;
+  const maxEmp = sortedEmps[0]?.qty || 1;
+  const maxProd = sortedProducts[0]?.totalOut || 1;
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-100">
+      {/* Tab header */}
+      <div className="flex items-center border-b border-gray-100 px-4">
+        <span className="text-sm font-bold text-gray-900 mr-4 py-3">วิเคราะห์การเบิก</span>
+        <div className="flex gap-1">
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveTab(tab.key); setExpandedRow(null); }}
+              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-[1px]
+                ${activeTab === tab.key
+                  ? 'border-blue-600 text-blue-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+            >
+              {tab.icon}
+              {tab.label}
+              <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{tab.count}</span>
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto text-[10px] text-gray-400">{rangeLabel}</span>
+      </div>
+
+      {/* Tab content */}
+      <div className="p-4">
+        {/* ── Department tab ── */}
+        {activeTab === 'dept' && (
+          <div className="space-y-1">
+            {sortedDepts.length === 0 && <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูลการเบิกในช่วงนี้</p>}
+            {sortedDepts.map(([dept, data]) => {
+              const isOpen = expandedRow === `dept-${dept}`;
+              const sortedProds = Object.values(data.products).sort((a, b) => b.qty - a.qty);
+              const sortedEmp = Object.values(data.employees).sort((a, b) => b.qty - a.qty);
+              return (
+                <div key={dept} className="border border-gray-100 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => toggle(`dept-${dept}`)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
+                  >
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    <span className="text-sm font-medium text-gray-900 w-36 text-left truncate">{dept}</span>
+                    <div className="flex-1 bg-gray-50 rounded h-3 overflow-hidden">
+                      <div className="h-full rounded" style={{ width: `${(data.total / maxDept) * 100}%`, background: '#76B7B2' }} />
+                    </div>
+                    <span className="text-sm font-bold text-gray-700 tabular-nums w-16 text-right">{fmtNum(data.total)}</span>
+                    <span className="text-[10px] text-gray-400">ชิ้น</span>
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Products this dept withdrew */}
+                        <div>
+                          <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">สินค้าที่เบิก</h4>
+                          <div className="space-y-1">
+                            {sortedProds.slice(0, 10).map((p, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <span className="w-32 text-[11px] text-gray-600 truncate">{p.name}</span>
+                                <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
+                                  <div className="h-full rounded" style={{ width: `${(p.qty / sortedProds[0].qty) * 100}%`, background: VIZ.secondary }} />
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(p.qty)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Employees in this dept */}
+                        <div>
+                          <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">พนักงานที่เบิก</h4>
+                          <div className="space-y-1">
+                            {sortedEmp.slice(0, 10).map((e, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <span className="w-32 text-[11px] text-gray-600 truncate">
+                                  {e.name}
+                                  {e.code && <span className="text-gray-400 ml-1">({e.code})</span>}
+                                </span>
+                                <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
+                                  <div className="h-full rounded" style={{ width: `${(e.qty / sortedEmp[0].qty) * 100}%`, background: VIZ.primary }} />
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(e.qty)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Employee tab ── */}
+        {activeTab === 'emp' && (
+          <div className="space-y-1">
+            {sortedEmps.length === 0 && <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูลการเบิกในช่วงนี้</p>}
+            {sortedEmps.map((emp) => {
+              const isOpen = expandedRow === `emp-${emp.name}`;
+              const sortedProds = Object.values(emp.products).sort((a, b) => b.qty - a.qty);
+              return (
+                <div key={emp.name} className="border border-gray-100 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => toggle(`emp-${emp.name}`)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
+                  >
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    <div className="w-40 text-left flex-shrink-0">
+                      <span className="text-sm font-medium text-gray-900 truncate block">{emp.name}</span>
+                      <span className="text-[10px] text-gray-400">{emp.dept}{emp.code ? ` · ${emp.code}` : ''}</span>
+                    </div>
+                    <div className="flex-1 bg-gray-50 rounded h-3 overflow-hidden">
+                      <div className="h-full rounded" style={{ width: `${(emp.qty / maxEmp) * 100}%`, background: VIZ.primary }} />
+                    </div>
+                    <span className="text-sm font-bold text-gray-700 tabular-nums w-16 text-right">{fmtNum(emp.qty)}</span>
+                    <span className="text-[10px] text-gray-400">ชิ้น</span>
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+                      <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">สินค้าที่เบิก</h4>
+                      <div className="grid md:grid-cols-2 gap-x-6 gap-y-1">
+                        {sortedProds.map((p, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="w-36 text-[11px] text-gray-600 truncate">{p.name}</span>
+                            <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
+                              <div className="h-full rounded" style={{ width: `${(p.qty / sortedProds[0].qty) * 100}%`, background: VIZ.secondary }} />
+                            </div>
+                            <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(p.qty)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Product tab ── */}
+        {activeTab === 'product' && (
+          <div className="space-y-1">
+            {sortedProducts.length === 0 && <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูลการเบิกในช่วงนี้</p>}
+            {sortedProducts.map((prod) => {
+              const isOpen = expandedRow === `prod-${prod.name}`;
+              const sortedDepts = Object.entries(prod.depts).sort((a, b) => b[1] - a[1]);
+              const sortedEmps = Object.values(prod.employees).sort((a, b) => b.qty - a.qty);
+              return (
+                <div key={prod.name} className="border border-gray-100 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => toggle(`prod-${prod.name}`)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
+                  >
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    <span className="text-sm font-medium text-gray-900 w-44 text-left truncate">{prod.name}</span>
+                    <div className="flex-1 bg-gray-50 rounded h-3 overflow-hidden">
+                      <div className="h-full rounded" style={{ width: `${(prod.totalOut / maxProd) * 100}%`, background: VIZ.secondary }} />
+                    </div>
+                    <span className="text-sm font-bold text-gray-700 tabular-nums w-16 text-right">{fmtNum(prod.totalOut)}</span>
+                    <span className="text-[10px] text-gray-400">ชิ้น</span>
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Departments */}
+                        <div>
+                          <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">แผนกที่เบิก</h4>
+                          <div className="space-y-1">
+                            {sortedDepts.slice(0, 10).map(([dept, qty], i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <span className="w-32 text-[11px] text-gray-600 truncate">{dept}</span>
+                                <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
+                                  <div className="h-full rounded" style={{ width: `${(qty / sortedDepts[0][1]) * 100}%`, background: '#76B7B2' }} />
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(qty)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Employees */}
+                        <div>
+                          <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">พนักงานที่เบิก</h4>
+                          <div className="space-y-1">
+                            {sortedEmps.slice(0, 10).map((e, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <span className="w-32 text-[11px] text-gray-600 truncate">{e.name}</span>
+                                <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
+                                  <div className="h-full rounded" style={{ width: `${(e.qty / sortedEmps[0].qty) * 100}%`, background: VIZ.primary }} />
+                                </div>
+                                <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(e.qty)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
