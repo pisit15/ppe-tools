@@ -373,6 +373,7 @@ export default function HistoryPage() {
               <label className="block text-[11px] font-semibold text-gray-500 mb-1">จากวันที่</label>
               <input
                 type="date"
+                lang="en"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
@@ -382,6 +383,7 @@ export default function HistoryPage() {
               <label className="block text-[11px] font-semibold text-gray-500 mb-1">ถึงวันที่</label>
               <input
                 type="date"
+                lang="en"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"

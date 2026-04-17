@@ -271,6 +271,7 @@ export default function StockInPage() {
                   <label className="block text-[11px] font-semibold mb-1.5" style={{ color: VIZ.lightText }}>วันที่ <span className="text-red-400">*</span></label>
                   <input
                     type="date"
+                    lang="en"
                     required
                     value={formData.transaction_date}
                     onChange={e => setFormData({ ...formData, transaction_date: e.target.value })}
