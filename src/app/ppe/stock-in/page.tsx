@@ -269,9 +269,13 @@ export default function StockInPage() {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold mb-1.5" style={{ color: VIZ.lightText }}>วันที่ <span className="text-red-400">*</span></label>
-                  <input type="date" required value={formData.transaction_date}
+                  <input
+                    type="date"
+                    required
+                    value={formData.transaction_date}
                     onChange={e => setFormData({ ...formData, transaction_date: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none" />
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none tabular-nums [&::-webkit-datetime-edit]:text-gray-900 [&::-webkit-datetime-edit-fields-wrapper]:px-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold mb-1.5" style={{ color: VIZ.lightText }}>เลข PO</label>

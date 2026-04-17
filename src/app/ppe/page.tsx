@@ -38,6 +38,7 @@ interface DashboardStats {
   total_stock_in: number;
   total_stock_out: number;
   low_stock_count: number;
+  out_of_stock_count: number;
 }
 
 interface TypeDistribution {
@@ -139,6 +140,7 @@ export default function PPEDashboard() {
     total_stock_in: 0,
     total_stock_out: 0,
     low_stock_count: 0,
+    out_of_stock_count: 0,
   });
   const [allStocks, setAllStocks] = useState<PPEStockSummary[]>([]);
   const [lowStockItems, setLowStockItems] = useState<PPEStockSummary[]>([]);
@@ -150,14 +152,16 @@ export default function PPEDashboard() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        const [stockRes, lowStockRes, transRes] = await Promise.all([
+        const [stockRes, lowStockRes, outOfStockRes, transRes] = await Promise.all([
           fetch(`/api/ppe/stock?company_id=${companyId}`),
           fetch(`/api/ppe/stock?company_id=${companyId}&low_stock=true`),
+          fetch(`/api/ppe/stock?company_id=${companyId}&out_of_stock=true`),
           fetch(`/api/ppe/transactions?company_id=${companyId}&limit=20`),
         ]);
 
         const stockData = await stockRes.json();
         const lowStockData = await lowStockRes.json();
+        const outOfStockData = await outOfStockRes.json();
         const transData = await transRes.json();
 
         if (stockData.data) {
@@ -184,6 +188,9 @@ export default function PPEDashboard() {
           );
           setTypeDistribution(typeCounts.sort((a, b) => b.count - a.count));
 
+          const outOfStockCount = stocks.filter(
+            (s) => (s.current_stock ?? 0) <= 0
+          ).length;
           setStats({
             total_products: stocks.length,
             total_stock_in: stocks.reduce((sum, item) => sum + item.total_in, 0),
@@ -192,12 +199,22 @@ export default function PPEDashboard() {
               0
             ),
             low_stock_count: lowStockData.data?.length || 0,
+            out_of_stock_count: outOfStockCount,
           });
         }
 
-        if (lowStockData.data) {
-          setLowStockItems(lowStockData.data.slice(0, 8));
-        }
+        // Merge out-of-stock + low-stock into a single alert feed (dedup by product_id)
+        const lowList: PPEStockSummary[] = lowStockData.data || [];
+        const outList: PPEStockSummary[] = outOfStockData.data || [];
+        const merged = new Map<string, PPEStockSummary>();
+        outList.forEach((item) => merged.set(item.product_id, item));
+        lowList.forEach((item) => {
+          if (!merged.has(item.product_id)) merged.set(item.product_id, item);
+        });
+        const alerts = Array.from(merged.values())
+          .sort((a, b) => (a.current_stock ?? 0) - (b.current_stock ?? 0))
+          .slice(0, 8);
+        setLowStockItems(alerts);
 
         if (transData.data) {
           setTransactions(transData.data.slice(0, 8));
@@ -373,37 +390,60 @@ export default function PPEDashboard() {
           </div>
         </div>
 
-        {/* Low Stock */}
-        <div
-          className="rounded-xl p-6 bg-white border-l-4 flex flex-col justify-between"
-          style={{
-            borderColor: VIZ.secondary,
-            border: `1px solid ${VIZ.grid}`,
-            borderLeftWidth: '4px',
-            borderLeftColor: VIZ.secondary,
-          }}
-        >
-          <div>
-            <p
-              className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: VIZ.lightText }}
+        {/* Low Stock / Alerts */}
+        {(() => {
+          const alertCount = stats.low_stock_count + stats.out_of_stock_count;
+          const isAlert = alertCount > 0;
+          const alertColor = stats.out_of_stock_count > 0
+            ? VIZ.accent
+            : stats.low_stock_count > 0
+              ? VIZ.secondary
+              : VIZ.positive;
+          return (
+            <div
+              className="rounded-xl p-6 bg-white border-l-4 flex flex-col justify-between"
+              style={{
+                borderColor: alertColor,
+                border: `1px solid ${VIZ.grid}`,
+                borderLeftWidth: '4px',
+                borderLeftColor: alertColor,
+              }}
             >
-              สต็อกต่ำ
-            </p>
-            <p
-              className="text-3xl font-bold mt-3"
-              style={{ color: VIZ.secondary }}
-            >
-              {fmtNum(stats.low_stock_count)}
-            </p>
-          </div>
-          <div className="mt-4 pt-4 border-t" style={{ borderColor: VIZ.grid }}>
-            <div className="flex items-center gap-2" style={{ color: VIZ.secondary }}>
-              <AlertTriangle size={16} />
-              <p className="text-xs font-semibold">ต้องเตือน</p>
+              <div>
+                <p
+                  className="text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: VIZ.lightText }}
+                >
+                  แจ้งเตือนสต็อก
+                </p>
+                <p
+                  className="text-3xl font-bold mt-3"
+                  style={{ color: alertColor }}
+                >
+                  {fmtNum(alertCount)}
+                </p>
+                {isAlert && (
+                  <p className="text-[11px] mt-1" style={{ color: VIZ.lightText }}>
+                    {stats.out_of_stock_count > 0 && (
+                      <span>หมด {fmtNum(stats.out_of_stock_count)} </span>
+                    )}
+                    {stats.low_stock_count > 0 && (
+                      <span>ต่ำ {fmtNum(stats.low_stock_count)}</span>
+                    )}
+                  </p>
+                )}
+              </div>
+              <div className="mt-4 pt-4 border-t" style={{ borderColor: VIZ.grid }}>
+                <div className="flex items-center gap-2" style={{ color: alertColor }}>
+                  {isAlert ? <AlertTriangle size={16} /> : <TrendingUp size={16} />}
+                  <p className="text-xs font-semibold">
+                    {isAlert ? 'ต้องเตือน' : 'ปกติ'}
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          );
+        })()}
       </div>
 
       {/* Content Grid */}
@@ -563,38 +603,42 @@ export default function PPEDashboard() {
           style={{ border: `1px solid ${VIZ.grid}` }}
         >
           <div className="flex items-center gap-2 mb-5">
-            <AlertTriangle size={20} style={{ color: VIZ.secondary }} />
+            <AlertTriangle size={20} style={{ color: VIZ.accent }} />
             <h2
               className="text-sm font-bold uppercase tracking-wider"
               style={{ color: VIZ.text }}
             >
-              สินค้าสต็อกต่ำ
+              สินค้าต้องเฝ้าระวัง
             </h2>
             <span
               className="ml-auto text-xs font-semibold"
               style={{
-                backgroundColor: VIZ.secondary + '20',
-                color: VIZ.secondary,
+                backgroundColor: VIZ.accent + '15',
+                color: VIZ.accent,
                 padding: '4px 8px',
                 borderRadius: '6px',
               }}
             >
-              {lowStockItems.length} รายการ
+              {stats.out_of_stock_count > 0 && `หมด ${fmtNum(stats.out_of_stock_count)} · `}
+              ต่ำ {fmtNum(stats.low_stock_count)}
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {lowStockItems.map((item) => {
-              const percentage = Math.max(
-                0,
-                Math.min(
-                  100,
-                  (item.current_stock / item.min_stock) * 100
-                )
-              );
-              const isLow = percentage < 50;
-              const isCritical = percentage < 25;
+              const minStock = item.min_stock || 0;
+              const percentage = minStock > 0
+                ? Math.max(0, Math.min(100, (item.current_stock / minStock) * 100))
+                : 0;
+              const isCritical = item.current_stock <= 0 || percentage < 25;
+              const isLow = !isCritical && percentage < 50;
 
+              const isOutOfStock = item.current_stock <= 0;
+              const label = isOutOfStock
+                ? 'หมดสต็อก'
+                : minStock > 0
+                  ? `${percentage.toFixed(0)}%`
+                  : 'รอตั้งค่า';
               return (
                 <div
                   key={item.product_id}
@@ -632,29 +676,31 @@ export default function PPEDashboard() {
                         color: isCritical ? VIZ.accent : VIZ.secondary,
                       }}
                     >
-                      {percentage.toFixed(0)}%
+                      {label}
                     </span>
                   </div>
 
-                  <div
-                    className="w-full h-2 rounded-full mb-2"
-                    style={{ backgroundColor: VIZ.muted }}
-                  >
+                  {minStock > 0 && (
                     <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${percentage}%`,
-                        backgroundColor: isCritical ? VIZ.accent : VIZ.secondary,
-                      }}
-                    />
-                  </div>
+                      className="w-full h-2 rounded-full mb-2"
+                      style={{ backgroundColor: VIZ.muted }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${percentage}%`,
+                          backgroundColor: isCritical ? VIZ.accent : VIZ.secondary,
+                        }}
+                      />
+                    </div>
+                  )}
 
                   <div className="flex justify-between text-xs">
                     <span style={{ color: VIZ.lightText }}>
                       ปัจจุบัน:{' '}
                       <span
                         className="font-bold"
-                        style={{ color: VIZ.text }}
+                        style={{ color: isOutOfStock ? VIZ.accent : VIZ.text }}
                       >
                         {fmtNum(item.current_stock)}
                       </span>

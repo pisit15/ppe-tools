@@ -1,11 +1,21 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { Search, Plus, Users, Building2, X, CheckCircle2 } from 'lucide-react';
 import type { PPEEmployee } from '@/lib/types';
 import { DEPARTMENTS } from '@/lib/constants';
+
+// Build a lookup that maps a stored department value (either Thai enum or the
+// English full-name actually in the DB) to a friendly display label.
+const DEPT_VALUE_TO_LABEL: Record<string, string> = Object.fromEntries(
+  DEPARTMENTS.map((d) => [d.value, d.label])
+);
+function getDeptLabel(value: string | null | undefined): string {
+  if (!value) return '-';
+  return DEPT_VALUE_TO_LABEL[value] || value;
+}
 
 const VIZ = {
   primary: '#4E79A7',
@@ -151,11 +161,27 @@ export default function EmployeesPage() {
     return matchesSearch && matchesDepartment;
   });
 
-  // Calculate department counts
-  const departmentCounts = DEPARTMENTS.map((dept) => ({
-    ...dept,
-    count: employees.filter((emp) => emp.department === dept.value).length,
-  }));
+  // Dynamically derive department cards from actual employee data — the DB
+  // stores English names (e.g. "Pack Module") which do not match the Thai
+  // DEPARTMENTS constant, so a static list produces empty counts. We union
+  // the canonical enum with whatever is present in the data and fold each
+  // value through getDeptLabel so preconfigured Thai values still display
+  // their Thai label.
+  const departmentCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    employees.forEach((emp) => {
+      const key = (emp.department || '').trim();
+      if (!key) return;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([value, count]) => ({
+        value,
+        label: getDeptLabel(value),
+        count,
+      }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'th'));
+  }, [employees]);
 
   if (isLoading) {
     return (
@@ -522,9 +548,7 @@ export default function EmployeesPage() {
                           color: VIZ.secondary,
                         }}
                       >
-                        {DEPARTMENTS.find(
-                          (d) => d.value === employee.department
-                        )?.label || employee.department || '-'}
+                        {getDeptLabel(employee.department)}
                       </span>
                     </td>
                   </tr>

@@ -7,6 +7,14 @@ import { Search, Package, CheckCircle2, Clock, X, AlertTriangle, Users } from 'l
 import type { PPEProduct, PPEEmployee } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES, DEPARTMENTS } from '@/lib/constants';
 
+const DEPT_LABEL: Record<string, string> = Object.fromEntries(
+  DEPARTMENTS.map((d) => [d.value, d.label])
+);
+function deptLabel(v: string | null | undefined): string {
+  if (!v) return '';
+  return DEPT_LABEL[v] || v;
+}
+
 const VIZ = {
   primary: '#4E79A7', positive: '#59A14F', secondary: '#F28E2B',
   accent: '#E15759', text: '#333333', lightText: '#666666', neutral: '#BAB0AC',
@@ -256,17 +264,45 @@ export default function StockOutPage() {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold mb-1.5" style={{ color: VIZ.lightText }}>วันที่ <span className="text-red-400">*</span></label>
-                  <input type="date" required value={formData.transaction_date}
+                  <input
+                    type="date"
+                    required
+                    value={formData.transaction_date}
                     onChange={e => setFormData({ ...formData, transaction_date: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none" />
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none tabular-nums [&::-webkit-datetime-edit]:text-gray-900 [&::-webkit-datetime-edit-fields-wrapper]:px-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold mb-1.5" style={{ color: VIZ.lightText }}>แผนก</label>
-                  <select value={formData.department} onChange={e => setFormData({ ...formData, department: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none">
-                    <option value="">— เลือกแผนก —</option>
-                    {DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                  </select>
+                  {/* Department values in the DB are free-form English names (e.g. "Pack Module"),
+                      but the canonical enum is Thai. Include the current value as an option so
+                      selecting an employee with an English department doesn't clear the field. */}
+                  {(() => {
+                    const options = new Map<string, string>();
+                    DEPARTMENTS.forEach(d => options.set(d.value, d.label));
+                    // Seed with any departments we've seen on employees so the dropdown
+                    // has the full set actually used in the company.
+                    employees.forEach(e => {
+                      const v = (e.department || '').trim();
+                      if (v && !options.has(v)) options.set(v, deptLabel(v));
+                    });
+                    // Ensure the currently selected value (if any) is present.
+                    if (formData.department && !options.has(formData.department)) {
+                      options.set(formData.department, deptLabel(formData.department));
+                    }
+                    return (
+                      <select
+                        value={formData.department}
+                        onChange={e => setFormData({ ...formData, department: e.target.value })}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
+                      >
+                        <option value="">— เลือกแผนก —</option>
+                        {Array.from(options.entries())
+                          .sort((a, b) => a[1].localeCompare(b[1], 'th'))
+                          .map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                    );
+                  })()}
                 </div>
               </div>
 
