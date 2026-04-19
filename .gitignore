@@ -42,3 +42,9 @@ Thumbs.db
 
 # Supabase
 supabase/.temp
+
+# Vercel CLI
+.vercel/
+
+# Claude Cowork session-local credential helper
+.git-credential-helper.sh
