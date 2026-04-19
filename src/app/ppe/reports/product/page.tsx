@@ -314,7 +314,7 @@ type TimelineEvent = {
   note: string | null;
 };
 
-function MonthTimeline({ events }: { events: TimelineEvent[] }) {
+function MonthTimeline({ events, startingBalance }: { events: TimelineEvent[]; startingBalance: number }) {
   if (events.length === 0) {
     return <p className="text-[11px] text-gray-400 py-5 text-center">ไม่มีรายการในเดือนนี้</p>;
   }
@@ -326,11 +326,17 @@ function MonthTimeline({ events }: { events: TimelineEvent[] }) {
     if (aIn !== bIn) return aIn ? -1 : 1;
     return 0;
   });
+  // Compute running balance after each event
+  let running = startingBalance;
+  const withBalance = sorted.map((ev) => {
+    const isIn = ev.kind === 'stock_in' || ev.kind === 'return';
+    running += isIn ? ev.qty : -ev.qty;
+    return { ev, isIn, balance: running };
+  });
   let prevDate = '';
   return (
     <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white overflow-hidden">
-      {sorted.map((ev, i) => {
-        const isIn = ev.kind === 'stock_in' || ev.kind === 'return';
+      {withBalance.map(({ ev, isIn, balance }, i) => {
         const color = isIn ? VIZ.positive : VIZ.secondary;
         const showDate = ev.date !== prevDate;
         prevDate = ev.date;
@@ -378,8 +384,16 @@ function MonthTimeline({ events }: { events: TimelineEvent[] }) {
                 </>
               )}
             </div>
-            <span className="tabular-nums font-bold text-[13px] flex-shrink-0" style={{ color }}>
+            {/* Qty delta */}
+            <span className="tabular-nums font-bold text-[13px] flex-shrink-0 w-14 text-right" style={{ color }}>
               {isIn ? '+' : '−'}{fmtNum(ev.qty)}
+            </span>
+            {/* Running balance after this event */}
+            <span className="flex-shrink-0 w-20 text-right" title="คงเหลือหลังรายการนี้">
+              <span className="text-[9px] text-gray-400 block leading-none">คงเหลือ</span>
+              <span className="tabular-nums font-semibold text-[12px] leading-tight" style={{ color: VIZ.primary }}>
+                {fmtNum(balance)}
+              </span>
             </span>
           </div>
         );
@@ -1230,7 +1244,10 @@ export default function ProductReportPage() {
                             <tr>
                               <td colSpan={4} className="p-0" style={{ background: '#FAFBFC' }}>
                                 <div className="p-4">
-                                  <MonthTimeline events={events} />
+                                  <MonthTimeline
+                                    events={events}
+                                    startingBalance={m.runningBalance - (m.stockIn - m.stockOut)}
+                                  />
                                 </div>
                               </td>
                             </tr>
