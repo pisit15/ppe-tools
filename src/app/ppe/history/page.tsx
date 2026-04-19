@@ -6,6 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { Search, Filter, X, Package, ArrowDownCircle, ArrowUpCircle, RotateCcw, HandMetal, CalendarDays, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react';
 import type { PPETransaction } from '@/lib/types';
 import { UNIT_TYPES } from '@/lib/constants';
+import DateInput from '@/components/DateInput';
 
 /* ── Professional Palette (Tableau-inspired) ── */
 const VIZ = {
@@ -371,22 +372,18 @@ export default function HistoryPage() {
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-gray-500 mb-1">จากวันที่</label>
-              <input
-                type="date"
-                lang="en"
+              <DateInput
                 value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
+                onChange={setStartDate}
+                ariaLabel="จากวันที่"
               />
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-gray-500 mb-1">ถึงวันที่</label>
-              <input
-                type="date"
-                lang="en"
+              <DateInput
                 value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
+                onChange={setEndDate}
+                ariaLabel="ถึงวันที่"
               />
             </div>
           </div>

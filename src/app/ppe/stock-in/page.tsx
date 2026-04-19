@@ -6,6 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { Search, Package, CheckCircle2, Clock, X, ChevronDown } from 'lucide-react';
 import type { PPEProduct } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
+import DateInput from '@/components/DateInput';
 
 const VIZ = {
   primary: '#4E79A7',
@@ -269,13 +270,11 @@ export default function StockInPage() {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold mb-1.5" style={{ color: VIZ.lightText }}>วันที่ <span className="text-red-400">*</span></label>
-                  <input
-                    type="date"
-                    lang="en"
-                    required
+                  <DateInput
                     value={formData.transaction_date}
-                    onChange={e => setFormData({ ...formData, transaction_date: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none tabular-nums [&::-webkit-datetime-edit]:text-gray-900 [&::-webkit-datetime-edit-fields-wrapper]:px-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                    onChange={iso => setFormData({ ...formData, transaction_date: iso })}
+                    required
+                    ariaLabel="เลือกวันที่รับเข้า"
                   />
                 </div>
                 <div>
