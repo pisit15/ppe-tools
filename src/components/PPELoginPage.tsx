@@ -36,7 +36,10 @@ export default function PPELoginPage({ onLoginSuccess }: { onLoginSuccess: () =>
       {/* Nav */}
       <nav className="p-6">
         <div className="max-w-7xl mx-auto flex items-center gap-3">
-          <Shield className="text-blue-400" size={28} />
+          <div className="bg-white rounded-lg p-2 flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/ea-logo.svg" alt="EA SHE" width={52} height={40} />
+          </div>
           <div>
             <h1 className="text-xl font-bold text-white">EA SHE Tools</h1>
             <p className="text-blue-300 text-xs">tools.eashe.org</p>
@@ -62,8 +65,9 @@ export default function PPELoginPage({ onLoginSuccess }: { onLoginSuccess: () =>
                 background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #1e40af 100%)',
               }}
             >
-              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                <Shield className="text-white" size={28} />
+              <div className="w-20 h-16 bg-white rounded-xl flex items-center justify-center mx-auto mb-3 px-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/ea-logo.svg" alt="EA SHE" width={66} height={50} />
               </div>
               <h2 className="text-2xl font-bold text-white">PPE Inventory</h2>
               <p className="text-blue-200 text-sm mt-1">

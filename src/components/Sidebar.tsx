@@ -115,10 +115,23 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     >
       {/* Header */}
       <div className={`flex items-center justify-between p-4 border-b ${borderColor}`}>
-        {isOpen && <h1 className="text-lg font-bold">{sectionTitle}</h1>}
+        {isOpen ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="bg-white rounded-md p-1 flex items-center justify-center shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/ea-logo.svg" alt="EA SHE" width={36} height={27} />
+            </div>
+            <h1 className="text-base font-bold truncate">{sectionTitle}</h1>
+          </div>
+        ) : (
+          <div className="bg-white rounded-md p-1 flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/ea-logo.svg" alt="EA SHE" width={32} height={24} />
+          </div>
+        )}
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className={`p-2 ${hoverBg} rounded-lg transition-colors`}
+          className={`p-2 ${hoverBg} rounded-lg transition-colors shrink-0`}
         >
           {isOpen ? <X size={20} /> : <Menu size={20} />}
         </button>

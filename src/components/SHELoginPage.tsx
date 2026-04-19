@@ -36,7 +36,10 @@ export default function SHELoginPage({ onLoginSuccess }: { onLoginSuccess: () =>
       {/* Nav */}
       <nav className="p-6">
         <div className="max-w-7xl mx-auto flex items-center gap-3">
-          <Briefcase className="text-teal-400" size={28} />
+          <div className="bg-white rounded-lg p-2 flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/ea-logo.svg" alt="EA SHE" width={52} height={40} />
+          </div>
           <div>
             <h1 className="text-xl font-bold text-white">EA SHE Tools</h1>
             <p className="text-teal-300 text-xs">tools.eashe.org</p>

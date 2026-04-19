@@ -69,7 +69,10 @@ export default function HomePage() {
       <nav className="p-6">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Shield className="text-blue-400" size={28} />
+            <div className="bg-white rounded-lg p-2 flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/ea-logo.svg" alt="EA SHE" width={52} height={40} />
+            </div>
             <div>
               <h1 className="text-xl font-bold text-white">EA SHE Tools</h1>
               <p className="text-blue-300 text-xs">tools.eashe.org</p>
@@ -95,6 +98,12 @@ export default function HomePage() {
       {/* Hero */}
       <div className="max-w-5xl mx-auto px-6 pt-8 pb-4">
         <div className="text-center mb-10">
+          <div className="flex justify-center mb-5">
+            <div className="bg-white rounded-2xl px-6 py-4 shadow-lg">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/ea-logo.svg" alt="EA SHE" width={132} height={100} />
+            </div>
+          </div>
           <h2 className="text-3xl font-bold text-white mb-2">
             Safety & Environment Tools
           </h2>
