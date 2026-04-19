@@ -1,10 +1,10 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback, Fragment } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import {
-  Search, FileSpreadsheet, FileText, ChevronLeft, ChevronRight,
+  Search, FileSpreadsheet, FileText, ChevronLeft, ChevronRight, ChevronDown,
   CalendarRange, Package, ArrowDownToLine, ArrowUpFromLine,
   Building2, Users, Download, Printer,
 } from 'lucide-react';
@@ -23,6 +23,11 @@ function getTypeLabel(v: string) { return PPE_TYPES.find(t => t.value === v)?.la
 function getTypeEmoji(v: string) { return PPE_TYPES.find(t => t.value === v)?.icon ?? '📦'; }
 function getUnitLabel(v: string) { return UNIT_TYPES.find(u => u.value === v)?.label ?? v; }
 function fmtNum(n: number) { return n.toLocaleString('th-TH'); }
+function fmtDate(iso: string) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+}
 function makeMonthKey(year: number, month: number) {
   // Handle negative months
   const d = new Date(year, month, 1);
@@ -202,11 +207,30 @@ function TrendChart({ months, dataIn, dataOut }: { months: string[]; dataIn: num
 
 /* ═══════════════════ Export Functions ═══════════════════ */
 
-async function exportExcel(productName: string, stock: PPEStockSummary, monthlyData: { month: string; stockIn: number; stockOut: number }[], deptData: { dept: string; qty: number }[], empData: { name: string; dept: string; qty: number }[], rangeLabel: string) {
+type ExportMonthly = { month: string; stockIn: number; stockOut: number; runningBalance: number };
+type ExportDaily = {
+  date: string; type: string; qty: number;
+  po: string | null; dept: string | null;
+  emp: string | null; empCode: string | null; note: string | null;
+};
+
+async function exportExcel(
+  productName: string,
+  stock: PPEStockSummary,
+  monthlyData: ExportMonthly[],
+  dailyData: ExportDaily[],
+  openingBalance: number,
+  endingBalance: number,
+  deptData: { dept: string; qty: number }[],
+  empData: { name: string; dept: string; qty: number }[],
+  rangeLabel: string
+) {
   const XLSX = (await import('xlsx'));
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Summary
+  const totalInAll = monthlyData.reduce((s, m) => s + m.stockIn, 0);
+  const totalOutAll = monthlyData.reduce((s, m) => s + m.stockOut, 0);
   const summary = [
     ['รายงานสินค้า PPE - สำหรับแผนกจัดซื้อ'],
     [''],
@@ -215,47 +239,71 @@ async function exportExcel(productName: string, stock: PPEStockSummary, monthlyD
     ['หน่วย', getUnitLabel(stock.unit)],
     ['ช่วงเวลา', rangeLabel],
     [''],
-    ['สต็อกคงเหลือ', stock.current_stock],
+    ['ยอดยกมา (ก่อนช่วงที่เลือก)', openingBalance],
+    ['รับเข้าในช่วง', totalInAll],
+    ['เบิกออกในช่วง', totalOutAll],
+    ['ยอดคงเหลือสิ้นสุดช่วง', endingBalance],
+    [''],
+    ['สต็อกคงเหลือปัจจุบัน', stock.current_stock],
     ['ขั้นต่ำ', stock.min_stock],
-    ['รับเข้าทั้งหมด', stock.total_in],
-    ['เบิกออกทั้งหมด', stock.total_out],
+    ['รับเข้าทั้งหมด (ประวัติทั้งหมด)', stock.total_in],
+    ['เบิกออกทั้งหมด (ประวัติทั้งหมด)', stock.total_out],
     ['สถานะ', stock.current_stock <= stock.min_stock && stock.min_stock > 0 ? 'ต่ำกว่าขั้นต่ำ - ต้องสั่งซื้อ' : 'ปกติ'],
   ];
   const ws1 = XLSX.utils.aoa_to_sheet(summary);
-  ws1['!cols'] = [{ wch: 20 }, { wch: 30 }];
+  ws1['!cols'] = [{ wch: 32 }, { wch: 30 }];
   XLSX.utils.book_append_sheet(wb, ws1, 'สรุป');
 
-  // Sheet 2: Monthly breakdown
-  const monthHeaders = ['เดือน', 'รับเข้า', 'เบิกออก', 'ผลต่าง'];
-  const monthRows = monthlyData.map(m => [m.month, m.stockIn, m.stockOut, m.stockIn - m.stockOut]);
-  const totalIn = monthlyData.reduce((s, m) => s + m.stockIn, 0);
-  const totalOut = monthlyData.reduce((s, m) => s + m.stockOut, 0);
-  monthRows.push(['รวม', totalIn, totalOut, totalIn - totalOut]);
-  const ws2 = XLSX.utils.aoa_to_sheet([monthHeaders, ...monthRows]);
-  ws2['!cols'] = [{ wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  // Sheet 2: Monthly breakdown (with opening balance + running balance)
+  const monthHeaders = ['เดือน', 'รับเข้า', 'เบิกออก', 'ผลต่าง', 'คงเหลือสิ้นเดือน'];
+  const openingRow: (string | number)[] = ['ยอดยกมา', '', '', '', openingBalance];
+  const monthRows: (string | number)[][] = monthlyData.map(m => [m.month, m.stockIn, m.stockOut, m.stockIn - m.stockOut, m.runningBalance]);
+  const totalRow: (string | number)[] = ['รวม', totalInAll, totalOutAll, totalInAll - totalOutAll, endingBalance];
+  const ws2 = XLSX.utils.aoa_to_sheet([monthHeaders, openingRow, ...monthRows, totalRow]);
+  ws2['!cols'] = [{ wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }];
   XLSX.utils.book_append_sheet(wb, ws2, 'รายเดือน');
 
-  // Sheet 3: Department breakdown
+  // Sheet 3: Daily detail (all transactions in range)
+  const dailyHeaders = ['วันที่', 'ประเภท', 'จำนวน', 'เลข PO', 'แผนก', 'พนักงาน', 'รหัสพนักงาน', 'หมายเหตุ'];
+  const dailyRows = dailyData.map(d => [
+    d.date, d.type, d.qty,
+    d.po || '', d.dept || '',
+    d.emp || '', d.empCode || '', d.note || '',
+  ]);
+  const ws3 = XLSX.utils.aoa_to_sheet([dailyHeaders, ...dailyRows]);
+  ws3['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 14 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, ws3, 'รายวัน');
+
+  // Sheet 4: Department breakdown
   const deptHeaders = ['แผนก', 'จำนวนเบิก', '% ของทั้งหมด'];
   const deptTotal = deptData.reduce((s, d) => s + d.qty, 0);
   const deptRows = deptData.map(d => [d.dept, d.qty, deptTotal > 0 ? `${((d.qty / deptTotal) * 100).toFixed(1)}%` : '0%']);
   deptRows.push(['รวม', deptTotal, '100%']);
-  const ws3 = XLSX.utils.aoa_to_sheet([deptHeaders, ...deptRows]);
-  ws3['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, ws3, 'ตามแผนก');
+  const ws4 = XLSX.utils.aoa_to_sheet([deptHeaders, ...deptRows]);
+  ws4['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws4, 'ตามแผนก');
 
-  // Sheet 4: Employee detail
+  // Sheet 5: Employee detail
   const empHeaders = ['พนักงาน', 'แผนก', 'จำนวนเบิก'];
   const empRows = empData.map(e => [e.name, e.dept, e.qty]);
-  const ws4 = XLSX.utils.aoa_to_sheet([empHeaders, ...empRows]);
-  ws4['!cols'] = [{ wch: 25 }, { wch: 22 }, { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, ws4, 'ตามพนักงาน');
+  const ws5 = XLSX.utils.aoa_to_sheet([empHeaders, ...empRows]);
+  ws5['!cols'] = [{ wch: 25 }, { wch: 22 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws5, 'ตามพนักงาน');
 
   const filename = `PPE_Report_${productName.replace(/\s/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
   XLSX.writeFile(wb, filename);
 }
 
-async function exportPDF(productName: string, stock: PPEStockSummary, monthlyData: { month: string; stockIn: number; stockOut: number }[], deptData: { dept: string; qty: number }[], empData: { name: string; dept: string; qty: number }[], rangeLabel: string) {
+async function exportPDF(
+  productName: string,
+  stock: PPEStockSummary,
+  monthlyData: ExportMonthly[],
+  openingBalance: number,
+  endingBalance: number,
+  deptData: { dept: string; qty: number }[],
+  empData: { name: string; dept: string; qty: number }[],
+  rangeLabel: string
+) {
   const { default: jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
   const doc = new jsPDF('p', 'mm', 'a4');
@@ -268,20 +316,23 @@ async function exportPDF(productName: string, stock: PPEStockSummary, monthlyDat
   doc.text(`Product: ${productName}`, 14, 30);
   doc.text(`Type: ${getTypeLabel(stock.type)} | Unit: ${getUnitLabel(stock.unit)}`, 14, 36);
   doc.text(`Period: ${rangeLabel}`, 14, 42);
-  doc.text(`Current Stock: ${fmtNum(stock.current_stock)} | Min Stock: ${stock.min_stock} | Status: ${stock.current_stock <= stock.min_stock && stock.min_stock > 0 ? 'LOW - Need to Purchase' : 'Normal'}`, 14, 48);
+  doc.text(`Opening Balance: ${fmtNum(openingBalance)} | Ending Balance: ${fmtNum(endingBalance)} | Current Stock: ${fmtNum(stock.current_stock)} | Min: ${stock.min_stock} | Status: ${stock.current_stock <= stock.min_stock && stock.min_stock > 0 ? 'LOW - Need to Purchase' : 'Normal'}`, 14, 48);
 
   let y = 56;
 
-  // Monthly table
+  // Monthly table (with opening balance row + running balance column)
   doc.setFontSize(12);
   doc.text('Monthly Breakdown', 14, y);
   y += 4;
+  const totalInAll = monthlyData.reduce((s, m) => s + m.stockIn, 0);
+  const totalOutAll = monthlyData.reduce((s, m) => s + m.stockOut, 0);
   autoTable(doc, {
     startY: y,
-    head: [['Month', 'Stock In', 'Stock Out', 'Difference']],
+    head: [['Month', 'Stock In', 'Stock Out', 'Difference', 'End Balance']],
     body: [
-      ...monthlyData.map(m => [m.month, String(m.stockIn), String(m.stockOut), String(m.stockIn - m.stockOut)]),
-      ['TOTAL', String(monthlyData.reduce((s, m) => s + m.stockIn, 0)), String(monthlyData.reduce((s, m) => s + m.stockOut, 0)), String(monthlyData.reduce((s, m) => s + m.stockIn - m.stockOut, 0))],
+      ['Opening Balance', '', '', '', String(openingBalance)],
+      ...monthlyData.map(m => [m.month, String(m.stockIn), String(m.stockOut), String(m.stockIn - m.stockOut), String(m.runningBalance)]),
+      ['TOTAL', String(totalInAll), String(totalOutAll), String(totalInAll - totalOutAll), String(endingBalance)],
     ],
     styles: { fontSize: 8 },
     headStyles: { fillColor: [78, 121, 167] },
@@ -337,7 +388,23 @@ export default function ProductReportPage() {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const toggleMonth = useCallback((key: string) => {
+    setExpandedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const expandAllMonths = useCallback((keys: string[]) => {
+    setExpandedMonths(new Set(keys));
+  }, []);
+  const collapseAllMonths = useCallback(() => {
+    setExpandedMonths(new Set());
+  }, []);
 
   const now = new Date();
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -385,19 +452,77 @@ export default function ProductReportPage() {
     const cutoffStart = new Date(fromY, fromM - 1, 1);
     const cutoffEnd = new Date(toY, toM, 0, 23, 59, 59);
 
-    const productTx = transactions.filter(t => t.product_id === selectedProduct && t.transaction_date && new Date(t.transaction_date) >= cutoffStart && new Date(t.transaction_date) <= cutoffEnd);
+    // All transactions for this product
+    const allProductTx = transactions.filter(t => t.product_id === selectedProduct && t.transaction_date);
 
-    // Monthly breakdown
-    const monthly: { key: string; label: string; fullLabel: string; stockIn: number; stockOut: number }[] = [];
+    // Opening balance: all transactions BEFORE the range start
+    const beforeTx = allProductTx.filter(t => new Date(t.transaction_date!) < cutoffStart);
+    const openingIn = beforeTx.filter(t => t.transaction_type === 'stock_in' || t.transaction_type === 'return').reduce((s, t) => s + t.quantity, 0);
+    const openingOut = beforeTx.filter(t => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow').reduce((s, t) => s + t.quantity, 0);
+    const openingBalance = openingIn - openingOut;
+
+    // Transactions within the range
+    const productTx = allProductTx.filter(t => {
+      const d = new Date(t.transaction_date!);
+      return d >= cutoffStart && d <= cutoffEnd;
+    });
+
+    // Monthly breakdown with daily detail + running balance
+    type StockInDay = { date: string; qty: number; po: string | null; note: string | null; type: 'stock_in' | 'return' };
+    type StockOutDay = { date: string; qty: number; dept: string; emp: string; empCode: string | null; note: string | null; type: 'stock_out' | 'borrow' };
+    type MonthData = {
+      key: string; label: string; fullLabel: string;
+      stockIn: number; stockOut: number; runningBalance: number;
+      stockInDays: StockInDay[]; stockOutDays: StockOutDay[];
+    };
+    const monthly: MonthData[] = [];
+    let running = openingBalance;
     let cY = fromY, cM = fromM - 1;
     while (cY < toY || (cY === toY && cM <= toM - 1)) {
       const key = `${cY}-${String(cM + 1).padStart(2, '0')}`;
       const d = new Date(cY, cM, 1);
-      const mIn = productTx.filter(t => (t.transaction_type === 'stock_in' || t.transaction_type === 'return') && t.transaction_date?.startsWith(key)).reduce((s, t) => s + t.quantity, 0);
-      const mOut = productTx.filter(t => (t.transaction_type === 'stock_out' || t.transaction_type === 'borrow') && t.transaction_date?.startsWith(key)).reduce((s, t) => s + t.quantity, 0);
-      monthly.push({ key, label: d.toLocaleDateString('th-TH', { month: 'short' }), fullLabel: d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' }), stockIn: mIn, stockOut: mOut });
+      const monthTx = productTx.filter(t => t.transaction_date?.startsWith(key));
+      const inTx = monthTx.filter(t => t.transaction_type === 'stock_in' || t.transaction_type === 'return');
+      const outTx = monthTx.filter(t => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow');
+
+      const mIn = inTx.reduce((s, t) => s + t.quantity, 0);
+      const mOut = outTx.reduce((s, t) => s + t.quantity, 0);
+      running = running + mIn - mOut;
+
+      const stockInDays: StockInDay[] = inTx
+        .slice()
+        .sort((a, b) => (a.transaction_date || '').localeCompare(b.transaction_date || ''))
+        .map(t => ({
+          date: t.transaction_date!,
+          qty: t.quantity,
+          po: t.po_number,
+          note: t.notes,
+          type: t.transaction_type as 'stock_in' | 'return',
+        }));
+
+      const stockOutDays: StockOutDay[] = outTx
+        .slice()
+        .sort((a, b) => (a.transaction_date || '').localeCompare(b.transaction_date || ''))
+        .map(t => ({
+          date: t.transaction_date!,
+          qty: t.quantity,
+          dept: t.department || 'ไม่ระบุ',
+          emp: t.employee_name || (t.employee_code || '-'),
+          empCode: t.employee_code,
+          note: t.notes,
+          type: t.transaction_type as 'stock_out' | 'borrow',
+        }));
+
+      monthly.push({
+        key,
+        label: d.toLocaleDateString('th-TH', { month: 'short' }),
+        fullLabel: d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' }),
+        stockIn: mIn, stockOut: mOut, runningBalance: running,
+        stockInDays, stockOutDays,
+      });
       cM++; if (cM > 11) { cM = 0; cY++; }
     }
+    const endingBalance = monthly.length > 0 ? monthly[monthly.length - 1].runningBalance : openingBalance;
 
     // Department breakdown
     const deptMap: Record<string, number> = {};
@@ -421,7 +546,10 @@ export default function ProductReportPage() {
     const avgOutPerMonth = monthly.length > 0 ? totalOut / monthly.length : 0;
     const monthsUntilEmpty = avgOutPerMonth > 0 ? Math.floor(selectedStock.current_stock / avgOutPerMonth) : Infinity;
 
-    return { monthly, deptData, empData, totalIn, totalOut, avgOutPerMonth, monthsUntilEmpty };
+    return {
+      monthly, deptData, empData, totalIn, totalOut, avgOutPerMonth, monthsUntilEmpty,
+      openingBalance, endingBalance,
+    };
   }, [selectedProduct, selectedStock, transactions, dateRange]);
 
   // Data range for picker
@@ -432,16 +560,48 @@ export default function ProductReportPage() {
 
   const handleExportExcel = useCallback(() => {
     if (!selectedStock || !productAnalytics) return;
-    exportExcel(selectedStock.name, selectedStock,
-      productAnalytics.monthly.map(m => ({ month: m.fullLabel, stockIn: m.stockIn, stockOut: m.stockOut })),
-      productAnalytics.deptData, productAnalytics.empData.map(e => ({ name: e.name, dept: e.dept, qty: e.qty })), rangeLabel);
+    const typeLabels: Record<string, string> = {
+      stock_in: 'รับเข้า', return: 'คืน', stock_out: 'เบิกออก', borrow: 'ยืม',
+    };
+    const dailyData: ExportDaily[] = [];
+    productAnalytics.monthly.forEach(m => {
+      m.stockInDays.forEach(d => {
+        dailyData.push({
+          date: d.date, type: typeLabels[d.type] || d.type, qty: d.qty,
+          po: d.po, dept: null, emp: null, empCode: null, note: d.note,
+        });
+      });
+      m.stockOutDays.forEach(d => {
+        dailyData.push({
+          date: d.date, type: typeLabels[d.type] || d.type, qty: d.qty,
+          po: null, dept: d.dept, emp: d.emp, empCode: d.empCode, note: d.note,
+        });
+      });
+    });
+    dailyData.sort((a, b) => a.date.localeCompare(b.date));
+    exportExcel(
+      selectedStock.name, selectedStock,
+      productAnalytics.monthly.map(m => ({ month: m.fullLabel, stockIn: m.stockIn, stockOut: m.stockOut, runningBalance: m.runningBalance })),
+      dailyData,
+      productAnalytics.openingBalance,
+      productAnalytics.endingBalance,
+      productAnalytics.deptData,
+      productAnalytics.empData.map(e => ({ name: e.name, dept: e.dept, qty: e.qty })),
+      rangeLabel
+    );
   }, [selectedStock, productAnalytics, rangeLabel]);
 
   const handleExportPDF = useCallback(() => {
     if (!selectedStock || !productAnalytics) return;
-    exportPDF(selectedStock.name, selectedStock,
-      productAnalytics.monthly.map(m => ({ month: m.fullLabel, stockIn: m.stockIn, stockOut: m.stockOut })),
-      productAnalytics.deptData, productAnalytics.empData.map(e => ({ name: e.name, dept: e.dept, qty: e.qty })), rangeLabel);
+    exportPDF(
+      selectedStock.name, selectedStock,
+      productAnalytics.monthly.map(m => ({ month: m.fullLabel, stockIn: m.stockIn, stockOut: m.stockOut, runningBalance: m.runningBalance })),
+      productAnalytics.openingBalance,
+      productAnalytics.endingBalance,
+      productAnalytics.deptData,
+      productAnalytics.empData.map(e => ({ name: e.name, dept: e.dept, qty: e.qty })),
+      rangeLabel
+    );
   }, [selectedStock, productAnalytics, rangeLabel]);
 
   if (isLoading) {
@@ -600,45 +760,222 @@ export default function ProductReportPage() {
             </div>
           </div>
 
-          {/* Monthly detail table */}
+          {/* Monthly detail table with opening balance + drill-down */}
           <div className="bg-white rounded-lg border border-gray-100 p-5">
-            <h3 className="text-sm font-bold text-gray-900 mb-3">ตารางรายเดือน</h3>
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">ตารางรายเดือน</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">คลิกแถวเดือนเพื่อดูรายละเอียดรายวัน · รับเข้าแสดงเลข PO · เบิกออกแสดงแผนก/พนักงาน</p>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px]">
+                <button
+                  onClick={() => expandAllMonths(productAnalytics.monthly.filter(m => m.stockInDays.length + m.stockOutDays.length > 0).map(m => m.key))}
+                  className="px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+                >เปิดทั้งหมด</button>
+                <button
+                  onClick={collapseAllMonths}
+                  className="px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+                >ปิดทั้งหมด</button>
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="px-3 py-2 text-left font-semibold text-gray-500">เดือน</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-500">รับเข้า</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-500">เบิกออก</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-500">ผลต่าง</th>
+                  <tr className="border-b-2 border-gray-200 bg-gray-50">
+                    <th className="px-2 py-2 w-8"></th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">เดือน</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-600">รับเข้า</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-600">เบิกออก</th>
+                    <th className="px-3 py-2 text-center font-semibold text-gray-600">ผลต่าง</th>
+                    <th className="px-3 py-2 text-right font-semibold text-gray-600">คงเหลือสิ้นเดือน</th>
                   </tr>
                 </thead>
                 <tbody>
+                  {/* Opening balance row */}
+                  <tr className="border-b border-gray-200" style={{ background: `${VIZ.primary}0D` }}>
+                    <td className="px-2 py-2"></td>
+                    <td className="px-3 py-2 font-semibold text-gray-700" colSpan={4}>
+                      ยอดยกมา <span className="text-[10px] text-gray-400 font-normal">(ก่อน {monthKeyToFullLabel(dateRange.from)})</span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums font-bold" style={{ color: VIZ.primary }}>
+                      {fmtNum(productAnalytics.openingBalance)}
+                    </td>
+                  </tr>
+
+                  {/* Monthly rows with expandable detail */}
                   {productAnalytics.monthly.map((m) => {
                     const diff = m.stockIn - m.stockOut;
+                    const isOpen = expandedMonths.has(m.key);
+                    const hasDetail = m.stockInDays.length + m.stockOutDays.length > 0;
                     return (
-                      <tr key={m.key} className="border-b border-gray-50 hover:bg-gray-50/50">
-                        <td className="px-3 py-2 font-medium text-gray-900">{m.fullLabel}</td>
-                        <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.positive }}>{m.stockIn > 0 ? fmtNum(m.stockIn) : '-'}</td>
-                        <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.secondary }}>{m.stockOut > 0 ? fmtNum(m.stockOut) : '-'}</td>
-                        <td className={`px-3 py-2 text-center tabular-nums font-semibold ${diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                          {diff > 0 ? `+${fmtNum(diff)}` : diff < 0 ? fmtNum(diff) : '-'}
-                        </td>
-                      </tr>
+                      <Fragment key={m.key}>
+                        <tr
+                          onClick={() => hasDetail && toggleMonth(m.key)}
+                          className={`border-b border-gray-50 ${hasDetail ? 'cursor-pointer hover:bg-blue-50/40' : ''} ${isOpen ? 'bg-blue-50/40' : ''}`}
+                        >
+                          <td className="px-2 py-2 text-center">
+                            {hasDetail ? (
+                              <ChevronDown
+                                size={14}
+                                className="text-gray-400 transition-transform inline-block"
+                                style={{ transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                              />
+                            ) : (
+                              <span className="text-gray-200 text-[10px]">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-medium text-gray-900">{m.fullLabel}</td>
+                          <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.positive }}>
+                            {m.stockIn > 0 ? fmtNum(m.stockIn) : '-'}
+                          </td>
+                          <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.secondary }}>
+                            {m.stockOut > 0 ? fmtNum(m.stockOut) : '-'}
+                          </td>
+                          <td className={`px-3 py-2 text-center tabular-nums font-semibold ${diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {diff > 0 ? `+${fmtNum(diff)}` : diff < 0 ? fmtNum(diff) : '-'}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-gray-700">
+                            {fmtNum(m.runningBalance)}
+                          </td>
+                        </tr>
+                        {isOpen && hasDetail && (
+                          <tr>
+                            <td colSpan={6} className="p-0 border-b border-gray-200" style={{ background: '#FAFBFC' }}>
+                              <div className="grid md:grid-cols-2 gap-3 p-4">
+                                {/* Stock In detail */}
+                                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                  <div
+                                    className="px-3 py-2 flex items-center gap-2"
+                                    style={{ background: `${VIZ.positive}1A`, borderBottom: `1px solid ${VIZ.positive}40` }}
+                                  >
+                                    <ArrowDownToLine size={13} style={{ color: VIZ.positive }} />
+                                    <span className="text-[11px] font-bold" style={{ color: VIZ.positive }}>
+                                      รับเข้า · {m.stockInDays.length} รายการ · {fmtNum(m.stockIn)} {getUnitLabel(selectedStock.unit)}
+                                    </span>
+                                  </div>
+                                  {m.stockInDays.length === 0 ? (
+                                    <p className="px-3 py-4 text-center text-[11px] text-gray-400">ไม่มีการรับเข้า</p>
+                                  ) : (
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-[11px]">
+                                        <thead>
+                                          <tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
+                                            <th className="px-3 py-1.5 text-left font-semibold">วันที่</th>
+                                            <th className="px-3 py-1.5 text-center font-semibold">จำนวน</th>
+                                            <th className="px-3 py-1.5 text-left font-semibold">เลข PO</th>
+                                            <th className="px-3 py-1.5 text-left font-semibold">หมายเหตุ</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {m.stockInDays.map((d, i) => (
+                                            <tr key={i} className="border-b border-gray-50 last:border-0">
+                                              <td className="px-3 py-1.5 tabular-nums text-gray-700 whitespace-nowrap">
+                                                {fmtDate(d.date)}
+                                                {d.type === 'return' && (
+                                                  <span className="ml-1 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-semibold">คืน</span>
+                                                )}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-center tabular-nums font-semibold" style={{ color: VIZ.positive }}>
+                                                {fmtNum(d.qty)}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-gray-700">
+                                                {d.po ? (
+                                                  <span className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-mono rounded">
+                                                    {d.po}
+                                                  </span>
+                                                ) : <span className="text-gray-300">—</span>}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-gray-500 truncate max-w-[180px]" title={d.note || ''}>
+                                                {d.note || <span className="text-gray-300">—</span>}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </div>
+                                {/* Stock Out detail */}
+                                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                  <div
+                                    className="px-3 py-2 flex items-center gap-2"
+                                    style={{ background: `${VIZ.secondary}1A`, borderBottom: `1px solid ${VIZ.secondary}40` }}
+                                  >
+                                    <ArrowUpFromLine size={13} style={{ color: VIZ.secondary }} />
+                                    <span className="text-[11px] font-bold" style={{ color: VIZ.secondary }}>
+                                      เบิกออก · {m.stockOutDays.length} รายการ · {fmtNum(m.stockOut)} {getUnitLabel(selectedStock.unit)}
+                                    </span>
+                                  </div>
+                                  {m.stockOutDays.length === 0 ? (
+                                    <p className="px-3 py-4 text-center text-[11px] text-gray-400">ไม่มีการเบิกออก</p>
+                                  ) : (
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-[11px]">
+                                        <thead>
+                                          <tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
+                                            <th className="px-3 py-1.5 text-left font-semibold">วันที่</th>
+                                            <th className="px-3 py-1.5 text-left font-semibold">แผนก</th>
+                                            <th className="px-3 py-1.5 text-left font-semibold">พนักงาน</th>
+                                            <th className="px-3 py-1.5 text-center font-semibold">จำนวน</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {m.stockOutDays.map((d, i) => (
+                                            <tr key={i} className="border-b border-gray-50 last:border-0">
+                                              <td className="px-3 py-1.5 tabular-nums text-gray-700 whitespace-nowrap">
+                                                {fmtDate(d.date)}
+                                                {d.type === 'borrow' && (
+                                                  <span className="ml-1 px-1 py-0.5 bg-amber-50 text-amber-700 rounded text-[9px] font-semibold">ยืม</span>
+                                                )}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-gray-700 truncate max-w-[120px]" title={d.dept}>{d.dept}</td>
+                                              <td className="px-3 py-1.5 text-gray-700 truncate max-w-[160px]" title={d.emp}>
+                                                {d.emp}
+                                                {d.empCode && <span className="ml-1 text-gray-400 text-[9px]">{d.empCode}</span>}
+                                              </td>
+                                              <td className="px-3 py-1.5 text-center tabular-nums font-semibold" style={{ color: VIZ.secondary }}>
+                                                {fmtNum(d.qty)}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
+
                   {/* Total row */}
-                  <tr className="bg-gray-50 font-bold border-t border-gray-200">
-                    <td className="px-3 py-2 text-gray-900">รวม</td>
+                  <tr className="bg-gray-50 font-bold border-t-2 border-gray-300">
+                    <td className="px-2 py-2"></td>
+                    <td className="px-3 py-2 text-gray-900">รวม ({productAnalytics.monthly.length} เดือน)</td>
                     <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.positive }}>{fmtNum(productAnalytics.totalIn)}</td>
                     <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.secondary }}>{fmtNum(productAnalytics.totalOut)}</td>
                     <td className={`px-3 py-2 text-center tabular-nums ${productAnalytics.totalIn - productAnalytics.totalOut >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {productAnalytics.totalIn - productAnalytics.totalOut > 0 ? '+' : ''}{fmtNum(productAnalytics.totalIn - productAnalytics.totalOut)}
                     </td>
+                    <td className="px-3 py-2 text-right tabular-nums" style={{ color: VIZ.primary }}>
+                      {fmtNum(productAnalytics.endingBalance)}
+                    </td>
                   </tr>
                 </tbody>
               </table>
             </div>
+            {/* Reconciliation note */}
+            {productAnalytics.endingBalance !== selectedStock.current_stock && (
+              <p className="mt-3 text-[11px] text-gray-500 flex items-start gap-1.5">
+                <span className="font-semibold text-gray-600">หมายเหตุ:</span>
+                <span>
+                  ยอดสิ้นสุดของช่วงที่เลือก <span className="font-semibold">{fmtNum(productAnalytics.endingBalance)}</span> ต่างจากสต็อกคงเหลือปัจจุบัน <span className="font-semibold">{fmtNum(selectedStock.current_stock)}</span> — เกิดจากรายการหลังวันที่สิ้นสุดช่วง (ต่าง {fmtNum(selectedStock.current_stock - productAnalytics.endingBalance)} {getUnitLabel(selectedStock.unit)})
+                </span>
+              </p>
+            )}
           </div>
 
           {/* Department + Employee detail table */}
