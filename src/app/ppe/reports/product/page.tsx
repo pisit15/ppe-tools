@@ -169,21 +169,55 @@ function BarChartSVG({ data, color }: { data: { label: string; value: number }[]
 
 /* ═══════════════════ Dual Line Chart ═══════════════════ */
 
-function TrendChart({ months, dataIn, dataOut }: { months: string[]; dataIn: number[]; dataOut: number[] }) {
+function TrendChart({ months, dataIn, dataOut, fullLabels }: { months: string[]; dataIn: number[]; dataOut: number[]; fullLabels?: string[] }) {
   const all = [...dataIn, ...dataOut];
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (!all.length || all.every(v => v === 0)) return <p className="text-gray-400 text-sm py-6 text-center">ไม่มีข้อมูล</p>;
   const W = 500, H = 140, PX = 40, PY = 16, PB = 24;
   const max = Math.max(...all, 1);
   const cH = H - PY - PB;
-  const pts = (d: number[]) => d.map((v, i) => ({ x: PX + (i / Math.max(d.length - 1, 1)) * (W - PX - 8), y: PY + (1 - v / max) * cH }));
+  const xAt = (i: number, n: number) => PX + (i / Math.max(n - 1, 1)) * (W - PX - 8);
+  const pts = (d: number[]) => d.map((v, i) => ({ x: xAt(i, d.length), y: PY + (1 - v / max) * cH }));
   const line = (p: { x: number; y: number }[]) => p.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x},${pt.y}`).join(' ');
   const area = (p: { x: number; y: number }[]) => `${line(p)} L${p[p.length - 1].x},${PY + cH} L${p[0].x},${PY + cH} Z`;
   const pA = pts(dataIn), pB = pts(dataOut);
   const grid = [0, Math.round(max / 2), max];
+  const n = months.length;
+
+  const handleMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const relX = ((e.clientX - rect.left) / rect.width) * W;
+    if (relX < PX - 8 || relX > W) { setHoverIdx(null); return; }
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const d = Math.abs(xAt(i, n) - relX);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    setHoverIdx(best);
+  };
+
+  const hover = hoverIdx !== null ? {
+    x: xAt(hoverIdx, n),
+    monthLabel: fullLabels?.[hoverIdx] ?? months[hoverIdx],
+    inVal: dataIn[hoverIdx] ?? 0,
+    outVal: dataOut[hoverIdx] ?? 0,
+    yIn: pA[hoverIdx]?.y ?? 0,
+    yOut: pB[hoverIdx]?.y ?? 0,
+  } : null;
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 160 }}>
+    <div className="relative">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full"
+        style={{ maxHeight: 160 }}
+        onMouseMove={handleMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
         {grid.map((v, i) => { const y = PY + (1 - v / max) * cH; return (<g key={i}><line x1={PX} y1={y} x2={W - 8} y2={y} stroke={VIZ.grid} strokeWidth={0.5} /><text x={PX - 4} y={y + 3} textAnchor="end" className="text-[8px]" fill={VIZ.lightText}>{fmtNum(v)}</text></g>); })}
         <path d={area(pA)} fill={VIZ.positive} fillOpacity={0.1} />
         <path d={area(pB)} fill={VIZ.secondary} fillOpacity={0.1} />
@@ -192,14 +226,60 @@ function TrendChart({ months, dataIn, dataOut }: { months: string[]; dataIn: num
         {pA.map((p, i) => <circle key={`a${i}`} cx={p.x} cy={p.y} r={3} fill={VIZ.positive} />)}
         {pB.map((p, i) => <circle key={`b${i}`} cx={p.x} cy={p.y} r={3} fill={VIZ.secondary} />)}
         {months.map((m, i) => {
-          const x = PX + (i / Math.max(months.length - 1, 1)) * (W - PX - 8);
-          const show = months.length <= 8 || i % 2 === 0 || i === months.length - 1;
+          const x = xAt(i, n);
+          const show = n <= 8 || i % 2 === 0 || i === n - 1;
           return show ? <text key={i} x={x} y={H - 4} textAnchor="middle" className="text-[8px]" fill={VIZ.lightText}>{m}</text> : null;
         })}
+        {hover && (
+          <g pointerEvents="none">
+            <line x1={hover.x} y1={PY} x2={hover.x} y2={PY + cH} stroke={VIZ.primary} strokeWidth={0.8} strokeDasharray="3 3" opacity={0.6} />
+            <circle cx={hover.x} cy={hover.yIn} r={5} fill="#fff" stroke={VIZ.positive} strokeWidth={2} />
+            <circle cx={hover.x} cy={hover.yOut} r={5} fill="#fff" stroke={VIZ.secondary} strokeWidth={2} />
+          </g>
+        )}
       </svg>
+      {hover && (() => {
+        const leftPct = ((hover.x) / W) * 100;
+        const topPct = ((Math.min(hover.yIn, hover.yOut)) / H) * 100;
+        const flipLeft = leftPct > 70;
+        return (
+          <div
+            className="absolute pointer-events-none z-10 rounded-lg shadow-lg border border-gray-200 bg-white px-3 py-2"
+            style={{
+              left: `${leftPct}%`,
+              top: `${topPct}%`,
+              transform: `translate(${flipLeft ? 'calc(-100% - 10px)' : '10px'}, calc(-50% - 4px))`,
+              minWidth: 140,
+            }}
+          >
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1">{hover.monthLabel}</div>
+            <div className="flex items-center justify-between gap-3 text-[12px] mb-0.5">
+              <span className="flex items-center gap-1.5" style={{ color: VIZ.positive }}>
+                <span className="w-2 h-2 rounded-full inline-block" style={{ background: VIZ.positive }} />
+                รับเข้า
+              </span>
+              <span className="tabular-nums font-bold" style={{ color: VIZ.positive }}>+{fmtNum(hover.inVal)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-[12px]">
+              <span className="flex items-center gap-1.5" style={{ color: VIZ.secondary }}>
+                <span className="w-2 h-2 rounded-full inline-block" style={{ background: VIZ.secondary }} />
+                เบิกออก
+              </span>
+              <span className="tabular-nums font-bold" style={{ color: VIZ.secondary }}>−{fmtNum(hover.outVal)}</span>
+            </div>
+            <div className="mt-1.5 pt-1.5 border-t border-gray-100 flex items-center justify-between gap-3 text-[11px]">
+              <span className="text-gray-500">สุทธิ</span>
+              <span className="tabular-nums font-semibold" style={{ color: hover.inVal - hover.outVal >= 0 ? VIZ.positive : VIZ.accent }}>
+                {hover.inVal - hover.outVal >= 0 ? '+' : '−'}{fmtNum(Math.abs(hover.inVal - hover.outVal))}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
       <div className="flex items-center gap-4 mt-1 ml-10">
         <span className="flex items-center gap-1.5 text-[11px]" style={{ color: VIZ.positive }}><span className="w-3 h-0.5 rounded inline-block" style={{ background: VIZ.positive }} /> รับเข้า</span>
         <span className="flex items-center gap-1.5 text-[11px]" style={{ color: VIZ.secondary }}><span className="w-3 h-0.5 rounded inline-block" style={{ background: VIZ.secondary }} /> เบิกออก</span>
+        <span className="text-[10px] text-gray-400 ml-auto">เลื่อนเมาส์บนกราฟเพื่อดูค่า</span>
       </div>
     </div>
   );
@@ -933,7 +1013,7 @@ export default function ProductReportPage() {
           <div className="bg-white rounded-lg border border-gray-100 p-5">
             <h3 className="text-sm font-bold text-gray-900 mb-1">เทรนด์รับเข้า-เบิกออก</h3>
             <p className="text-[11px] text-gray-400 mb-3">{rangeLabel}</p>
-            <TrendChart months={productAnalytics.monthly.map(m => m.label)} dataIn={productAnalytics.monthly.map(m => m.stockIn)} dataOut={productAnalytics.monthly.map(m => m.stockOut)} />
+            <TrendChart months={productAnalytics.monthly.map(m => m.label)} fullLabels={productAnalytics.monthly.map(m => m.fullLabel)} dataIn={productAnalytics.monthly.map(m => m.stockIn)} dataOut={productAnalytics.monthly.map(m => m.stockOut)} />
           </div>
 
           {/* Department + Employee side by side */}
