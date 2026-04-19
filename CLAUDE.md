@@ -193,6 +193,14 @@ git push origin main
 - Push ทุกครั้งหลัง commit (Vercel auto-deploy)
 - ก่อน push ให้ verify ว่า TypeScript compile ผ่าน
 
+### Credential setup (persist across Cowork sessions)
+GitHub PAT ถูกเก็บไว้ที่ `<MOUNT>/.credentials/github-token` (fine-grained, pisit15/ppe-tools Contents RW, หมดอายุ 30 วัน) พร้อม helper script `git-credential-helper.sh` ที่อ่าน token ให้ git
+Session ใหม่ที่ต้องการ push ให้ clone repo แล้วรันคำสั่งเดียว (แทนที่ `<MOUNT>` ด้วยพาธของ mount folder):
+```bash
+git config credential.helper "!'<MOUNT>/.credentials/git-credential-helper.sh'"
+```
+ตัวอย่าง mount path ของเครื่อง Jobs: `/sessions/<session>/mnt/EA Dashboard`
+
 ## Testing & Validation
 - โปรเจกต์นี้ยังไม่มี test suite
 - เมื่อแก้ logic ให้ verify ด้วยการ build: `npm run build`
