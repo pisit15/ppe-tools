@@ -1135,7 +1135,7 @@ export default function ProductReportPage() {
                           })),
                         ];
 
-                        // Clickable expand/collapse handler reused in both header & summary rows
+                        // Clickable expand/collapse handler
                         const handleToggle = () => hasDetail && toggleMonth(m.key);
                         const handleKey = (e: React.KeyboardEvent) => {
                           if (hasDetail && (e.key === 'Enter' || e.key === ' ')) {
@@ -1143,11 +1143,11 @@ export default function ProductReportPage() {
                             toggleMonth(m.key);
                           }
                         };
+                        const startingBalance = m.runningBalance - (m.stockIn - m.stockOut);
 
-                        // The summary row (bars + ending balance) — shared between
-                        // collapsed state (at top, as the only row) and
-                        // expanded state (at the bottom, acting as a closing/subtotal row)
-                        const summaryRow = (
+                        // The "top" row — always present. Collapsed: shows summary (bars + balance).
+                        // Expanded: becomes a slim title bar (no bars/balance, those move to the panel footer).
+                        const topRow = (
                           <tr
                             onClick={handleToggle}
                             role={hasDetail ? 'button' : undefined}
@@ -1155,80 +1155,22 @@ export default function ProductReportPage() {
                             tabIndex={hasDetail ? 0 : undefined}
                             onKeyDown={handleKey}
                             className={`transition-colors ${hasDetail ? 'cursor-pointer hover:bg-gray-50' : ''} ${isOpen ? 'bg-blue-50/40' : 'border-b border-gray-50'}`}
-                            style={isOpen ? { borderTop: `2px solid ${VIZ.primary}30`, borderBottom: `1px solid ${VIZ.primary}20` } : undefined}
+                            style={isOpen ? { borderTop: `2px solid ${VIZ.primary}30` } : undefined}
                           >
                             <td className="px-1 py-2.5 text-center">
                               {hasDetail ? (
                                 <ChevronDown
                                   size={14}
-                                  className="text-gray-400 transition-transform inline-block"
-                                  style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(-90deg)' }}
+                                  className="text-gray-500 transition-transform inline-block"
+                                  style={{ transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}
                                   aria-hidden
                                 />
                               ) : (
                                 <span className="text-gray-200 text-[10px]" aria-hidden>—</span>
                               )}
                             </td>
-                            <td className="px-3 py-2.5">
-                              <div className="font-semibold text-gray-800">
-                                {isOpen ? `สรุป ${m.fullLabel}` : m.fullLabel}
-                              </div>
-                              {hasDetail && !isOpen && (
-                                <div className="text-[10px] text-gray-400 mt-0.5">
-                                  {m.stockInDays.length + m.stockOutDays.length} รายการ · คลิกเพื่อดู
-                                </div>
-                              )}
-                              {isOpen && (
-                                <div className="text-[10px] text-gray-500 mt-0.5">ปิดยอดสิ้นเดือน</div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <DivergingBar stockIn={m.stockIn} stockOut={m.stockOut} maxScale={maxMoveScale} />
-                            </td>
-                            <td className="px-3 py-2.5 text-right">
-                              <div className="text-lg font-bold tabular-nums leading-tight" style={{ color: VIZ.primary }}>
-                                {fmtNum(m.runningBalance)}
-                              </div>
-                              {diff !== 0 && (
-                                <div className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums"
-                                  style={{
-                                    background: diff > 0 ? `${VIZ.positive}14` : `${VIZ.accent}14`,
-                                    color: diff > 0 ? VIZ.positive : VIZ.accent,
-                                  }}>
-                                  <span aria-hidden>{diff > 0 ? '▲' : '▼'}</span>
-                                  {diff > 0 ? '+' : ''}{fmtNum(diff)}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-
-                        // Collapsed: only summary row
-                        if (!isOpen || !hasDetail) {
-                          return <Fragment key={m.key}>{summaryRow}</Fragment>;
-                        }
-
-                        // Expanded: compact header → detail rows → summary row at the bottom
-                        return (
-                          <Fragment key={m.key}>
-                            {/* Compact header (collapse trigger) */}
-                            <tr
-                              onClick={handleToggle}
-                              role="button"
-                              aria-expanded={true}
-                              tabIndex={0}
-                              onKeyDown={handleKey}
-                              className="cursor-pointer hover:bg-gray-100 transition-colors bg-blue-50/40"
-                              style={{ borderTop: `2px solid ${VIZ.primary}30` }}
-                            >
-                              <td className="px-1 py-2 text-center">
-                                <ChevronDown
-                                  size={14}
-                                  className="text-gray-500 inline-block"
-                                  aria-hidden
-                                />
-                              </td>
-                              <td colSpan={3} className="px-3 py-2">
+                            <td className={isOpen ? 'px-3 py-2' : 'px-3 py-2.5'} colSpan={isOpen ? 3 : 1}>
+                              {isOpen ? (
                                 <div className="flex items-center justify-between">
                                   <div>
                                     <span className="font-semibold text-gray-800">{m.fullLabel}</span>
@@ -1236,23 +1178,112 @@ export default function ProductReportPage() {
                                       {m.stockInDays.length + m.stockOutDays.length} รายการ
                                     </span>
                                   </div>
-                                  <span className="text-[10px] text-gray-500 italic">คลิกเพื่อปิดรายละเอียด</span>
+                                  <span className="text-[10px] text-gray-500 italic">คลิกเพื่อปิด</span>
                                 </div>
-                              </td>
-                            </tr>
-                            {/* Timeline detail */}
+                              ) : (
+                                <>
+                                  <div className="font-semibold text-gray-800">{m.fullLabel}</div>
+                                  {hasDetail && (
+                                    <div className="text-[10px] text-gray-400 mt-0.5">
+                                      {m.stockInDays.length + m.stockOutDays.length} รายการ · คลิกเพื่อดู
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </td>
+                            {!isOpen && (
+                              <>
+                                <td className="px-3 py-2.5">
+                                  <DivergingBar stockIn={m.stockIn} stockOut={m.stockOut} maxScale={maxMoveScale} />
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                  <div className="text-lg font-bold tabular-nums leading-tight" style={{ color: VIZ.primary }}>
+                                    {fmtNum(m.runningBalance)}
+                                  </div>
+                                  {diff !== 0 && (
+                                    <div className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums"
+                                      style={{
+                                        background: diff > 0 ? `${VIZ.positive}14` : `${VIZ.accent}14`,
+                                        color: diff > 0 ? VIZ.positive : VIZ.accent,
+                                      }}>
+                                      <span aria-hidden>{diff > 0 ? '▲' : '▼'}</span>
+                                      {diff > 0 ? '+' : ''}{fmtNum(diff)}
+                                    </div>
+                                  )}
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        );
+
+                        // Collapsed: just the summary row
+                        if (!isOpen || !hasDetail) {
+                          return <Fragment key={m.key}>{topRow}</Fragment>;
+                        }
+
+                        // Expanded: slim title row + drill-down panel (with opening line at top, closing footer at bottom, all inside one bordered container)
+                        return (
+                          <Fragment key={m.key}>
+                            {topRow}
                             <tr>
-                              <td colSpan={4} className="p-0" style={{ background: '#FAFBFC' }}>
+                              <td colSpan={4} className="p-0" style={{ background: '#FAFBFC', borderBottom: `2px solid ${VIZ.primary}30` }}>
                                 <div className="p-4">
-                                  <MonthTimeline
-                                    events={events}
-                                    startingBalance={m.runningBalance - (m.stockIn - m.stockOut)}
-                                  />
+                                  {/* Opening balance — gray thin line at top of panel */}
+                                  <div className="flex items-center justify-between px-3 py-2 text-[10px] uppercase tracking-wider border-b border-dashed border-gray-300 text-gray-500">
+                                    <span>ยอดยกมาเข้าเดือนนี้</span>
+                                    <span className="tabular-nums font-semibold text-gray-700">{fmtNum(startingBalance)}</span>
+                                  </div>
+
+                                  {/* Daily timeline */}
+                                  <div className="mt-3">
+                                    <MonthTimeline
+                                      events={events}
+                                      startingBalance={startingBalance}
+                                    />
+                                  </div>
+
+                                  {/* Closing footer — IN-PANEL subtotal card with strong visual weight */}
+                                  <div className="mt-3 rounded-lg overflow-hidden"
+                                    style={{ background: '#fff', border: `1px solid ${VIZ.primary}40`, boxShadow: `0 1px 3px ${VIZ.primary}18` }}>
+                                    {/* Header strip */}
+                                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white flex items-center justify-between"
+                                      style={{ background: VIZ.primary }}>
+                                      <span>ปิดยอดสิ้น {m.fullLabel}</span>
+                                      <span className="text-[9px] font-normal opacity-80">Closing balance</span>
+                                    </div>
+                                    {/* Body */}
+                                    <div className="flex items-stretch">
+                                      {/* Left: movement summary + bar */}
+                                      <div className="flex-1 px-4 py-3 border-r border-gray-100">
+                                        <div className="flex items-center gap-3 text-[11px] tabular-nums mb-1.5">
+                                          <span className="font-semibold" style={{ color: VIZ.positive }}>
+                                            รับเข้า +{fmtNum(m.stockIn)}
+                                          </span>
+                                          <span className="text-gray-300">·</span>
+                                          <span className="font-semibold" style={{ color: VIZ.secondary }}>
+                                            เบิกออก −{fmtNum(m.stockOut)}
+                                          </span>
+                                          <span className="text-gray-300">·</span>
+                                          <span className="font-semibold tabular-nums"
+                                            style={{ color: diff >= 0 ? VIZ.positive : VIZ.accent }}>
+                                            <span aria-hidden>{diff >= 0 ? '▲' : '▼'}</span> สุทธิ {diff > 0 ? '+' : ''}{fmtNum(diff)}
+                                          </span>
+                                        </div>
+                                        <DivergingBar stockIn={m.stockIn} stockOut={m.stockOut} maxScale={maxMoveScale} />
+                                      </div>
+                                      {/* Right: ending balance — dominant */}
+                                      <div className="px-5 py-3 text-right flex flex-col justify-center min-w-[140px]"
+                                        style={{ background: `${VIZ.primary}08` }}>
+                                        <div className="text-[10px] text-gray-500 leading-none">คงเหลือสิ้นเดือน</div>
+                                        <div className="text-2xl font-bold tabular-nums leading-tight mt-1" style={{ color: VIZ.primary }}>
+                                          {fmtNum(m.runningBalance)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
                               </td>
                             </tr>
-                            {/* Summary / closing row at the bottom */}
-                            {summaryRow}
                           </Fragment>
                         );
                       })}
