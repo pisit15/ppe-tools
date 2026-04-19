@@ -1120,69 +1120,122 @@ export default function ProductReportPage() {
                             po: null, dept: d.dept, emp: d.emp, empCode: d.empCode, note: d.note,
                           })),
                         ];
+
+                        // Clickable expand/collapse handler reused in both header & summary rows
+                        const handleToggle = () => hasDetail && toggleMonth(m.key);
+                        const handleKey = (e: React.KeyboardEvent) => {
+                          if (hasDetail && (e.key === 'Enter' || e.key === ' ')) {
+                            e.preventDefault();
+                            toggleMonth(m.key);
+                          }
+                        };
+
+                        // The summary row (bars + ending balance) — shared between
+                        // collapsed state (at top, as the only row) and
+                        // expanded state (at the bottom, acting as a closing/subtotal row)
+                        const summaryRow = (
+                          <tr
+                            onClick={handleToggle}
+                            role={hasDetail ? 'button' : undefined}
+                            aria-expanded={hasDetail ? isOpen : undefined}
+                            tabIndex={hasDetail ? 0 : undefined}
+                            onKeyDown={handleKey}
+                            className={`transition-colors ${hasDetail ? 'cursor-pointer hover:bg-gray-50' : ''} ${isOpen ? 'bg-blue-50/40' : 'border-b border-gray-50'}`}
+                            style={isOpen ? { borderTop: `2px solid ${VIZ.primary}30`, borderBottom: `1px solid ${VIZ.primary}20` } : undefined}
+                          >
+                            <td className="px-1 py-2.5 text-center">
+                              {hasDetail ? (
+                                <ChevronDown
+                                  size={14}
+                                  className="text-gray-400 transition-transform inline-block"
+                                  style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(-90deg)' }}
+                                  aria-hidden
+                                />
+                              ) : (
+                                <span className="text-gray-200 text-[10px]" aria-hidden>—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="font-semibold text-gray-800">
+                                {isOpen ? `สรุป ${m.fullLabel}` : m.fullLabel}
+                              </div>
+                              {hasDetail && !isOpen && (
+                                <div className="text-[10px] text-gray-400 mt-0.5">
+                                  {m.stockInDays.length + m.stockOutDays.length} รายการ · คลิกเพื่อดู
+                                </div>
+                              )}
+                              {isOpen && (
+                                <div className="text-[10px] text-gray-500 mt-0.5">ปิดยอดสิ้นเดือน</div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <DivergingBar stockIn={m.stockIn} stockOut={m.stockOut} maxScale={maxMoveScale} />
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <div className="text-lg font-bold tabular-nums leading-tight" style={{ color: VIZ.primary }}>
+                                {fmtNum(m.runningBalance)}
+                              </div>
+                              {diff !== 0 && (
+                                <div className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums"
+                                  style={{
+                                    background: diff > 0 ? `${VIZ.positive}14` : `${VIZ.accent}14`,
+                                    color: diff > 0 ? VIZ.positive : VIZ.accent,
+                                  }}>
+                                  <span aria-hidden>{diff > 0 ? '▲' : '▼'}</span>
+                                  {diff > 0 ? '+' : ''}{fmtNum(diff)}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+
+                        // Collapsed: only summary row
+                        if (!isOpen || !hasDetail) {
+                          return <Fragment key={m.key}>{summaryRow}</Fragment>;
+                        }
+
+                        // Expanded: compact header → detail rows → summary row at the bottom
                         return (
                           <Fragment key={m.key}>
+                            {/* Compact header (collapse trigger) */}
                             <tr
-                              onClick={() => hasDetail && toggleMonth(m.key)}
-                              role={hasDetail ? 'button' : undefined}
-                              aria-expanded={hasDetail ? isOpen : undefined}
-                              tabIndex={hasDetail ? 0 : undefined}
-                              onKeyDown={(e) => {
-                                if (hasDetail && (e.key === 'Enter' || e.key === ' ')) {
-                                  e.preventDefault();
-                                  toggleMonth(m.key);
-                                }
-                              }}
-                              className={`border-b border-gray-50 transition-colors ${hasDetail ? 'cursor-pointer hover:bg-gray-50' : ''} ${isOpen ? 'bg-blue-50/30' : ''}`}
+                              onClick={handleToggle}
+                              role="button"
+                              aria-expanded={true}
+                              tabIndex={0}
+                              onKeyDown={handleKey}
+                              className="cursor-pointer hover:bg-gray-100 transition-colors bg-blue-50/40"
+                              style={{ borderTop: `2px solid ${VIZ.primary}30` }}
                             >
-                              <td className="px-1 py-2.5 text-center">
-                                {hasDetail ? (
-                                  <ChevronDown
-                                    size={14}
-                                    className="text-gray-400 transition-transform inline-block"
-                                    style={{ transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}
-                                    aria-hidden
-                                  />
-                                ) : (
-                                  <span className="text-gray-200 text-[10px]" aria-hidden>—</span>
-                                )}
+                              <td className="px-1 py-2 text-center">
+                                <ChevronDown
+                                  size={14}
+                                  className="text-gray-500 inline-block"
+                                  aria-hidden
+                                />
                               </td>
-                              <td className="px-3 py-2.5">
-                                <div className="font-semibold text-gray-800">{m.fullLabel}</div>
-                                {hasDetail && (
-                                  <div className="text-[10px] text-gray-400 mt-0.5">
-                                    {m.stockInDays.length + m.stockOutDays.length} รายการ
+                              <td colSpan={3} className="px-3 py-2">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <span className="font-semibold text-gray-800">{m.fullLabel}</span>
+                                    <span className="ml-2 text-[10px] text-gray-500">
+                                      {m.stockInDays.length + m.stockOutDays.length} รายการ
+                                    </span>
                                   </div>
-                                )}
-                              </td>
-                              <td className="px-3 py-2.5">
-                                <DivergingBar stockIn={m.stockIn} stockOut={m.stockOut} maxScale={maxMoveScale} />
-                              </td>
-                              <td className="px-3 py-2.5 text-right">
-                                <div className="text-lg font-bold tabular-nums leading-tight" style={{ color: VIZ.primary }}>
-                                  {fmtNum(m.runningBalance)}
+                                  <span className="text-[10px] text-gray-500 italic">คลิกเพื่อปิดรายละเอียด</span>
                                 </div>
-                                {diff !== 0 && (
-                                  <div className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums"
-                                    style={{
-                                      background: diff > 0 ? `${VIZ.positive}14` : `${VIZ.accent}14`,
-                                      color: diff > 0 ? VIZ.positive : VIZ.accent,
-                                    }}>
-                                    <span aria-hidden>{diff > 0 ? '▲' : '▼'}</span>
-                                    {diff > 0 ? '+' : ''}{fmtNum(diff)}
-                                  </div>
-                                )}
                               </td>
                             </tr>
-                            {isOpen && hasDetail && (
-                              <tr>
-                                <td colSpan={4} className="p-0 border-b border-gray-100" style={{ background: '#FAFBFC' }}>
-                                  <div className="p-4">
-                                    <MonthTimeline events={events} />
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
+                            {/* Timeline detail */}
+                            <tr>
+                              <td colSpan={4} className="p-0" style={{ background: '#FAFBFC' }}>
+                                <div className="p-4">
+                                  <MonthTimeline events={events} />
+                                </div>
+                              </td>
+                            </tr>
+                            {/* Summary / closing row at the bottom */}
+                            {summaryRow}
                           </Fragment>
                         );
                       })}
