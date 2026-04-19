@@ -205,6 +205,189 @@ function TrendChart({ months, dataIn, dataOut }: { months: string[]; dataIn: num
   );
 }
 
+/* ═══════════════════ Sparkline (running balance trend) ═══════════════════ */
+
+function Sparkline({
+  points, opening, ending, height = 44,
+}: {
+  points: number[];
+  opening: number;
+  ending: number;
+  height?: number;
+}) {
+  if (points.length < 2) return null;
+  const W = 100; // viewBox width (percentage-based via preserveAspectRatio)
+  const H = height;
+  const PL = 4, PR = 4, PT = 5, PB = 5;
+  const innerW = W - PL - PR;
+  const innerH = H - PT - PB;
+  const max = Math.max(...points);
+  const min = Math.min(...points);
+  const span = max - min || 1;
+  const xs = points.map((_, i) => PL + (i / (points.length - 1)) * innerW);
+  const ys = points.map(v => PT + (1 - (v - min) / span) * innerH);
+  const pathD = points.map((_, i) => `${i === 0 ? 'M' : 'L'}${xs[i]},${ys[i]}`).join(' ');
+  const areaD = `${pathD} L${xs[xs.length - 1]},${PT + innerH} L${xs[0]},${PT + innerH} Z`;
+  const lastIdx = points.length - 1;
+  const trendUp = ending >= opening;
+  const endColor = trendUp ? VIZ.positive : VIZ.accent;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full block" style={{ height }}>
+      <path d={areaD} fill={VIZ.primary} fillOpacity={0.08} />
+      <path d={pathD} fill="none" stroke={VIZ.primary} strokeWidth={0.8} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      {points.map((_, i) => {
+        const isFirst = i === 0;
+        const isLast = i === lastIdx;
+        if (!isFirst && !isLast) return null;
+        return (
+          <circle
+            key={i}
+            cx={xs[i]}
+            cy={ys[i]}
+            r={1.8}
+            fill={isFirst ? VIZ.neutral : endColor}
+            stroke="#fff"
+            strokeWidth={0.6}
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ═══════════════════ Diverging Bar (in / out, shared scale) ═══════════════════ */
+
+function DivergingBar({
+  stockIn, stockOut, maxScale,
+}: { stockIn: number; stockOut: number; maxScale: number; }) {
+  const inPct = stockIn > 0 ? Math.max((stockIn / maxScale) * 100, 3) : 0;
+  const outPct = stockOut > 0 ? Math.max((stockOut / maxScale) * 100, 3) : 0;
+  return (
+    <div className="flex items-center w-full gap-1" style={{ minWidth: 180 }}>
+      {/* OUT side — grows right-to-left from center */}
+      <div className="flex-1 flex items-center justify-end gap-1.5">
+        {stockOut > 0 ? (
+          <>
+            <span className="text-[11px] tabular-nums font-semibold" style={{ color: VIZ.secondary }}>
+              −{fmtNum(stockOut)}
+            </span>
+            <div
+              className="h-3.5 rounded-sm"
+              style={{ width: `${outPct}%`, background: VIZ.secondary, minWidth: 4 }}
+              aria-label={`เบิกออก ${stockOut}`}
+            />
+          </>
+        ) : <span className="text-[10px] text-gray-300">—</span>}
+      </div>
+      {/* Center axis */}
+      <div className="w-px h-4 bg-gray-300 flex-shrink-0" aria-hidden />
+      {/* IN side — grows left-to-right from center */}
+      <div className="flex-1 flex items-center gap-1.5">
+        {stockIn > 0 ? (
+          <>
+            <div
+              className="h-3.5 rounded-sm"
+              style={{ width: `${inPct}%`, background: VIZ.positive, minWidth: 4 }}
+              aria-label={`รับเข้า ${stockIn}`}
+            />
+            <span className="text-[11px] tabular-nums font-semibold" style={{ color: VIZ.positive }}>
+              +{fmtNum(stockIn)}
+            </span>
+          </>
+        ) : <span className="text-[10px] text-gray-300">—</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ Timeline (chronological drill-down) ═══════════════════ */
+
+type TimelineEvent = {
+  date: string;
+  kind: 'stock_in' | 'return' | 'stock_out' | 'borrow';
+  qty: number;
+  po: string | null;
+  dept: string | null;
+  emp: string | null;
+  empCode: string | null;
+  note: string | null;
+};
+
+function MonthTimeline({ events }: { events: TimelineEvent[] }) {
+  if (events.length === 0) {
+    return <p className="text-[11px] text-gray-400 py-5 text-center">ไม่มีรายการในเดือนนี้</p>;
+  }
+  // Stable sort ascending by date, then by kind (in before out when same day — reads like a ledger)
+  const sorted = [...events].sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    const aIn = a.kind === 'stock_in' || a.kind === 'return';
+    const bIn = b.kind === 'stock_in' || b.kind === 'return';
+    if (aIn !== bIn) return aIn ? -1 : 1;
+    return 0;
+  });
+  let prevDate = '';
+  return (
+    <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white overflow-hidden">
+      {sorted.map((ev, i) => {
+        const isIn = ev.kind === 'stock_in' || ev.kind === 'return';
+        const color = isIn ? VIZ.positive : VIZ.secondary;
+        const showDate = ev.date !== prevDate;
+        prevDate = ev.date;
+        return (
+          <div
+            key={`${ev.date}-${i}`}
+            className="flex items-center gap-2.5 px-3 py-2 text-[11px] transition-colors hover:bg-gray-50"
+            style={{ borderLeft: `3px solid ${color}` }}
+          >
+            <span className="tabular-nums text-gray-600 w-14 flex-shrink-0 font-medium">
+              {showDate ? fmtDate(ev.date) : ''}
+            </span>
+            <span className="flex-shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full"
+              style={{ background: `${color}1A` }}
+              aria-hidden
+            >
+              {isIn
+                ? <ArrowDownToLine size={11} style={{ color }} strokeWidth={2.5} />
+                : <ArrowUpFromLine size={11} style={{ color }} strokeWidth={2.5} />}
+            </span>
+            <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+              {isIn ? (
+                <>
+                  <span className="font-semibold text-gray-800">รับเข้า</span>
+                  {ev.kind === 'return' && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold leading-none" style={{ background: `${VIZ.primary}14`, color: VIZ.primary }}>คืน</span>
+                  )}
+                  {ev.po && (
+                    <span className="px-1.5 py-0.5 rounded font-mono text-[10px] leading-none" style={{ background: `${VIZ.primary}10`, color: VIZ.primary, border: `1px solid ${VIZ.primary}30` }}>
+                      {ev.po}
+                    </span>
+                  )}
+                  {ev.note && <span className="text-gray-400 truncate" title={ev.note}>· {ev.note}</span>}
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-gray-800 truncate" title={ev.dept ?? ''}>{ev.dept || '—'}</span>
+                  <span className="text-gray-300">·</span>
+                  <span className="text-gray-600 truncate" title={ev.emp ?? ''}>{ev.emp || '—'}</span>
+                  {ev.empCode && <span className="text-gray-400 text-[10px] tabular-nums">{ev.empCode}</span>}
+                  {ev.kind === 'borrow' && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold leading-none" style={{ background: '#FEF3C7', color: '#92400E' }}>ยืม</span>
+                  )}
+                  {ev.note && <span className="text-gray-400 truncate" title={ev.note}>· {ev.note}</span>}
+                </>
+              )}
+            </div>
+            <span className="tabular-nums font-bold text-[13px] flex-shrink-0" style={{ color }}>
+              {isIn ? '+' : '−'}{fmtNum(ev.qty)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ═══════════════════ Export Functions ═══════════════════ */
 
 type ExportMonthly = { month: string; stockIn: number; stockOut: number; runningBalance: number };
@@ -760,223 +943,300 @@ export default function ProductReportPage() {
             </div>
           </div>
 
-          {/* Monthly detail table with opening balance + drill-down */}
-          <div className="bg-white rounded-lg border border-gray-100 p-5">
-            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">ตารางรายเดือน</h3>
-                <p className="text-[11px] text-gray-400 mt-0.5">คลิกแถวเดือนเพื่อดูรายละเอียดรายวัน · รับเข้าแสดงเลข PO · เบิกออกแสดงแผนก/พนักงาน</p>
-              </div>
-              <div className="flex items-center gap-1.5 text-[11px]">
-                <button
-                  onClick={() => expandAllMonths(productAnalytics.monthly.filter(m => m.stockInDays.length + m.stockOutDays.length > 0).map(m => m.key))}
-                  className="px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
-                >เปิดทั้งหมด</button>
-                <button
-                  onClick={collapseAllMonths}
-                  className="px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
-                >ปิดทั้งหมด</button>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b-2 border-gray-200 bg-gray-50">
-                    <th className="px-2 py-2 w-8"></th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-600">เดือน</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-600">รับเข้า</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-600">เบิกออก</th>
-                    <th className="px-3 py-2 text-center font-semibold text-gray-600">ผลต่าง</th>
-                    <th className="px-3 py-2 text-right font-semibold text-gray-600">คงเหลือสิ้นเดือน</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Opening balance row */}
-                  <tr className="border-b border-gray-200" style={{ background: `${VIZ.primary}0D` }}>
-                    <td className="px-2 py-2"></td>
-                    <td className="px-3 py-2 font-semibold text-gray-700" colSpan={4}>
-                      ยอดยกมา <span className="text-[10px] text-gray-400 font-normal">(ก่อน {monthKeyToFullLabel(dateRange.from)})</span>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-bold" style={{ color: VIZ.primary }}>
-                      {fmtNum(productAnalytics.openingBalance)}
-                    </td>
-                  </tr>
+          {/* ═══════════════════ Monthly Detail (redesigned) ═══════════════════ */}
+          {(() => {
+            const analytics = productAnalytics;
+            const opening = analytics.openingBalance;
+            const ending = analytics.endingBalance;
+            const net = analytics.totalIn - analytics.totalOut;
+            const trendUp = net >= 0;
+            const maxMoveScale = Math.max(
+              ...analytics.monthly.map(m => Math.max(m.stockIn, m.stockOut)),
+              1
+            );
+            const sparkPoints = [opening, ...analytics.monthly.map(m => m.runningBalance)];
+            const currentStock = selectedStock.current_stock;
+            const dbDelta = currentStock - ending;
+            return (
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                {/* Header + toolbar */}
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900">ไทม์ไลน์การเคลื่อนไหวรายเดือน</h3>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      คลิกเดือนเพื่อดูรายการรายวันทั้งหมด (รับเข้าพร้อมเลข PO · เบิกออกพร้อมผู้เบิก)
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => expandAllMonths(analytics.monthly.filter(m => m.stockInDays.length + m.stockOutDays.length > 0).map(m => m.key))}
+                      className="px-2.5 py-1 rounded-md border border-gray-200 text-[11px] text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                    >
+                      ขยายทั้งหมด
+                    </button>
+                    <button
+                      type="button"
+                      onClick={collapseAllMonths}
+                      className="px-2.5 py-1 rounded-md border border-gray-200 text-[11px] text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                    >
+                      ยุบทั้งหมด
+                    </button>
+                  </div>
+                </div>
 
-                  {/* Monthly rows with expandable detail */}
-                  {productAnalytics.monthly.map((m) => {
-                    const diff = m.stockIn - m.stockOut;
-                    const isOpen = expandedMonths.has(m.key);
-                    const hasDetail = m.stockInDays.length + m.stockOutDays.length > 0;
-                    return (
-                      <Fragment key={m.key}>
-                        <tr
-                          onClick={() => hasDetail && toggleMonth(m.key)}
-                          className={`border-b border-gray-50 ${hasDetail ? 'cursor-pointer hover:bg-blue-50/40' : ''} ${isOpen ? 'bg-blue-50/40' : ''}`}
-                        >
-                          <td className="px-2 py-2 text-center">
-                            {hasDetail ? (
-                              <ChevronDown
-                                size={14}
-                                className="text-gray-400 transition-transform inline-block"
-                                style={{ transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}
-                              />
-                            ) : (
-                              <span className="text-gray-200 text-[10px]">—</span>
+                {/* ── Flow Strip: ยอดยกมา → สุทธิ → คงเหลือ ── */}
+                <div className="mb-5 pb-5 border-b border-gray-100">
+                  <div className="flex items-stretch justify-center gap-1.5 flex-wrap">
+                    {/* Opening */}
+                    <div className="flex-1 min-w-[130px] max-w-[180px] px-3 py-3 rounded-xl text-center"
+                      style={{ background: '#F8FAFB', border: '1px solid #E5E7EB' }}>
+                      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">ยอดยกมา</div>
+                      <div className="text-2xl font-bold text-gray-700 tabular-nums leading-tight mt-0.5">
+                        {fmtNum(opening)}
+                      </div>
+                      <div className="text-[10px] text-gray-400 mt-0.5">
+                        ก่อน {monthKeyToLabel(dateRange.from)}
+                      </div>
+                    </div>
+
+                    {/* Arrow */}
+                    <div className="flex items-center text-gray-300 text-xl font-light select-none px-1" aria-hidden>→</div>
+
+                    {/* Net activity */}
+                    <div className="flex-1 min-w-[160px] max-w-[220px] px-3 py-3 rounded-xl text-center"
+                      style={{
+                        background: trendUp ? `${VIZ.positive}08` : `${VIZ.accent}08`,
+                        border: `1px solid ${trendUp ? `${VIZ.positive}33` : `${VIZ.accent}33`}`,
+                      }}>
+                      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">เคลื่อนไหวในช่วง</div>
+                      <div className="flex items-baseline justify-center gap-1.5 mt-0.5">
+                        <span className="text-[12px] tabular-nums font-semibold" style={{ color: VIZ.positive }}>
+                          +{fmtNum(analytics.totalIn)}
+                        </span>
+                        <span className="text-gray-300">/</span>
+                        <span className="text-[12px] tabular-nums font-semibold" style={{ color: VIZ.secondary }}>
+                          −{fmtNum(analytics.totalOut)}
+                        </span>
+                      </div>
+                      <div className="text-base font-bold tabular-nums leading-tight"
+                        style={{ color: trendUp ? VIZ.positive : VIZ.accent }}>
+                        <span className="text-sm mr-0.5" aria-hidden>{trendUp ? '▲' : '▼'}</span>
+                        สุทธิ {trendUp && net !== 0 ? '+' : ''}{fmtNum(net)}
+                      </div>
+                    </div>
+
+                    {/* Arrow */}
+                    <div className="flex items-center text-gray-300 text-xl font-light select-none px-1" aria-hidden>→</div>
+
+                    {/* Ending balance — dominant */}
+                    <div className="flex-1 min-w-[140px] max-w-[200px] px-3 py-3 rounded-xl text-center"
+                      style={{
+                        background: `linear-gradient(135deg, ${VIZ.primary}14, ${VIZ.primary}06)`,
+                        border: `1px solid ${VIZ.primary}40`,
+                      }}>
+                      <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: VIZ.primary }}>
+                        คงเหลือปลายช่วง
+                      </div>
+                      <div className="text-3xl font-bold tabular-nums leading-tight mt-0.5" style={{ color: VIZ.primary }}>
+                        {fmtNum(ending)}
+                      </div>
+                      <div className="text-[10px] mt-0.5 tabular-nums"
+                        style={{ color: dbDelta === 0 ? VIZ.positive : '#9CA3AF' }}>
+                        {dbDelta === 0
+                          ? '✓ ตรงกับสต็อกจริง'
+                          : `สต็อกจริง ${fmtNum(currentStock)} · ต่าง ${dbDelta > 0 ? '+' : ''}${fmtNum(dbDelta)}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sparkline of running balance */}
+                  {analytics.monthly.length >= 2 && (
+                    <div className="mt-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-gray-400 tabular-nums flex-shrink-0 w-20 text-right">
+                          แนวโน้มคงเหลือ
+                        </span>
+                        <div className="flex-1">
+                          <Sparkline points={sparkPoints} opening={opening} ending={ending} />
+                        </div>
+                        <span className="text-[10px] text-gray-400 tabular-nums flex-shrink-0 w-20">
+                          {monthKeyToLabel(analytics.monthly[0].key)} → {monthKeyToLabel(analytics.monthly[analytics.monthly.length - 1].key)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Compact monthly table (4 columns) ── */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <colgroup>
+                      <col style={{ width: 32 }} />
+                      <col style={{ width: 140 }} />
+                      <col />
+                      <col style={{ width: 140 }} />
+                    </colgroup>
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="px-1 py-2" aria-hidden></th>
+                        <th className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">เดือน</th>
+                        <th className="px-3 py-2 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                          <span style={{ color: VIZ.secondary }}>← เบิกออก</span>
+                          <span className="mx-2 text-gray-300">|</span>
+                          <span style={{ color: VIZ.positive }}>รับเข้า →</span>
+                        </th>
+                        <th className="px-3 py-2 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">คงเหลือ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Opening balance row */}
+                      <tr style={{ background: `${VIZ.primary}08`, borderBottom: `2px solid ${VIZ.primary}20` }}>
+                        <td className="px-1 py-2.5" aria-hidden></td>
+                        <td className="px-3 py-2.5" colSpan={2}>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: VIZ.primary }} />
+                            <span className="font-semibold text-gray-700">ยอดยกมา</span>
+                            <span className="text-[10px] text-gray-400 font-normal">ก่อน {monthKeyToLabel(dateRange.from)}</span>
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-lg font-bold" style={{ color: VIZ.primary }}>
+                          {fmtNum(opening)}
+                        </td>
+                      </tr>
+
+                      {/* Monthly rows */}
+                      {analytics.monthly.map((m) => {
+                        const diff = m.stockIn - m.stockOut;
+                        const isOpen = expandedMonths.has(m.key);
+                        const hasDetail = m.stockInDays.length + m.stockOutDays.length > 0;
+                        const events: TimelineEvent[] = [
+                          ...m.stockInDays.map(d => ({
+                            date: d.date, kind: d.type, qty: d.qty,
+                            po: d.po, dept: null, emp: null, empCode: null, note: d.note,
+                          })),
+                          ...m.stockOutDays.map(d => ({
+                            date: d.date, kind: d.type, qty: d.qty,
+                            po: null, dept: d.dept, emp: d.emp, empCode: d.empCode, note: d.note,
+                          })),
+                        ];
+                        return (
+                          <Fragment key={m.key}>
+                            <tr
+                              onClick={() => hasDetail && toggleMonth(m.key)}
+                              role={hasDetail ? 'button' : undefined}
+                              aria-expanded={hasDetail ? isOpen : undefined}
+                              tabIndex={hasDetail ? 0 : undefined}
+                              onKeyDown={(e) => {
+                                if (hasDetail && (e.key === 'Enter' || e.key === ' ')) {
+                                  e.preventDefault();
+                                  toggleMonth(m.key);
+                                }
+                              }}
+                              className={`border-b border-gray-50 transition-colors ${hasDetail ? 'cursor-pointer hover:bg-gray-50' : ''} ${isOpen ? 'bg-blue-50/30' : ''}`}
+                            >
+                              <td className="px-1 py-2.5 text-center">
+                                {hasDetail ? (
+                                  <ChevronDown
+                                    size={14}
+                                    className="text-gray-400 transition-transform inline-block"
+                                    style={{ transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                                    aria-hidden
+                                  />
+                                ) : (
+                                  <span className="text-gray-200 text-[10px]" aria-hidden>—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <div className="font-semibold text-gray-800">{m.fullLabel}</div>
+                                {hasDetail && (
+                                  <div className="text-[10px] text-gray-400 mt-0.5">
+                                    {m.stockInDays.length + m.stockOutDays.length} รายการ
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <DivergingBar stockIn={m.stockIn} stockOut={m.stockOut} maxScale={maxMoveScale} />
+                              </td>
+                              <td className="px-3 py-2.5 text-right">
+                                <div className="text-lg font-bold tabular-nums leading-tight" style={{ color: VIZ.primary }}>
+                                  {fmtNum(m.runningBalance)}
+                                </div>
+                                {diff !== 0 && (
+                                  <div className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums"
+                                    style={{
+                                      background: diff > 0 ? `${VIZ.positive}14` : `${VIZ.accent}14`,
+                                      color: diff > 0 ? VIZ.positive : VIZ.accent,
+                                    }}>
+                                    <span aria-hidden>{diff > 0 ? '▲' : '▼'}</span>
+                                    {diff > 0 ? '+' : ''}{fmtNum(diff)}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                            {isOpen && hasDetail && (
+                              <tr>
+                                <td colSpan={4} className="p-0 border-b border-gray-100" style={{ background: '#FAFBFC' }}>
+                                  <div className="p-4">
+                                    <MonthTimeline events={events} />
+                                  </div>
+                                </td>
+                              </tr>
                             )}
-                          </td>
-                          <td className="px-3 py-2 font-medium text-gray-900">{m.fullLabel}</td>
-                          <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.positive }}>
-                            {m.stockIn > 0 ? fmtNum(m.stockIn) : '-'}
-                          </td>
-                          <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.secondary }}>
-                            {m.stockOut > 0 ? fmtNum(m.stockOut) : '-'}
-                          </td>
-                          <td className={`px-3 py-2 text-center tabular-nums font-semibold ${diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                            {diff > 0 ? `+${fmtNum(diff)}` : diff < 0 ? fmtNum(diff) : '-'}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums font-semibold text-gray-700">
-                            {fmtNum(m.runningBalance)}
-                          </td>
-                        </tr>
-                        {isOpen && hasDetail && (
-                          <tr>
-                            <td colSpan={6} className="p-0 border-b border-gray-200" style={{ background: '#FAFBFC' }}>
-                              <div className="grid md:grid-cols-2 gap-3 p-4">
-                                {/* Stock In detail */}
-                                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                                  <div
-                                    className="px-3 py-2 flex items-center gap-2"
-                                    style={{ background: `${VIZ.positive}1A`, borderBottom: `1px solid ${VIZ.positive}40` }}
-                                  >
-                                    <ArrowDownToLine size={13} style={{ color: VIZ.positive }} />
-                                    <span className="text-[11px] font-bold" style={{ color: VIZ.positive }}>
-                                      รับเข้า · {m.stockInDays.length} รายการ · {fmtNum(m.stockIn)} {getUnitLabel(selectedStock.unit)}
-                                    </span>
-                                  </div>
-                                  {m.stockInDays.length === 0 ? (
-                                    <p className="px-3 py-4 text-center text-[11px] text-gray-400">ไม่มีการรับเข้า</p>
-                                  ) : (
-                                    <div className="overflow-x-auto">
-                                      <table className="w-full text-[11px]">
-                                        <thead>
-                                          <tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
-                                            <th className="px-3 py-1.5 text-left font-semibold">วันที่</th>
-                                            <th className="px-3 py-1.5 text-center font-semibold">จำนวน</th>
-                                            <th className="px-3 py-1.5 text-left font-semibold">เลข PO</th>
-                                            <th className="px-3 py-1.5 text-left font-semibold">หมายเหตุ</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {m.stockInDays.map((d, i) => (
-                                            <tr key={i} className="border-b border-gray-50 last:border-0">
-                                              <td className="px-3 py-1.5 tabular-nums text-gray-700 whitespace-nowrap">
-                                                {fmtDate(d.date)}
-                                                {d.type === 'return' && (
-                                                  <span className="ml-1 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-semibold">คืน</span>
-                                                )}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-center tabular-nums font-semibold" style={{ color: VIZ.positive }}>
-                                                {fmtNum(d.qty)}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-gray-700">
-                                                {d.po ? (
-                                                  <span className="inline-block px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-mono rounded">
-                                                    {d.po}
-                                                  </span>
-                                                ) : <span className="text-gray-300">—</span>}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-gray-500 truncate max-w-[180px]" title={d.note || ''}>
-                                                {d.note || <span className="text-gray-300">—</span>}
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  )}
-                                </div>
-                                {/* Stock Out detail */}
-                                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                                  <div
-                                    className="px-3 py-2 flex items-center gap-2"
-                                    style={{ background: `${VIZ.secondary}1A`, borderBottom: `1px solid ${VIZ.secondary}40` }}
-                                  >
-                                    <ArrowUpFromLine size={13} style={{ color: VIZ.secondary }} />
-                                    <span className="text-[11px] font-bold" style={{ color: VIZ.secondary }}>
-                                      เบิกออก · {m.stockOutDays.length} รายการ · {fmtNum(m.stockOut)} {getUnitLabel(selectedStock.unit)}
-                                    </span>
-                                  </div>
-                                  {m.stockOutDays.length === 0 ? (
-                                    <p className="px-3 py-4 text-center text-[11px] text-gray-400">ไม่มีการเบิกออก</p>
-                                  ) : (
-                                    <div className="overflow-x-auto">
-                                      <table className="w-full text-[11px]">
-                                        <thead>
-                                          <tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
-                                            <th className="px-3 py-1.5 text-left font-semibold">วันที่</th>
-                                            <th className="px-3 py-1.5 text-left font-semibold">แผนก</th>
-                                            <th className="px-3 py-1.5 text-left font-semibold">พนักงาน</th>
-                                            <th className="px-3 py-1.5 text-center font-semibold">จำนวน</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {m.stockOutDays.map((d, i) => (
-                                            <tr key={i} className="border-b border-gray-50 last:border-0">
-                                              <td className="px-3 py-1.5 tabular-nums text-gray-700 whitespace-nowrap">
-                                                {fmtDate(d.date)}
-                                                {d.type === 'borrow' && (
-                                                  <span className="ml-1 px-1 py-0.5 bg-amber-50 text-amber-700 rounded text-[9px] font-semibold">ยืม</span>
-                                                )}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-gray-700 truncate max-w-[120px]" title={d.dept}>{d.dept}</td>
-                                              <td className="px-3 py-1.5 text-gray-700 truncate max-w-[160px]" title={d.emp}>
-                                                {d.emp}
-                                                {d.empCode && <span className="ml-1 text-gray-400 text-[9px]">{d.empCode}</span>}
-                                              </td>
-                                              <td className="px-3 py-1.5 text-center tabular-nums font-semibold" style={{ color: VIZ.secondary }}>
-                                                {fmtNum(d.qty)}
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
+                          </Fragment>
+                        );
+                      })}
 
-                  {/* Total row */}
-                  <tr className="bg-gray-50 font-bold border-t-2 border-gray-300">
-                    <td className="px-2 py-2"></td>
-                    <td className="px-3 py-2 text-gray-900">รวม ({productAnalytics.monthly.length} เดือน)</td>
-                    <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.positive }}>{fmtNum(productAnalytics.totalIn)}</td>
-                    <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.secondary }}>{fmtNum(productAnalytics.totalOut)}</td>
-                    <td className={`px-3 py-2 text-center tabular-nums ${productAnalytics.totalIn - productAnalytics.totalOut >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {productAnalytics.totalIn - productAnalytics.totalOut > 0 ? '+' : ''}{fmtNum(productAnalytics.totalIn - productAnalytics.totalOut)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums" style={{ color: VIZ.primary }}>
-                      {fmtNum(productAnalytics.endingBalance)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            {/* Reconciliation note */}
-            {productAnalytics.endingBalance !== selectedStock.current_stock && (
-              <p className="mt-3 text-[11px] text-gray-500 flex items-start gap-1.5">
-                <span className="font-semibold text-gray-600">หมายเหตุ:</span>
-                <span>
-                  ยอดสิ้นสุดของช่วงที่เลือก <span className="font-semibold">{fmtNum(productAnalytics.endingBalance)}</span> ต่างจากสต็อกคงเหลือปัจจุบัน <span className="font-semibold">{fmtNum(selectedStock.current_stock)}</span> — เกิดจากรายการหลังวันที่สิ้นสุดช่วง (ต่าง {fmtNum(selectedStock.current_stock - productAnalytics.endingBalance)} {getUnitLabel(selectedStock.unit)})
-                </span>
-              </p>
-            )}
-          </div>
+                      {/* Total / ending row */}
+                      <tr style={{ background: `${VIZ.primary}0D`, borderTop: `2px solid ${VIZ.primary}40` }}>
+                        <td className="px-1 py-3" aria-hidden></td>
+                        <td className="px-3 py-3">
+                          <div className="font-bold text-gray-800">ยอดปลายช่วง</div>
+                          <div className="text-[10px] text-gray-500 mt-0.5">
+                            รวม {analytics.monthly.length} เดือน
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex items-center justify-center gap-4 text-[11px]">
+                            <span className="tabular-nums font-semibold" style={{ color: VIZ.positive }}>
+                              รวมรับเข้า +{fmtNum(analytics.totalIn)}
+                            </span>
+                            <span className="text-gray-300">·</span>
+                            <span className="tabular-nums font-semibold" style={{ color: VIZ.secondary }}>
+                              รวมเบิกออก −{fmtNum(analytics.totalOut)}
+                            </span>
+                            <span className="text-gray-300">·</span>
+                            <span className="tabular-nums font-semibold"
+                              style={{ color: net >= 0 ? VIZ.positive : VIZ.accent }}>
+                              <span aria-hidden>{net >= 0 ? '▲' : '▼'}</span> สุทธิ {net > 0 ? '+' : ''}{fmtNum(net)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <div className="text-2xl font-bold tabular-nums leading-tight" style={{ color: VIZ.primary }}>
+                            {fmtNum(ending)}
+                          </div>
+                          <div className="text-[10px] text-gray-500 mt-0.5">คงเหลือสิ้นสุด</div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Reconciliation note */}
+                {dbDelta !== 0 && (
+                  <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-md"
+                    style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                    <span className="text-amber-500 text-xs flex-shrink-0" aria-hidden>ⓘ</span>
+                    <p className="text-[11px] text-amber-900 leading-relaxed">
+                      ยอดสิ้นสุดของช่วง <span className="font-semibold tabular-nums">{fmtNum(ending)}</span> ต่างจากสต็อกคงเหลือจริง <span className="font-semibold tabular-nums">{fmtNum(currentStock)}</span>
+                      <span className="text-amber-700"> — ต่าง {dbDelta > 0 ? '+' : ''}{fmtNum(dbDelta)} {getUnitLabel(selectedStock.unit)}</span> (เกิดจากรายการหลังช่วงที่เลือก)
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Department + Employee detail table */}
           <div className="grid lg:grid-cols-2 gap-4">
