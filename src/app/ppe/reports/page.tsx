@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { BarChart3, ArrowUp, ArrowDown, Minus, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, X, ChevronDown, Users, Building2, Package } from 'lucide-react';
+import { BarChart3, ArrowUp, ArrowDown, Minus, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, X, ChevronDown, Users, Building2, Package, ChevronsUpDown } from 'lucide-react';
 import type { PPEStockSummary, PPETransaction } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
 
@@ -46,6 +46,43 @@ function makeMonthKey(year: number, month: number) {
 }
 
 const THAI_MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+/* ── Sortable table-header cell (shared by detail stock table) ── */
+type SortKeyLike = string;
+function SortableTh<K extends SortKeyLike>({
+  label,
+  align,
+  sortKey,
+  current,
+  onToggle,
+}: {
+  label: string;
+  align: 'left' | 'center' | 'right';
+  sortKey: K;
+  current: { key: K; dir: 'asc' | 'desc' } | null;
+  onToggle: (k: K) => void;
+}) {
+  const isActive = current?.key === sortKey;
+  const alignCls = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
+  const justifyCls = align === 'left' ? 'justify-start' : align === 'right' ? 'justify-end' : 'justify-center';
+  return (
+    <th className={`px-3 py-2 font-semibold text-gray-500 ${alignCls}`}>
+      <button
+        type="button"
+        onClick={() => onToggle(sortKey)}
+        className={`inline-flex items-center gap-1 select-none hover:text-gray-900 transition-colors ${justifyCls} ${isActive ? 'text-gray-900' : ''}`}
+        title="คลิกเพื่อเรียงข้อมูล"
+      >
+        <span>{label}</span>
+        {isActive ? (
+          current!.dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+        ) : (
+          <ChevronsUpDown size={12} className="opacity-40" />
+        )}
+      </button>
+    </th>
+  );
+}
 
 /* ═══════════════════════════ Month Range Picker ═══════════════════════════ */
 
@@ -428,6 +465,19 @@ export default function ReportsPage() {
   };
   const [dateRange, setDateRange] = useState<DateRange>(defaultRange);
 
+  // ── Sort state for detailed stock table ──
+  type StockSortKey = 'name' | 'type' | 'total_in' | 'total_out' | 'current_stock' | 'min_stock' | 'status';
+  type StockSortDir = 'asc' | 'desc';
+  const [stockSort, setStockSort] = useState<{ key: StockSortKey; dir: StockSortDir } | null>(null);
+
+  function toggleStockSort(key: StockSortKey) {
+    setStockSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' };
+      if (prev.dir === 'asc') return { key, dir: 'desc' };
+      return null; // cycle back to default sort
+    });
+  }
+
   useEffect(() => {
     Promise.all([
       fetch(`/api/ppe/stock?company_id=${companyId}`),
@@ -598,6 +648,40 @@ export default function ReportsPage() {
 
   const { stocks } = reportData;
   const totalStock = stocks.reduce((s, st) => s + st.current_stock, 0);
+
+  // Sorted view of stocks for the detail table.
+  // When no user sort is selected, default to low-stock first then by current_stock asc.
+  const sortedStocks = (() => {
+    const arr = [...stocks];
+    if (!stockSort) {
+      arr.sort((a, b) => {
+        const aLow = a.current_stock <= a.min_stock && a.min_stock > 0;
+        const bLow = b.current_stock <= b.min_stock && b.min_stock > 0;
+        if (aLow !== bLow) return aLow ? -1 : 1;
+        return a.current_stock - b.current_stock;
+      });
+      return arr;
+    }
+    const dir = stockSort.dir === 'asc' ? 1 : -1;
+    const cmpStr = (a: string, b: string) => a.localeCompare(b, 'th') * dir;
+    const cmpNum = (a: number, b: number) => (a - b) * dir;
+    arr.sort((a, b) => {
+      switch (stockSort.key) {
+        case 'name':          return cmpStr(a.name, b.name);
+        case 'type':          return cmpStr(getTypeLabel(a.type), getTypeLabel(b.type));
+        case 'total_in':      return cmpNum(a.total_in, b.total_in);
+        case 'total_out':     return cmpNum(a.total_out, b.total_out);
+        case 'current_stock': return cmpNum(a.current_stock, b.current_stock);
+        case 'min_stock':     return cmpNum(a.min_stock, b.min_stock);
+        case 'status': {
+          const aLow = a.current_stock <= a.min_stock && a.min_stock > 0 ? 1 : 0;
+          const bLow = b.current_stock <= b.min_stock && b.min_stock > 0 ? 1 : 0;
+          return cmpNum(aLow, bLow);
+        }
+      }
+    });
+    return arr;
+  })();
 
   const inChange = analytics.prevTotalIn > 0 ? ((analytics.totalIn - analytics.prevTotalIn) / analytics.prevTotalIn * 100) : 0;
   const outChange = analytics.prevTotalOut > 0 ? ((analytics.totalOut - analytics.prevTotalOut) / analytics.prevTotalOut * 100) : 0;
@@ -795,23 +879,17 @@ export default function ReportsPage() {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-100">
-                <th className="px-3 py-2 text-left font-semibold text-gray-500">สินค้า</th>
-                <th className="px-3 py-2 text-left font-semibold text-gray-500">ประเภท</th>
-                <th className="px-3 py-2 text-center font-semibold text-gray-500">รับเข้า</th>
-                <th className="px-3 py-2 text-center font-semibold text-gray-500">เบิกออก</th>
-                <th className="px-3 py-2 text-center font-semibold text-gray-500">คงเหลือ</th>
-                <th className="px-3 py-2 text-center font-semibold text-gray-500">ขั้นต่ำ</th>
-                <th className="px-3 py-2 text-center font-semibold text-gray-500">สถานะ</th>
+                <SortableTh label="สินค้า"   align="left"   sortKey="name"          current={stockSort} onToggle={toggleStockSort} />
+                <SortableTh label="ประเภท"  align="left"   sortKey="type"          current={stockSort} onToggle={toggleStockSort} />
+                <SortableTh label="รับเข้า"  align="center" sortKey="total_in"      current={stockSort} onToggle={toggleStockSort} />
+                <SortableTh label="เบิกออก" align="center" sortKey="total_out"     current={stockSort} onToggle={toggleStockSort} />
+                <SortableTh label="คงเหลือ" align="center" sortKey="current_stock" current={stockSort} onToggle={toggleStockSort} />
+                <SortableTh label="ขั้นต่ำ" align="center" sortKey="min_stock"     current={stockSort} onToggle={toggleStockSort} />
+                <SortableTh label="สถานะ"   align="center" sortKey="status"        current={stockSort} onToggle={toggleStockSort} />
               </tr>
             </thead>
             <tbody>
-              {stocks.length > 0 ? stocks
-                .sort((a, b) => {
-                  const aLow = a.current_stock <= a.min_stock && a.min_stock > 0;
-                  const bLow = b.current_stock <= b.min_stock && b.min_stock > 0;
-                  if (aLow !== bLow) return aLow ? -1 : 1;
-                  return a.current_stock - b.current_stock;
-                })
+              {stocks.length > 0 ? sortedStocks
                 .map((s) => {
                   const isLow = s.current_stock <= s.min_stock && s.min_stock > 0;
                   return (
