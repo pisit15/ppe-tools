@@ -23,13 +23,14 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabase();
-    const trimmedUsername = username.toLowerCase().trim();
+    // Preserve case to match DB stored usernames; use ilike for case-insensitive lookup.
+    const trimmedUsername = username.trim();
 
-    // 1) Check admin_accounts first
+    // 1) Check admin_accounts first (case-insensitive)
     const { data: adminData } = await supabase
       .from('admin_accounts')
       .select('*')
-      .eq('username', trimmedUsername)
+      .ilike('username', trimmedUsername)
       .eq('is_active', true)
       .single();
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     const { data: cuData } = await supabase
       .from('company_users')
       .select('*')
-      .eq('username', trimmedUsername)
+      .ilike('username', trimmedUsername)
       .eq('is_active', true)
       .single();
 
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
       const { data: tuData } = await supabase
         .from('tools_users')
         .select('*')
-        .eq('username', trimmedUsername)
+        .ilike('username', trimmedUsername)
         .eq('is_active', true)
         .single();
       if (tuData) {
