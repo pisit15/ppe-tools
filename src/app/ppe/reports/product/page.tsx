@@ -571,88 +571,10 @@ async function exportExcel(
   XLSX.writeFile(wb, filename);
 }
 
-async function exportPDF(
-  productName: string,
-  stock: PPEStockSummary,
-  monthlyData: ExportMonthly[],
-  openingBalance: number,
-  endingBalance: number,
-  deptData: { dept: string; qty: number }[],
-  empData: { name: string; dept: string; qty: number }[],
-  rangeLabel: string
-) {
-  const { default: jsPDF } = await import('jspdf');
-  const autoTable = (await import('jspdf-autotable')).default;
-  const doc = new jsPDF('p', 'mm', 'a4');
-
-  // Thai font fallback: use Helvetica (will show boxes for Thai in basic jsPDF)
-  // For proper Thai, we'd need to embed a Thai font — using simple ASCII-safe approach
-  doc.setFontSize(16);
-  doc.text('PPE Product Report', 14, 20);
-  doc.setFontSize(10);
-  doc.text(`Product: ${productName}`, 14, 30);
-  doc.text(`Type: ${getTypeLabel(stock.type)} | Unit: ${getUnitLabel(stock.unit)}`, 14, 36);
-  doc.text(`Period: ${rangeLabel}`, 14, 42);
-  doc.text(`Opening Balance: ${fmtNum(openingBalance)} | Ending Balance: ${fmtNum(endingBalance)} | Current Stock: ${fmtNum(stock.current_stock)} | Min: ${stock.min_stock} | Status: ${stock.current_stock <= stock.min_stock && stock.min_stock > 0 ? 'LOW - Need to Purchase' : 'Normal'}`, 14, 48);
-
-  let y = 56;
-
-  // Monthly table (with opening balance row + running balance column)
-  doc.setFontSize(12);
-  doc.text('Monthly Breakdown', 14, y);
-  y += 4;
-  const totalInAll = monthlyData.reduce((s, m) => s + m.stockIn, 0);
-  const totalOutAll = monthlyData.reduce((s, m) => s + m.stockOut, 0);
-  autoTable(doc, {
-    startY: y,
-    head: [['Month', 'Stock In', 'Stock Out', 'Difference', 'End Balance']],
-    body: [
-      ['Opening Balance', '', '', '', String(openingBalance)],
-      ...monthlyData.map(m => [m.month, String(m.stockIn), String(m.stockOut), String(m.stockIn - m.stockOut), String(m.runningBalance)]),
-      ['TOTAL', String(totalInAll), String(totalOutAll), String(totalInAll - totalOutAll), String(endingBalance)],
-    ],
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [78, 121, 167] },
-  });
-
-  y = (doc as any).lastAutoTable.finalY + 10;
-
-  // Department table
-  doc.setFontSize(12);
-  doc.text('Department Usage', 14, y);
-  y += 4;
-  const deptTotal = deptData.reduce((s, d) => s + d.qty, 0);
-  autoTable(doc, {
-    startY: y,
-    head: [['Department', 'Quantity', '% of Total']],
-    body: deptData.map(d => [d.dept, String(d.qty), deptTotal > 0 ? `${((d.qty / deptTotal) * 100).toFixed(1)}%` : '0%']),
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [78, 121, 167] },
-  });
-
-  y = (doc as any).lastAutoTable.finalY + 10;
-
-  // Employee table (if fits on page)
-  if (y < 220 && empData.length > 0) {
-    doc.setFontSize(12);
-    doc.text('Employee Detail', 14, y);
-    y += 4;
-    autoTable(doc, {
-      startY: y,
-      head: [['Employee', 'Department', 'Quantity']],
-      body: empData.slice(0, 20).map(e => [e.name, e.dept, String(e.qty)]),
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [78, 121, 167] },
-    });
-  }
-
-  // Footer
-  doc.setFontSize(8);
-  doc.setTextColor(150);
-  doc.text(`Generated: ${new Date().toLocaleDateString('th-TH')} | PPE Inventory System - tools.eashe.org`, 14, 285);
-
-  doc.save(`PPE_Report_${productName.replace(/\s/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`);
-}
+// PDF export now uses browser's built-in print dialog (window.print)
+// so Thai text renders correctly using system fonts, and the exported
+// PDF mirrors exactly what the user sees on screen.
+// Trigger logic lives inside the component (handleExportPDF).
 
 /* ═══════════════════ Main Page ═══════════════════ */
 
@@ -870,25 +792,58 @@ export default function ProductReportPage() {
 
   const handleExportPDF = useCallback(() => {
     if (!selectedStock || !productAnalytics) return;
-    exportPDF(
-      selectedStock.name, selectedStock,
-      productAnalytics.monthly.map(m => ({ month: m.fullLabel, stockIn: m.stockIn, stockOut: m.stockOut, runningBalance: m.runningBalance })),
-      productAnalytics.openingBalance,
-      productAnalytics.endingBalance,
-      productAnalytics.deptData,
-      productAnalytics.empData.map(e => ({ name: e.name, dept: e.dept, qty: e.qty })),
-      rangeLabel
-    );
-  }, [selectedStock, productAnalytics, rangeLabel]);
+
+    // 1) Expand all months so the printed PDF contains full daily detail
+    const keysWithData = productAnalytics.monthly
+      .filter(m => m.stockInDays.length + m.stockOutDays.length > 0)
+      .map(m => m.key);
+    expandAllMonths(keysWithData);
+
+    // 2) Hint browser's save-as filename via document.title
+    const originalTitle = document.title;
+    const safeName = selectedStock.name.replace(/[\\/:*?"<>|\s]+/g, '_');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    document.title = `PPE_Report_${safeName}_${dateStr}`;
+
+    // 3) Wait a tick for React to render expanded rows, then open print dialog
+    setTimeout(() => {
+      window.print();
+      // Restore title after print dialog closes
+      setTimeout(() => { document.title = originalTitle; }, 800);
+    }, 350);
+  }, [selectedStock, productAnalytics, expandAllMonths]);
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-full min-h-[400px]"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" /></div>;
   }
 
   return (
-    <div className="space-y-4 max-w-[1400px]">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div id="ppe-print-area" className="space-y-4 max-w-[1400px] ppe-print-root">
+      {/* ── Print-only header (shown only when printing) ── */}
+      <div className="print-only-header">
+        <div className="print-title-row">
+          <div>
+            <div className="print-title">รายงานสินค้า PPE</div>
+            <div className="print-subtitle">สำหรับแผนกจัดซื้อ</div>
+          </div>
+          {selectedStock && (
+            <div className="print-product">
+              <div className="print-product-name">{selectedStock.name}</div>
+              <div className="print-product-meta">
+                {getTypeLabel(selectedStock.type)} · {getUnitLabel(selectedStock.unit)}
+              </div>
+            </div>
+          )}
+          <div className="print-meta">
+            <div><strong>ช่วงข้อมูล:</strong> {rangeLabel}</div>
+            <div><strong>จัดทำเมื่อ:</strong> {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+            <div className="print-meta-light">tools.eashe.org/ppe — PPE Inventory System</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Header (screen) */}
+      <div className="flex items-center justify-between flex-wrap gap-3 print-hide">
         <div className="flex items-center gap-2">
           <Package size={22} className="text-gray-600" />
           <h1 className="text-xl font-bold text-gray-900">รายงานสินค้า PPE</h1>
@@ -898,7 +853,7 @@ export default function ProductReportPage() {
       </div>
 
       {/* Product selector + Export buttons */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-3 flex-wrap print-hide">
         {/* Search/Select product */}
         <div ref={dropdownRef} className="relative flex-1 min-w-[280px] max-w-[500px]">
           <div className="relative">
@@ -1061,7 +1016,7 @@ export default function ProductReportPage() {
                       คลิกเดือนเพื่อดูรายการรายวันทั้งหมด (รับเข้าพร้อมเลข PO · เบิกออกพร้อมผู้เบิก)
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 print-hide">
                     <button
                       type="button"
                       onClick={() => expandAllMonths(analytics.monthly.filter(m => m.stockInDays.length + m.stockOutDays.length > 0).map(m => m.key))}
@@ -1471,6 +1426,186 @@ export default function ProductReportPage() {
           </div>
         </>
       )}
+
+      {/* ═══════════════════ Print styles ═══════════════════ */}
+      <style jsx global>{`
+        /* ── Print-only header: hidden on screen ── */
+        .print-only-header { display: none; }
+
+        @media print {
+          @page {
+            size: A4;
+            margin: 14mm 10mm 14mm 10mm;
+          }
+
+          /* Force color fidelity so KPI backgrounds, charts, brand colors render */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          html, body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 11pt;
+            color: #111827 !important;
+          }
+
+          /* Hide global chrome: sidebar, header nav, any element tagged no-print */
+          aside,
+          header[role="banner"],
+          nav[aria-label="main"],
+          .no-print,
+          [data-no-print="true"],
+          .print-hide {
+            display: none !important;
+          }
+
+          /* Collapse layout paddings around the page */
+          main,
+          main > div {
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+          }
+          body > div,
+          #__next,
+          #__next > div {
+            display: block !important;
+            background: white !important;
+          }
+
+          /* Expand printable area to full width, drop shadows */
+          #ppe-print-area {
+            max-width: 100% !important;
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+
+          #ppe-print-area .shadow-sm,
+          #ppe-print-area .shadow,
+          #ppe-print-area .shadow-md,
+          #ppe-print-area .shadow-lg,
+          #ppe-print-area .shadow-xl {
+            box-shadow: none !important;
+          }
+
+          /* Show the print-only header block */
+          .print-only-header {
+            display: block !important;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #4E79A7;
+          }
+          .print-title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+          }
+          .print-title {
+            font-size: 18pt;
+            font-weight: 800;
+            color: #4E79A7;
+            line-height: 1.1;
+          }
+          .print-subtitle {
+            font-size: 9pt;
+            color: #6B7280;
+            margin-top: 2px;
+          }
+          .print-product {
+            flex: 1;
+            text-align: center;
+            padding: 0 12px;
+          }
+          .print-product-name {
+            font-size: 13pt;
+            font-weight: 700;
+            color: #111827;
+          }
+          .print-product-meta {
+            font-size: 9pt;
+            color: #6B7280;
+            margin-top: 2px;
+          }
+          .print-meta {
+            text-align: right;
+            font-size: 9pt;
+            color: #374151;
+            line-height: 1.5;
+          }
+          .print-meta strong {
+            color: #111827;
+            font-weight: 700;
+          }
+          .print-meta-light {
+            color: #9CA3AF;
+            font-size: 8pt;
+            margin-top: 3px;
+          }
+
+          /* Card styling for print: lighter borders, no rounded outlines break odd */
+          #ppe-print-area .bg-white {
+            background: #ffffff !important;
+            border: 1px solid #E5E7EB !important;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+
+          /* Tighten vertical spacing between cards */
+          #ppe-print-area.space-y-4 > * + *,
+          #ppe-print-area .space-y-4 > * + * {
+            margin-top: 10px !important;
+          }
+
+          /* Sections should try not to split mid-page */
+          #ppe-print-area h1,
+          #ppe-print-area h2,
+          #ppe-print-area h3 {
+            page-break-after: avoid;
+            break-after: avoid;
+          }
+
+          /* Tables: avoid breaks inside rows */
+          #ppe-print-area table { page-break-inside: auto; }
+          #ppe-print-area tr { page-break-inside: avoid; break-inside: avoid; }
+          #ppe-print-area thead { display: table-header-group; }
+
+          /* Employee detail table: drop max-height so all rows flow */
+          #ppe-print-area .max-h-80,
+          #ppe-print-area .max-h-\\[320px\\],
+          #ppe-print-area .max-h-96 {
+            max-height: none !important;
+            overflow: visible !important;
+          }
+          #ppe-print-area .overflow-auto,
+          #ppe-print-area .overflow-y-auto,
+          #ppe-print-area .overflow-x-auto {
+            overflow: visible !important;
+          }
+
+          /* Side-by-side grids: keep two-up on landscape; stack cleanly on portrait */
+          #ppe-print-area .grid {
+            gap: 10px !important;
+          }
+
+          /* Hide interactive sparkline tooltips, hover states — static is fine */
+          #ppe-print-area button {
+            cursor: default !important;
+          }
+
+          /* Prevent SVG from being clipped */
+          #ppe-print-area svg {
+            max-width: 100%;
+            height: auto !important;
+            overflow: visible !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
