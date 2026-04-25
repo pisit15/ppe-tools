@@ -19,6 +19,7 @@ import {
   Building2,
   LogOut,
   ChevronDown,
+  Network,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -84,6 +85,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
 
   const sheItems: NavItem[] = [
     { label: 'ภาพรวม', href: `/she-workforce${q}`, icon: <Briefcase size={20} /> },
+    { label: 'ผังองค์กร', href: `/she-workforce/organization${q}`, icon: <Network size={20} /> },
   ];
 
   const navItems = mode === 'she' ? sheItems : ppeItems;
