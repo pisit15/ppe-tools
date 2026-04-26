@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     const { data: companies } = await db
-      .from('companies')
+      .from('company_settings')
       .select('company_id, company_name')
       .order('company_name');
 

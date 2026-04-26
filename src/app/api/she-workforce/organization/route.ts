@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     // Companies list (for grouping/UI)
     const { data: companies } = await db
-      .from('companies')
+      .from('company_settings')
       .select('company_id, company_name')
       .order('company_name');
 
