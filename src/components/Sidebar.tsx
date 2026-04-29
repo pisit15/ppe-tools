@@ -20,6 +20,9 @@ import {
   LogOut,
   ChevronDown,
   Network,
+  ClipboardCheck,
+  ClipboardList,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -30,7 +33,7 @@ type NavItem = {
 };
 
 type SidebarProps = {
-  mode?: 'ppe' | 'she';
+  mode?: 'ppe' | 'she' | 'site-visit';
 };
 
 export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
@@ -88,13 +91,22 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     { label: 'ผังองค์กร', href: `/she-workforce/organization${q}`, icon: <Network size={20} /> },
   ];
 
-  const navItems = mode === 'she' ? sheItems : ppeItems;
-  const sectionTitle = mode === 'she' ? 'SHE Workforce' : 'PPE Inventory';
-  const bgColor = mode === 'she' ? 'bg-teal-900' : 'bg-blue-900';
-  const borderColor = mode === 'she' ? 'border-teal-800' : 'border-blue-800';
-  const hoverBg = mode === 'she' ? 'hover:bg-teal-800' : 'hover:bg-blue-800';
-  const activeBg = mode === 'she' ? 'bg-teal-700' : 'bg-blue-700';
-  const mutedText = mode === 'she' ? 'text-teal-300' : 'text-blue-300';
+  const cid = activeCompanyId === 'all' ? (user?.companyId || 'all') : activeCompanyId;
+  const siteVisitItems: NavItem[] = [
+    { label: 'รายการประเมิน', href: `/projects/site-visit${q}`, icon: <ClipboardCheck size={20} /> },
+    { label: 'ประเมินใหม่', href: `/projects/site-visit/${cid}/assess${q}`, icon: <ClipboardList size={20} /> },
+    { label: 'ประวัติ', href: `/projects/site-visit/${cid}/history${q}`, icon: <History size={20} /> },
+    ...(isAdmin ? [{ label: 'จัดการเกณฑ์', href: `/projects/site-visit/manage${q}`, icon: <Settings size={20} /> }] : []),
+  ];
+
+  const navItems = mode === 'site-visit' ? siteVisitItems : mode === 'she' ? sheItems : ppeItems;
+  const sectionTitle = mode === 'site-visit' ? 'Site Visit' : mode === 'she' ? 'SHE Workforce' : 'PPE Inventory';
+  const isTeal = mode === 'she' || mode === 'site-visit';
+  const bgColor = isTeal ? 'bg-teal-900' : 'bg-blue-900';
+  const borderColor = isTeal ? 'border-teal-800' : 'border-blue-800';
+  const hoverBg = isTeal ? 'hover:bg-teal-800' : 'hover:bg-blue-800';
+  const activeBg = isTeal ? 'bg-teal-700' : 'bg-blue-700';
+  const mutedText = isTeal ? 'text-teal-300' : 'text-blue-300';
 
   const isActive = (href: string) => pathname === href.split('?')[0];
 
@@ -151,7 +163,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
               <select
                 value={activeCompanyId}
                 onChange={(e) => handleCompanyChange(e.target.value)}
-                className={`w-full ${mode === 'she' ? 'bg-teal-800 border-teal-700' : 'bg-blue-800 border-blue-700'} border text-white text-sm rounded-lg pl-8 pr-8 py-2 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/30`}
+                className={`w-full ${isTeal ? 'bg-teal-800 border-teal-700' : 'bg-blue-800 border-blue-700'} border text-white text-sm rounded-lg pl-8 pr-8 py-2 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/30`}
               >
                 <option value="all">ทุกบริษัท (ภาพรวม)</option>
                 {companies.map((c) => (

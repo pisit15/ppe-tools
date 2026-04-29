@@ -56,6 +56,15 @@ export const PROJECTS: Project[] = [
     href: '/she-workforce',
     ready: true,
   },
+  {
+    id: 'site-visit',
+    name: 'Site Visit Assessment',
+    description: 'ตรวจเยี่ยมสถานประกอบการ ประเมิน Safety & Environment ตาม Checklist',
+    icon: 'clipboard',
+    color: 'from-emerald-500 to-teal-700',
+    href: '/projects/site-visit',
+    ready: true,
+  },
 ];
 
 // User type returned from auth
