@@ -20,9 +20,6 @@ import {
   LogOut,
   ChevronDown,
   Network,
-  ClipboardCheck,
-  ClipboardList,
-  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -33,7 +30,7 @@ type NavItem = {
 };
 
 type SidebarProps = {
-  mode?: 'ppe' | 'she' | 'site-visit';
+  mode?: 'ppe' | 'she';
 };
 
 export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
@@ -91,17 +88,9 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     { label: 'ผังองค์กร', href: `/she-workforce/organization${q}`, icon: <Network size={20} /> },
   ];
 
-  const cid = activeCompanyId === 'all' ? (user?.companyId || 'all') : activeCompanyId;
-  const siteVisitItems: NavItem[] = [
-    { label: 'รายการประเมิน', href: `/projects/site-visit${q}`, icon: <ClipboardCheck size={20} /> },
-    { label: 'ประเมินใหม่', href: `/projects/site-visit/${cid}/assess${q}`, icon: <ClipboardList size={20} /> },
-    { label: 'ประวัติ', href: `/projects/site-visit/${cid}/history${q}`, icon: <History size={20} /> },
-    ...(isAdmin ? [{ label: 'จัดการเกณฑ์', href: `/projects/site-visit/manage${q}`, icon: <Settings size={20} /> }] : []),
-  ];
-
-  const navItems = mode === 'site-visit' ? siteVisitItems : mode === 'she' ? sheItems : ppeItems;
-  const sectionTitle = mode === 'site-visit' ? 'Site Visit' : mode === 'she' ? 'SHE Workforce' : 'PPE Inventory';
-  const isTeal = mode === 'she' || mode === 'site-visit';
+  const navItems = mode === 'she' ? sheItems : ppeItems;
+  const sectionTitle = mode === 'she' ? 'SHE Workforce' : 'PPE Inventory';
+  const isTeal = mode === 'she';
   const bgColor = isTeal ? 'bg-teal-900' : 'bg-blue-900';
   const borderColor = isTeal ? 'border-teal-800' : 'border-blue-800';
   const hoverBg = isTeal ? 'hover:bg-teal-800' : 'hover:bg-blue-800';
