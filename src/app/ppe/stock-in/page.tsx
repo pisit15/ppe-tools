@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { Search, Package, CheckCircle2, Clock, X, ChevronDown } from 'lucide-react';
 import type { PPEProduct } from '@/lib/types';
@@ -26,7 +27,12 @@ type RecentTx = { id: string; product_name: string; quantity: number; unit: stri
 
 export default function StockInPage() {
   const { user } = useAuth();
-  const companyId = user?.companyId || '';
+  const searchParams = useSearchParams();
+  const isAdmin = user?.role === 'admin';
+  const urlCompanyId = searchParams.get('company_id');
+  const companyId = isAdmin
+    ? (urlCompanyId || 'all')
+    : (user?.companyId || '');
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);

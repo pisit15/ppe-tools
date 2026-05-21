@@ -9,12 +9,17 @@ export async function GET(request: NextRequest) {
 
     let db;
     try { db = getSupabaseServer(); } catch { db = supabase; }
-    const { data, error } = await db
+    let query = db
       .from('ppe_employees')
       .select('*')
-      .eq('company_id', companyId)
-      .eq('is_active', true)
-      .order('name');
+      .eq('is_active', true);
+
+    // Admin view: 'all' / 'admin' returns data across all companies
+    if (companyId !== 'all' && companyId !== 'admin') {
+      query = query.eq('company_id', companyId);
+    }
+
+    const { data, error } = await query.order('name');
 
     if (error) throw error;
 

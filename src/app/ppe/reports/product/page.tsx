@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo, useRef, useCallback, Fragment } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import {
   Search, FileSpreadsheet, FileText, ChevronLeft, ChevronRight, ChevronDown,
@@ -580,7 +581,12 @@ async function exportExcel(
 
 export default function ProductReportPage() {
   const { user } = useAuth();
-  const companyId = user?.companyId || '';
+  const searchParams = useSearchParams();
+  const isAdmin = user?.role === 'admin';
+  const urlCompanyId = searchParams.get('company_id');
+  const companyId = isAdmin
+    ? (urlCompanyId || 'all')
+    : (user?.companyId || '');
   const [stocks, setStocks] = useState<PPEStockSummary[]>([]);
   const [transactions, setTransactions] = useState<PPETransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);

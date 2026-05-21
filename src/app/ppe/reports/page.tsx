@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { BarChart3, ArrowUp, ArrowDown, Minus, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, X, ChevronDown, Users, Building2, Package, ChevronsUpDown } from 'lucide-react';
 import type { PPEStockSummary, PPETransaction } from '@/lib/types';
@@ -453,7 +454,12 @@ interface ReportData {
 
 export default function ReportsPage() {
   const { user } = useAuth();
-  const companyId = user?.companyId || '';
+  const searchParams = useSearchParams();
+  const isAdmin = user?.role === 'admin';
+  const urlCompanyId = searchParams.get('company_id');
+  const companyId = isAdmin
+    ? (urlCompanyId || 'all')
+    : (user?.companyId || '');
   const [reportData, setReportData] = useState<ReportData>({ stocks: [], transactions: [] });
   const [isLoading, setIsLoading] = useState(true);
 

@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { Search, Filter, X, Package, ArrowDownCircle, ArrowUpCircle, RotateCcw, HandMetal, CalendarDays, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react';
 import type { PPETransaction } from '@/lib/types';
@@ -37,7 +38,12 @@ type TransactionWithProduct = PPETransaction & {
 
 export default function HistoryPage() {
   const { user } = useAuth();
-  const companyId = user?.companyId || '';
+  const searchParams = useSearchParams();
+  const isAdmin = user?.role === 'admin';
+  const urlCompanyId = searchParams.get('company_id');
+  const companyId = isAdmin
+    ? (urlCompanyId || 'all')
+    : (user?.companyId || '');
   const [transactions, setTransactions] = useState<TransactionWithProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 

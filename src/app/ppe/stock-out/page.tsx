@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { Search, Package, CheckCircle2, Clock, X, AlertTriangle, Users } from 'lucide-react';
 import type { PPEProduct, PPEEmployee } from '@/lib/types';
@@ -30,7 +31,12 @@ type RecentTx = { id: string; product_name: string; employee_name: string; quant
 
 export default function StockOutPage() {
   const { user } = useAuth();
-  const companyId = user?.companyId || '';
+  const searchParams = useSearchParams();
+  const isAdmin = user?.role === 'admin';
+  const urlCompanyId = searchParams.get('company_id');
+  const companyId = isAdmin
+    ? (urlCompanyId || 'all')
+    : (user?.companyId || '');
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [employees, setEmployees] = useState<PPEEmployee[]>([]);
   const [stockInfo, setStockInfo] = useState<StockInfo[]>([]);

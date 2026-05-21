@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { Search, Plus, Users, Building2, X, CheckCircle2 } from 'lucide-react';
 import type { PPEEmployee } from '@/lib/types';
@@ -81,7 +82,12 @@ function useToast() {
 
 export default function EmployeesPage() {
   const { user } = useAuth();
-  const companyId = user?.companyId || '';
+  const searchParams = useSearchParams();
+  const isAdmin = user?.role === 'admin';
+  const urlCompanyId = searchParams.get('company_id');
+  const companyId = isAdmin
+    ? (urlCompanyId || 'all')
+    : (user?.companyId || '');
   const { toasts, add: addToast } = useToast();
 
   const [employees, setEmployees] = useState<PPEEmployee[]>([]);

@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import {
   Plus,
@@ -49,7 +50,12 @@ type Toast = { type: 'success' | 'error'; msg: string } | null;
 
 export default function InventoryPage() {
   const { user } = useAuth();
-  const companyId = user?.companyId || '';
+  const searchParams = useSearchParams();
+  const isAdmin = user?.role === 'admin';
+  const urlCompanyId = searchParams.get('company_id');
+  const companyId = isAdmin
+    ? (urlCompanyId || 'all')
+    : (user?.companyId || '');
 
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [stockMap, setStockMap] = useState<Record<string, PPEStockSummary>>({});

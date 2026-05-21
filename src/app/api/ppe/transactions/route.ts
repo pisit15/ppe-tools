@@ -15,8 +15,12 @@ export async function GET(request: NextRequest) {
     try { db = getSupabaseServer(); } catch { db = supabase; }
     let query = db
       .from('ppe_transactions')
-      .select('*, ppe_products(name, type, image_url)')
-      .eq('company_id', companyId);
+      .select('*, ppe_products(name, type, image_url)');
+
+    // Admin view: 'all' / 'admin' returns data across all companies
+    if (companyId !== 'all' && companyId !== 'admin') {
+      query = query.eq('company_id', companyId);
+    }
 
     if (productId) {
       query = query.eq('product_id', productId);
