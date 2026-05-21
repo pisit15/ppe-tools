@@ -101,9 +101,24 @@ export default function StockOutPage() {
   }, []);
 
   const filteredProducts = useMemo(() => {
-    if (!productSearch) return products.sort((a, b) => a.name.localeCompare(b.name));
-    const q = productSearch.toLowerCase();
-    return products.filter(p => p.name.toLowerCase().includes(q) || getTypeLabel(p.type).toLowerCase().includes(q));
+    const sortFn = (a: PPEProduct, b: PPEProduct) => {
+      const ta = getTypeLabel(a.type);
+      const tb = getTypeLabel(b.type);
+      const tcmp = ta.localeCompare(tb, 'th');
+      if (tcmp !== 0) return tcmp;
+      return (a.name || '').localeCompare(b.name || '', 'th');
+    };
+    let list: PPEProduct[];
+    if (!productSearch) {
+      list = [...products];
+    } else {
+      const q = productSearch.toLowerCase();
+      list = products.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        getTypeLabel(p.type).toLowerCase().includes(q)
+      );
+    }
+    return list.sort(sortFn);
   }, [products, productSearch]);
 
   const filteredEmployees = useMemo(() => {
@@ -213,7 +228,7 @@ export default function StockOutPage() {
                   {showProductDD && (
                     <div className="absolute z-40 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-[420px] overflow-auto" style={{ width: 'calc(100% - 2rem)', maxWidth: 500 }}>
                       {filteredProducts.length === 0 && <p className="text-gray-400 text-sm p-3">ไม่พบสินค้า</p>}
-                      {filteredProducts.slice(0, 50).map(p => {
+                      {filteredProducts.map(p => {
                         const st = stockInfo.find(s => s.product_id === p.id);
                         return (
                           <button type="button" key={p.id} onClick={() => selectProduct(p)}

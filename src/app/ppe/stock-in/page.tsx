@@ -98,9 +98,24 @@ export default function StockInPage() {
   }, []);
 
   const filteredProducts = useMemo(() => {
-    if (!productSearch) return products.sort((a, b) => a.name.localeCompare(b.name));
-    const q = productSearch.toLowerCase();
-    return products.filter(p => p.name.toLowerCase().includes(q) || getTypeLabel(p.type).toLowerCase().includes(q));
+    const sortFn = (a: PPEProduct, b: PPEProduct) => {
+      const ta = getTypeLabel(a.type);
+      const tb = getTypeLabel(b.type);
+      const tcmp = ta.localeCompare(tb, 'th');
+      if (tcmp !== 0) return tcmp;
+      return (a.name || '').localeCompare(b.name || '', 'th');
+    };
+    let list: PPEProduct[];
+    if (!productSearch) {
+      list = [...products];
+    } else {
+      const q = productSearch.toLowerCase();
+      list = products.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        getTypeLabel(p.type).toLowerCase().includes(q)
+      );
+    }
+    return list.sort(sortFn);
   }, [products, productSearch]);
 
   const selectedProduct = products.find(p => p.id === formData.product_id);
@@ -225,7 +240,7 @@ export default function StockInPage() {
                   {showDropdown && (
                     <div className="absolute z-40 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-[420px] overflow-auto" style={{ width: 'calc(100% - 2rem)', maxWidth: 500 }}>
                       {filteredProducts.length === 0 && <p className="text-gray-400 text-sm p-3">ไม่พบสินค้า</p>}
-                      {filteredProducts.slice(0, 50).map(p => (
+                      {filteredProducts.map(p => (
                         <button type="button" key={p.id} onClick={() => selectProduct(p)}
                           className={`w-full text-left px-4 py-2.5 hover:bg-blue-50 flex items-center gap-3 border-b border-gray-50 transition-colors ${formData.product_id === p.id ? 'bg-blue-50' : ''}`}>
                           <span className="text-lg flex-shrink-0">{p.image_url ? <img src={p.image_url} alt="" className="w-6 h-6 rounded object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /> : getTypeEmoji(p.type)}</span>
