@@ -68,7 +68,7 @@ export default function StockOutPage() {
       fetch(`/api/ppe/products?company_id=${companyId}`).then(r => r.json()),
       fetch(`/api/ppe/employees?company_id=${companyId}`).then(r => r.json()),
       fetch(`/api/ppe/stock?company_id=${companyId}`).then(r => r.json()),
-      fetch(`/api/ppe/transactions?company_id=${companyId}&limit=20`).then(r => r.json()),
+      fetch(`/api/ppe/transactions?company_id=${companyId}&limit=100`).then(r => r.json()),
     ]).then(([prodData, empData, stockData, txData]) => {
       if (prodData.data) setProducts(prodData.data);
       if (empData.data) setEmployees(empData.data);
@@ -77,7 +77,7 @@ export default function StockOutPage() {
         setAllRecentRaw(txData.data || []);
         setRecentTx(txData.data
           .filter((t: Record<string, unknown>) => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow')
-          .slice(0, 8)
+          .slice(0, 50)
           .map((t: Record<string, unknown>) => ({
             id: t.id as string,
             product_name: ((t.ppe_products as Record<string, string> | null)?.name) || '—',
@@ -161,7 +161,7 @@ export default function StockOutPage() {
           id: Date.now().toString(), product_name: prodName, employee_name: empName,
           quantity: parseInt(formData.quantity), unit: formData.unit,
           transaction_date: formData.transaction_date, transaction_type: formData.transaction_type,
-        }, ...prev].slice(0, 8));
+        }, ...prev].slice(0, 50));
 
         // Update local stock info
         setStockInfo(prev => prev.map(s => s.product_id === formData.product_id ? { ...s, current_stock: s.current_stock - parseInt(formData.quantity) } : s));
@@ -374,7 +374,7 @@ export default function StockOutPage() {
               <h3 className="text-sm font-bold" style={{ color: VIZ.text }}>รายการล่าสุด</h3>
             </div>
             {recentTx.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
                 {recentTx.map(tx => (
                   <div key={tx.id} onClick={() => { const t = allRecentRaw.find(r => r.id === tx.id); if (t) setEditTx(t); }} className="py-2 px-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors" style={{ borderBottom: '1px solid #f5f5f5' }}>
                     <div className="flex items-center gap-2">
@@ -411,14 +411,14 @@ export default function StockOutPage() {
           setToast({ type: 'success', msg: 'บันทึกการแก้ไขสำเร็จ' });
           // refetch
           if (companyId) {
-            fetch(`/api/ppe/transactions?company_id=${companyId}&limit=20`)
+            fetch(`/api/ppe/transactions?company_id=${companyId}&limit=100`)
               .then(r => r.json())
               .then(txData => {
                 if (txData.data) {
                   setAllRecentRaw(txData.data || []);
                   setRecentTx(txData.data
                     .filter((t: Record<string, unknown>) => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow')
-                    .slice(0, 8)
+                    .slice(0, 50)
                     .map((t: Record<string, unknown>) => ({
                       id: t.id as string,
                       product_name: ((t.ppe_products as Record<string, string> | null)?.name) || '—',
@@ -436,14 +436,14 @@ export default function StockOutPage() {
           setToast({ type: 'success', msg: 'ลบรายการสำเร็จ' });
           // refetch
           if (companyId) {
-            fetch(`/api/ppe/transactions?company_id=${companyId}&limit=20`)
+            fetch(`/api/ppe/transactions?company_id=${companyId}&limit=100`)
               .then(r => r.json())
               .then(txData => {
                 if (txData.data) {
                   setAllRecentRaw(txData.data || []);
                   setRecentTx(txData.data
                     .filter((t: Record<string, unknown>) => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow')
-                    .slice(0, 8)
+                    .slice(0, 50)
                     .map((t: Record<string, unknown>) => ({
                       id: t.id as string,
                       product_name: ((t.ppe_products as Record<string, string> | null)?.name) || '—',
