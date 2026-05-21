@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import EditTransactionModal from '@/components/EditTransactionModal';
 import { Search, Package, CheckCircle2, Clock, X, ChevronDown } from 'lucide-react';
 import type { PPEProduct } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
@@ -38,6 +39,8 @@ export default function StockInPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [recentTx, setRecentTx] = useState<RecentTx[]>([]);
+  const [editTx, setEditTx] = useState<PPETransaction | null>(null);
+  const [allRecentRaw, setAllRecentRaw] = useState<PPETransaction[]>([]);
 
   /* ── Product Search ── */
   const [productSearch, setProductSearch] = useState('');
@@ -337,7 +340,7 @@ export default function StockInPage() {
             {recentTx.length > 0 ? (
               <div className="space-y-2">
                 {recentTx.map(tx => (
-                  <div key={tx.id} className="flex items-start gap-2 py-2 px-2 rounded-lg hover:bg-gray-50 transition-colors" style={{ borderBottom: '1px solid #f5f5f5' }}>
+                  <div key={tx.id} onClick={() => { const t = allRecentRaw.find(r => r.id === tx.id); if (t) setEditTx(t); }} className="flex items-start gap-2 py-2 px-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors" style={{ borderBottom: '1px solid #f5f5f5' }}>
                     <span className="text-xs font-semibold px-1.5 py-0.5 rounded mt-0.5" style={{
                       background: tx.transaction_type === 'stock_in' ? '#DCFCE7' : '#DBEAFE',
                       color: tx.transaction_type === 'stock_in' ? VIZ.positive : VIZ.primary,
@@ -359,6 +362,63 @@ export default function StockInPage() {
           </div>
         </div>
       </div>
+      <EditTransactionModal
+        transaction={editTx}
+        products={products}
+        employees={employees}
+        mode="stock_in_return"
+        onClose={() => setEditTx(null)}
+        onSaved={() => {
+          setEditTx(null);
+          setToast({ type: 'success', msg: 'บันทึกการแก้ไขสำเร็จ' });
+          // refetch
+          if (companyId) {
+            fetch(`/api/ppe/transactions?company_id=${companyId}&limit=20`)
+              .then(r => r.json())
+              .then(txData => {
+                if (txData.data) {
+                  setAllRecentRaw(txData.data || []);
+                  setRecentTx(txData.data
+                    .filter((t: Record<string, unknown>) => t.transaction_type === 'stock_in' || t.transaction_type === 'return')
+                    .slice(0, 8)
+                    .map((t: Record<string, unknown>) => ({
+                      id: t.id as string,
+                      product_name: ((t.ppe_products as Record<string, string> | null)?.name) || '—',
+                      employee_name: (t.employee_name as string) || '—',
+                      quantity: t.quantity as number, unit: t.unit as string,
+                      transaction_date: t.transaction_date as string,
+                      transaction_type: t.transaction_type as string,
+                    })));
+                }
+              });
+          }
+        }}
+        onDeleted={() => {
+          setEditTx(null);
+          setToast({ type: 'success', msg: 'ลบรายการสำเร็จ' });
+          // refetch
+          if (companyId) {
+            fetch(`/api/ppe/transactions?company_id=${companyId}&limit=20`)
+              .then(r => r.json())
+              .then(txData => {
+                if (txData.data) {
+                  setAllRecentRaw(txData.data || []);
+                  setRecentTx(txData.data
+                    .filter((t: Record<string, unknown>) => t.transaction_type === 'stock_in' || t.transaction_type === 'return')
+                    .slice(0, 8)
+                    .map((t: Record<string, unknown>) => ({
+                      id: t.id as string,
+                      product_name: ((t.ppe_products as Record<string, string> | null)?.name) || '—',
+                      employee_name: (t.employee_name as string) || '—',
+                      quantity: t.quantity as number, unit: t.unit as string,
+                      transaction_date: t.transaction_date as string,
+                      transaction_type: t.transaction_type as string,
+                    })));
+                }
+              });
+          }
+        }}
+      />
     </div>
   );
 }

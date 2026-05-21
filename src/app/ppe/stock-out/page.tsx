@@ -4,8 +4,9 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import EditTransactionModal from '@/components/EditTransactionModal';
 import { Search, Package, CheckCircle2, Clock, X, AlertTriangle, Users } from 'lucide-react';
-import type { PPEProduct, PPEEmployee } from '@/lib/types';
+import type { PPEProduct, PPEEmployee, PPETransaction } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES, DEPARTMENTS } from '@/lib/constants';
 import DateInput from '@/components/DateInput';
 
@@ -44,6 +45,8 @@ export default function StockOutPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [recentTx, setRecentTx] = useState<RecentTx[]>([]);
+  const [editTx, setEditTx] = useState<PPETransaction | null>(null);
+  const [allRecentRaw, setAllRecentRaw] = useState<PPETransaction[]>([]);
 
   /* ── Searchable dropdowns ── */
   const [productSearch, setProductSearch] = useState('');
@@ -71,6 +74,7 @@ export default function StockOutPage() {
       if (empData.data) setEmployees(empData.data);
       if (stockData.data) setStockInfo(stockData.data.map((s: Record<string, unknown>) => ({ product_id: s.product_id, current_stock: s.current_stock, min_stock: s.min_stock })));
       if (txData.data) {
+        setAllRecentRaw(txData.data || []);
         setRecentTx(txData.data
           .filter((t: Record<string, unknown>) => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow')
           .slice(0, 8)
@@ -372,7 +376,7 @@ export default function StockOutPage() {
             {recentTx.length > 0 ? (
               <div className="space-y-2">
                 {recentTx.map(tx => (
-                  <div key={tx.id} className="py-2 px-2 rounded-lg hover:bg-gray-50 transition-colors" style={{ borderBottom: '1px solid #f5f5f5' }}>
+                  <div key={tx.id} onClick={() => { const t = allRecentRaw.find(r => r.id === tx.id); if (t) setEditTx(t); }} className="py-2 px-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors" style={{ borderBottom: '1px solid #f5f5f5' }}>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{
                         background: tx.transaction_type === 'stock_out' ? '#FEE2E2' : '#FEF3C7',
@@ -396,6 +400,63 @@ export default function StockOutPage() {
           </div>
         </div>
       </div>
+      <EditTransactionModal
+        transaction={editTx}
+        products={products}
+        employees={employees}
+        mode="stock_out_borrow"
+        onClose={() => setEditTx(null)}
+        onSaved={() => {
+          setEditTx(null);
+          setToast({ type: 'success', msg: 'บันทึกการแก้ไขสำเร็จ' });
+          // refetch
+          if (companyId) {
+            fetch(`/api/ppe/transactions?company_id=${companyId}&limit=20`)
+              .then(r => r.json())
+              .then(txData => {
+                if (txData.data) {
+                  setAllRecentRaw(txData.data || []);
+                  setRecentTx(txData.data
+                    .filter((t: Record<string, unknown>) => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow')
+                    .slice(0, 8)
+                    .map((t: Record<string, unknown>) => ({
+                      id: t.id as string,
+                      product_name: ((t.ppe_products as Record<string, string> | null)?.name) || '—',
+                      employee_name: (t.employee_name as string) || '—',
+                      quantity: t.quantity as number, unit: t.unit as string,
+                      transaction_date: t.transaction_date as string,
+                      transaction_type: t.transaction_type as string,
+                    })));
+                }
+              });
+          }
+        }}
+        onDeleted={() => {
+          setEditTx(null);
+          setToast({ type: 'success', msg: 'ลบรายการสำเร็จ' });
+          // refetch
+          if (companyId) {
+            fetch(`/api/ppe/transactions?company_id=${companyId}&limit=20`)
+              .then(r => r.json())
+              .then(txData => {
+                if (txData.data) {
+                  setAllRecentRaw(txData.data || []);
+                  setRecentTx(txData.data
+                    .filter((t: Record<string, unknown>) => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow')
+                    .slice(0, 8)
+                    .map((t: Record<string, unknown>) => ({
+                      id: t.id as string,
+                      product_name: ((t.ppe_products as Record<string, string> | null)?.name) || '—',
+                      employee_name: (t.employee_name as string) || '—',
+                      quantity: t.quantity as number, unit: t.unit as string,
+                      transaction_date: t.transaction_date as string,
+                      transaction_type: t.transaction_type as string,
+                    })));
+                }
+              });
+          }
+        }}
+      />
     </div>
   );
 }
