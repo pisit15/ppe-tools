@@ -211,7 +211,7 @@ export default function EditTransactionModal({
                 placeholder="พิมพ์ค้นหาสินค้า..." />
             </div>
             {showProductDD && (
-              <div className="absolute z-50 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-52 overflow-auto w-full">
+              <div className="absolute z-50 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-[360px] overflow-auto w-full">
                 {filteredProducts.length === 0 && <p className="text-gray-400 text-sm p-3">ไม่พบสินค้า</p>}
                 {filteredProducts.map((p) => (
                   <button key={p.id} onClick={() => selectProduct(p)}
@@ -278,7 +278,7 @@ export default function EditTransactionModal({
                 className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 outline-none" />
             </div>
             {showEmployeeDD && (
-              <div className="absolute z-50 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-44 overflow-auto w-full">
+              <div className="absolute z-50 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-[280px] overflow-auto w-full">
                 {filteredEmployees.length === 0 && <p className="text-gray-400 text-sm p-3">ไม่พบพนักงาน</p>}
                 {filteredEmployees.map((e) => (
                   <button key={e.id} onClick={() => selectEmployee(e)}

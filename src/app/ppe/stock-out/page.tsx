@@ -211,7 +211,7 @@ export default function StockOutPage() {
                     {productSearch && <button type="button" onClick={() => { setProductSearch(''); setFormData(f => ({ ...f, product_id: '', unit: '' })); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
                   </div>
                   {showProductDD && (
-                    <div className="absolute z-40 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-60 overflow-auto" style={{ width: 'calc(100% - 2rem)', maxWidth: 500 }}>
+                    <div className="absolute z-40 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-[420px] overflow-auto" style={{ width: 'calc(100% - 2rem)', maxWidth: 500 }}>
                       {filteredProducts.length === 0 && <p className="text-gray-400 text-sm p-3">ไม่พบสินค้า</p>}
                       {filteredProducts.slice(0, 50).map(p => {
                         const st = stockInfo.find(s => s.product_id === p.id);
@@ -329,7 +329,7 @@ export default function StockOutPage() {
                     {employeeSearch && <button type="button" onClick={() => { setEmployeeSearch(''); setFormData(f => ({ ...f, employee_code: '', employee_name: '', department: '' })); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
                   </div>
                   {showEmployeeDD && (
-                    <div className="absolute z-40 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-52 overflow-auto" style={{ width: 'calc(100% - 2rem)', maxWidth: 400 }}>
+                    <div className="absolute z-40 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-[360px] overflow-auto" style={{ width: 'calc(100% - 2rem)', maxWidth: 400 }}>
                       {filteredEmployees.length === 0 && <p className="text-gray-400 text-sm p-3">ไม่พบพนักงาน</p>}
                       {filteredEmployees.slice(0, 40).map(emp => (
                         <button type="button" key={emp.id} onClick={() => selectEmployee(emp)}

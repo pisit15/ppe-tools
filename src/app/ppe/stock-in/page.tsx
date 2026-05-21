@@ -223,7 +223,7 @@ export default function StockInPage() {
                     )}
                   </div>
                   {showDropdown && (
-                    <div className="absolute z-40 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-60 overflow-auto" style={{ width: 'calc(100% - 2rem)', maxWidth: 500 }}>
+                    <div className="absolute z-40 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 max-h-[420px] overflow-auto" style={{ width: 'calc(100% - 2rem)', maxWidth: 500 }}>
                       {filteredProducts.length === 0 && <p className="text-gray-400 text-sm p-3">ไม่พบสินค้า</p>}
                       {filteredProducts.slice(0, 50).map(p => (
                         <button type="button" key={p.id} onClick={() => selectProduct(p)}
