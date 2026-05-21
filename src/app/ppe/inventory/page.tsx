@@ -15,6 +15,8 @@ import {
   Clipboard,
   AlertTriangle,
   CheckCircle2,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import type { PPEProduct, PPEStockSummary } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
@@ -63,6 +65,8 @@ export default function InventoryPage() {
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [sortField, setSortField] = useState<'name' | 'type' | 'unit' | 'current_stock' | 'min_stock'>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [toast, setToast] = useState<Toast>(null);
 
   const [formData, setFormData] = useState({
@@ -237,7 +241,7 @@ export default function InventoryPage() {
   }
 
   const filtered = useMemo(() => {
-    let list = products;
+    let list = [...products];
     if (filterType !== 'all') list = list.filter((p) => p.type === filterType);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -247,8 +251,52 @@ export default function InventoryPage() {
           getTypeLabel(p.type).toLowerCase().includes(q)
       );
     }
+    // sort
+    const dir = sortDir === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      let va: string | number;
+      let vb: string | number;
+      switch (sortField) {
+        case 'name':
+          va = a.name || ''; vb = b.name || '';
+          return va.localeCompare(vb, 'th') * dir;
+        case 'type':
+          va = getTypeLabel(a.type); vb = getTypeLabel(b.type);
+          return va.localeCompare(vb, 'th') * dir;
+        case 'unit':
+          va = getUnitLabel(a.unit); vb = getUnitLabel(b.unit);
+          return va.localeCompare(vb, 'th') * dir;
+        case 'current_stock':
+          va = stockMap[a.id]?.current_stock ?? 0;
+          vb = stockMap[b.id]?.current_stock ?? 0;
+          return ((va as number) - (vb as number)) * dir;
+        case 'min_stock':
+          va = a.min_stock ?? 0; vb = b.min_stock ?? 0;
+          return ((va as number) - (vb as number)) * dir;
+        default:
+          return 0;
+      }
+    });
     return list;
-  }, [products, search, filterType]);
+  }, [products, search, filterType, sortField, sortDir, stockMap]);
+
+  // Toggle sort: same field → flip direction; else set field & ascending
+  const toggleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  // Render sort indicator (returns JSX-friendly text/icon node — used inline)
+  const SortIcon = ({ field }: { field: typeof sortField }) => {
+    if (sortField !== field) return <ChevronDown size={12} className="opacity-30 inline-block ml-1" />;
+    return sortDir === 'asc'
+      ? <ChevronUp size={12} className="inline-block ml-1" style={{ color: VIZ.primary }} />
+      : <ChevronDown size={12} className="inline-block ml-1" style={{ color: VIZ.primary }} />;
+  };
 
   if (isLoading) {
     return (
@@ -705,34 +753,39 @@ export default function InventoryPage() {
                   รูป
                 </th>
                 <th
-                  className="px-6 py-3 text-left font-semibold text-sm"
+                  className="px-6 py-3 text-left font-semibold text-sm cursor-pointer select-none hover:bg-gray-50"
                   style={{ color: VIZ.text }}
+                  onClick={() => toggleSort('name')}
                 >
-                  ชื่อสินค้า
+                  ชื่อสินค้า<SortIcon field="name" />
                 </th>
                 <th
-                  className="px-6 py-3 text-left font-semibold text-sm"
+                  className="px-6 py-3 text-left font-semibold text-sm cursor-pointer select-none hover:bg-gray-50"
                   style={{ color: VIZ.text }}
+                  onClick={() => toggleSort('type')}
                 >
-                  ประเภท
+                  ประเภท<SortIcon field="type" />
                 </th>
                 <th
-                  className="px-6 py-3 text-left font-semibold text-sm"
+                  className="px-6 py-3 text-left font-semibold text-sm cursor-pointer select-none hover:bg-gray-50"
                   style={{ color: VIZ.text }}
+                  onClick={() => toggleSort('unit')}
                 >
-                  หน่วย
+                  หน่วย<SortIcon field="unit" />
                 </th>
                 <th
-                  className="px-6 py-3 text-center font-semibold text-sm"
+                  className="px-6 py-3 text-center font-semibold text-sm cursor-pointer select-none hover:bg-gray-50"
                   style={{ color: VIZ.text }}
+                  onClick={() => toggleSort('current_stock')}
                 >
-                  คงเหลือ
+                  คงเหลือ<SortIcon field="current_stock" />
                 </th>
                 <th
-                  className="px-6 py-3 text-center font-semibold text-sm"
+                  className="px-6 py-3 text-center font-semibold text-sm cursor-pointer select-none hover:bg-gray-50"
                   style={{ color: VIZ.text }}
+                  onClick={() => toggleSort('min_stock')}
                 >
-                  สต็อกขั้นต่ำ
+                  สต็อกขั้นต่ำ<SortIcon field="min_stock" />
                 </th>
                 <th
                   className="px-6 py-3 text-center font-semibold text-sm"
