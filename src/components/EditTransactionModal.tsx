@@ -3,11 +3,17 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Trash2, Save, AlertTriangle, Search, Users } from 'lucide-react';
 import type { PPEProduct, PPEEmployee, PPETransaction } from '@/lib/types';
-import { DEPARTMENTS } from '@/lib/constants';
+import { DEPARTMENTS, UNIT_TYPES } from '@/lib/constants';
+import DateInput from '@/components/DateInput';
 
 const DEPT_LABEL: Record<string, string> = Object.fromEntries(
   DEPARTMENTS.map((d) => [d.value, d.label])
 );
+function unitLabel(v: string | null | undefined): string {
+  if (!v) return 'หน่วย';
+  const found = UNIT_TYPES.find((u) => u.value === v);
+  return found?.label ?? v;
+}
 
 type Mode = 'stock_in_return' | 'stock_out_borrow';
 
@@ -224,17 +230,20 @@ export default function EditTransactionModal({
               <div className="flex items-center gap-2">
                 <input type="number" min="1" value={form.quantity || ''}
                   onChange={(e) => setForm((f) => ({ ...f, quantity: Number(e.target.value) }))}
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 tabular-nums text-center font-bold outline-none" />
-                <span className="text-xs px-3 py-2 rounded-lg bg-gray-100 text-gray-500">
-                  {selectedProduct?.unit || form.unit || 'หน่วย'}
+                  className="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 tabular-nums text-center font-bold outline-none" />
+                <span className="text-xs px-2 py-2 rounded-lg bg-gray-100 text-gray-500 flex-shrink-0 whitespace-nowrap">
+                  {unitLabel(selectedProduct?.unit || form.unit)}
                 </span>
               </div>
             </div>
             <div>
               <label className="block text-[11px] font-semibold mb-1.5 text-gray-500">วันที่ *</label>
-              <input type="date" value={form.transaction_date?.slice(0, 10) || ''}
-                onChange={(e) => setForm((f) => ({ ...f, transaction_date: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 outline-none" />
+              <DateInput
+                value={form.transaction_date?.slice(0, 10) || ''}
+                onChange={(iso) => setForm((f) => ({ ...f, transaction_date: iso }))}
+                required
+                ariaLabel="เลือกวันที่"
+              />
             </div>
           </div>
 
