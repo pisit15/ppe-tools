@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import EditTransactionModal from '@/components/EditTransactionModal';
 import { Search, Package, CheckCircle2, Clock, X, ChevronDown } from 'lucide-react';
-import type { PPEProduct } from '@/lib/types';
+import type { PPEProduct, PPEEmployee, PPETransaction } from '@/lib/types';
 import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
 import DateInput from '@/components/DateInput';
 
@@ -35,6 +35,7 @@ export default function StockInPage() {
     ? (urlCompanyId || 'all')
     : (user?.companyId || '');
   const [products, setProducts] = useState<PPEProduct[]>([]);
+  const [employees, setEmployees] = useState<PPEEmployee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
@@ -62,10 +63,13 @@ export default function StockInPage() {
     if (!companyId) return;
     Promise.all([
       fetch(`/api/ppe/products?company_id=${companyId}`).then(r => r.json()),
+      fetch(`/api/ppe/employees?company_id=${companyId}`).then(r => r.json()),
       fetch(`/api/ppe/transactions?company_id=${companyId}&limit=20`).then(r => r.json()),
-    ]).then(([prodData, txData]) => {
+    ]).then(([prodData, empData, txData]) => {
       if (prodData.data) setProducts(prodData.data);
+      if (empData.data) setEmployees(empData.data);
       if (txData.data) {
+        setAllRecentRaw(txData.data || []);
         const recent = txData.data
           .filter((t: Record<string, unknown>) => t.transaction_type === 'stock_in' || t.transaction_type === 'return')
           .slice(0, 8)
