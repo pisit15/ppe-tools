@@ -126,6 +126,7 @@ export default function EditTransactionModal({
           unit: form.unit,
           transaction_date: form.transaction_date,
           po_number: form.po_number || null,
+          recorded_by: form.recorded_by || null,
           employee_code: form.employee_code || null,
           employee_name: form.employee_name || null,
           department: form.department || null,
@@ -289,6 +290,26 @@ export default function EditTransactionModal({
               </div>
             )}
           </div>
+
+          {/* PO + Recorded by (stock-in only) */}
+          {isStockIn && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold mb-1.5 text-gray-500">เลข PO</label>
+                <input type="text" value={form.po_number || ''}
+                  onChange={(e) => setForm((f) => ({ ...f, po_number: e.target.value }))}
+                  placeholder="PO-xxxx"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 outline-none" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold mb-1.5 text-gray-500">บันทึกโดย</label>
+                <input type="text" value={form.recorded_by || ''}
+                  onChange={(e) => setForm((f) => ({ ...f, recorded_by: e.target.value }))}
+                  placeholder="ชื่อผู้บันทึก"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 outline-none" />
+              </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div>
