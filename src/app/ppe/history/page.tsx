@@ -5,9 +5,10 @@ import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { Search, Filter, X, Package, ArrowDownCircle, ArrowUpCircle, RotateCcw, HandMetal, CalendarDays, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react';
-import type { PPETransaction } from '@/lib/types';
+import type { PPETransaction, PPEProduct, PPEEmployee } from '@/lib/types';
 import { UNIT_TYPES } from '@/lib/constants';
 import DateInput from '@/components/DateInput';
+import EditTransactionModal from '@/components/EditTransactionModal';
 
 /* ── Professional Palette (Tableau-inspired) ── */
 const VIZ = {
@@ -45,6 +46,9 @@ export default function HistoryPage() {
     ? (urlCompanyId || 'all')
     : (user?.companyId || '');
   const [transactions, setTransactions] = useState<TransactionWithProduct[]>([]);
+  const [products, setProducts] = useState<PPEProduct[]>([]);
+  const [employees, setEmployees] = useState<PPEEmployee[]>([]);
+  const [editTx, setEditTx] = useState<PPETransaction | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   /* ── Filters ── */
@@ -69,9 +73,14 @@ export default function HistoryPage() {
 
   async function fetchTransactions() {
     try {
-      const res = await fetch(`/api/ppe/transactions?company_id=${companyId}&limit=5000`);
-      const data = await res.json();
-      if (data.data) setTransactions(data.data);
+      const [txRes, prodRes, empRes] = await Promise.all([
+        fetch(`/api/ppe/transactions?company_id=${companyId}&limit=5000`).then(r => r.json()),
+        fetch(`/api/ppe/products?company_id=${companyId}`).then(r => r.json()),
+        fetch(`/api/ppe/employees?company_id=${companyId}`).then(r => r.json()),
+      ]);
+      if (txRes.data) setTransactions(txRes.data);
+      if (prodRes.data) setProducts(prodRes.data);
+      if (empRes.data) setEmployees(empRes.data);
     } catch (error) {
       console.error('Error fetching transactions:', error);
     } finally {
@@ -439,8 +448,10 @@ export default function HistoryPage() {
                 return (
                   <tr
                     key={t.id}
-                    className="transition-colors hover:bg-gray-50/70"
+                    onClick={() => setEditTx(t)}
+                    className="transition-colors hover:bg-blue-50 cursor-pointer"
                     style={{ borderBottom: '1px solid #F3F4F6' }}
+                    title="คลิกเพื่อแก้ไข/ลบ"
                   >
                     <td className="px-4 py-2.5 tabular-nums text-gray-400 text-xs">{rowIdx}</td>
                     <td className="px-4 py-2.5 tabular-nums font-medium whitespace-nowrap" style={{ color: VIZ.text }}>
@@ -518,6 +529,17 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+      {editTx && (
+        <EditTransactionModal
+          transaction={editTx}
+          products={products}
+          employees={employees}
+          mode={editTx.transaction_type === 'stock_in' || editTx.transaction_type === 'return' ? 'stock_in_return' : 'stock_out_borrow'}
+          onClose={() => setEditTx(null)}
+          onSaved={() => { setEditTx(null); fetchTransactions(); }}
+          onDeleted={() => { setEditTx(null); fetchTransactions(); }}
+        />
+      )}
     </div>
   );
 }
