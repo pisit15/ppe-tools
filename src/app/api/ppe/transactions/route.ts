@@ -13,34 +13,47 @@ export async function GET(request: NextRequest) {
 
     let db;
     try { db = getSupabaseServer(); } catch { db = supabase; }
-    let query = db
-      .from('ppe_transactions')
-      .select('*, ppe_products(name, type, image_url)');
 
-    // Admin view: 'all' / 'admin' returns data across all companies
-    if (companyId !== 'all' && companyId !== 'admin') {
-      query = query.eq('company_id', companyId);
+    const buildQuery = () => {
+      let query = db
+        .from('ppe_transactions')
+        .select('*, ppe_products(name, type, image_url)');
+
+      // Admin view: 'all' / 'admin' returns data across all companies
+      if (companyId !== 'all' && companyId !== 'admin') {
+        query = query.eq('company_id', companyId);
+      }
+
+      if (productId) {
+        query = query.eq('product_id', productId);
+      }
+
+      if (startDate) {
+        query = query.gte('transaction_date', startDate);
+      }
+
+      if (endDate) {
+        query = query.lte('transaction_date', endDate);
+      }
+
+      return query.order('transaction_date', { ascending: false });
+    };
+
+    // Supabase caps each response at 1000 rows (PostgREST max-rows),
+    // so fetch in pages until we reach `limit` or run out of rows.
+    const PAGE_SIZE = 1000;
+    const rows: unknown[] = [];
+    let offset = 0;
+    while (offset < limit) {
+      const end = Math.min(offset + PAGE_SIZE, limit) - 1;
+      const { data, error } = await buildQuery().range(offset, end);
+      if (error) throw error;
+      if (data) rows.push(...data);
+      if (!data || data.length < end - offset + 1) break;
+      offset += PAGE_SIZE;
     }
 
-    if (productId) {
-      query = query.eq('product_id', productId);
-    }
-
-    if (startDate) {
-      query = query.gte('transaction_date', startDate);
-    }
-
-    if (endDate) {
-      query = query.lte('transaction_date', endDate);
-    }
-
-    const { data, error } = await query
-      .order('transaction_date', { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
-
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: rows });
   } catch (error) {
     console.error('Error fetching transactions:', error);
     return NextResponse.json(
