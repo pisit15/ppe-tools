@@ -26,15 +26,17 @@ export async function POST(request: NextRequest) {
     // Preserve case to match DB stored usernames; use ilike for case-insensitive lookup.
     const trimmedUsername = username.trim();
 
-    // 1) Check admin_accounts first (case-insensitive)
-    const { data: adminData } = await supabase
+    // 1) Check admin_accounts first (case-insensitive).
+    // NOTE: fetch all matches instead of .single() — .single() throws when the
+    // same username exists more than once, which used to break login entirely.
+    const { data: adminRows } = await supabase
       .from('admin_accounts')
       .select('*')
       .ilike('username', trimmedUsername)
-      .eq('is_active', true)
-      .single();
+      .eq('is_active', true);
 
-    if (adminData && adminData.password === password) {
+    const adminData = (adminRows || []).find(a => a.password === password);
+    if (adminData) {
       return NextResponse.json({
         success: true,
         user: {
@@ -50,40 +52,32 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 2) Check company_users table first, then tools_users as fallback
+    // 2) Check company_users table first, then tools_users as fallback.
+    // A user may exist in multiple companies with the same username — fetch all
+    // matches and pick the row whose password matches (newest record first).
     let userData: Record<string, unknown> | null = null;
 
-    const { data: cuData } = await supabase
+    const { data: cuRows } = await supabase
       .from('company_users')
       .select('*')
       .ilike('username', trimmedUsername)
       .eq('is_active', true)
-      .single();
+      .order('created_at', { ascending: false });
 
-    if (cuData) {
-      userData = cuData;
-    } else {
+    userData = (cuRows || []).find(r => r.password === password) || null;
+
+    if (!userData) {
       // Fallback: check tools_users table
-      const { data: tuData } = await supabase
+      const { data: tuRows } = await supabase
         .from('tools_users')
         .select('*')
         .ilike('username', trimmedUsername)
         .eq('is_active', true)
-        .single();
-      if (tuData) {
-        userData = tuData;
-      }
+        .order('created_at', { ascending: false });
+      userData = (tuRows || []).find(r => r.password === password) || null;
     }
 
     if (!userData) {
-      return NextResponse.json(
-        { success: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' },
-        { status: 401 }
-      );
-    }
-
-    // Password check
-    if (userData.password !== password) {
       return NextResponse.json(
         { success: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' },
         { status: 401 }
