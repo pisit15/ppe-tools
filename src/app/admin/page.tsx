@@ -177,6 +177,9 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <button onClick={() => router.push('/admin/users')} className="text-sm text-gray-300 hover:text-white flex items-center gap-1">
+              <Users size={16} /> จัดการผู้ใช้
+            </button>
             <button onClick={() => router.push('/')} className="text-sm text-gray-300 hover:text-white flex items-center gap-1">
               <ArrowLeft size={16} /> หน้าหลัก
             </button>

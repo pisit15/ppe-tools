@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
+import { issueAdminToken } from '@/lib/adminToken';
 
 // Login uses the service-role key — user tables are locked down by RLS and
 // anon has no access. Anon key remains only as a local-dev fallback.
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
           nickname: '',
           position: adminData.role === 'super_admin' ? 'Super Admin' : 'Admin',
           role: 'admin',
+          token: issueAdminToken(String(adminData.username)) || undefined,
         },
       });
     }

@@ -68,4 +68,5 @@ export type AuthUser = {
   nickname: string;
   position: string;
   role: 'admin' | 'user';
+  token?: string; // admin API token, present only for admin logins
 };
