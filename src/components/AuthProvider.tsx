@@ -3,10 +3,19 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { AuthUser } from '@/lib/companies';
 
+export type LoginCompanyOption = { companyId: string; companyName: string };
+
+export type LoginResult = {
+  success: boolean;
+  error?: string;
+  needCompanySelection?: boolean;
+  companies?: LoginCompanyOption[];
+};
+
 type AuthContextType = {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (username: string, password: string, companyId?: string) => Promise<LoginResult>;
   logout: () => void;
 };
 
@@ -48,18 +57,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, loaded]);
 
   const login = useCallback(
-    async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    async (username: string, password: string, companyId?: string): Promise<LoginResult> => {
       setIsLoading(true);
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: username.toLowerCase().trim(), password }),
+          body: JSON.stringify({
+            username: username.toLowerCase().trim(),
+            password,
+            ...(companyId ? { company_id: companyId } : {}),
+          }),
         });
         const data = await res.json();
         if (data.success && data.user) {
           setUser(data.user as AuthUser);
           return { success: true };
+        }
+        if (data.needCompanySelection && Array.isArray(data.companies)) {
+          return {
+            success: false,
+            needCompanySelection: true,
+            companies: data.companies as LoginCompanyOption[],
+          };
         }
         return { success: false, error: data.error || 'เข้าสู่ระบบไม่สำเร็จ' };
       } catch {

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Shield, Lock, User, ArrowRight, ArrowLeft } from 'lucide-react';
-import { useAuth } from '@/components/AuthProvider';
+import { Shield, Lock, User, ArrowRight, ArrowLeft, Building2 } from 'lucide-react';
+import { useAuth, LoginCompanyOption } from '@/components/AuthProvider';
 import Link from 'next/link';
 
 export default function PPELoginPage({ onLoginSuccess }: { onLoginSuccess: () => void }) {
@@ -10,6 +10,7 @@ export default function PPELoginPage({ onLoginSuccess }: { onLoginSuccess: () =>
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [companyOptions, setCompanyOptions] = useState<LoginCompanyOption[] | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,8 +27,21 @@ export default function PPELoginPage({ onLoginSuccess }: { onLoginSuccess: () =>
     const result = await login(username, password);
     if (result.success) {
       onLoginSuccess();
+    } else if (result.needCompanySelection && result.companies) {
+      setCompanyOptions(result.companies);
     } else {
       setError(result.error || 'เข้าสู่ระบบไม่สำเร็จ');
+    }
+  };
+
+  const handleSelectCompany = async (companyId: string) => {
+    setError('');
+    const result = await login(username, password, companyId);
+    if (result.success) {
+      onLoginSuccess();
+    } else {
+      setError(result.error || 'เข้าสู่ระบบไม่สำเร็จ');
+      setCompanyOptions(null);
     }
   };
 
@@ -75,7 +89,47 @@ export default function PPELoginPage({ onLoginSuccess }: { onLoginSuccess: () =>
               </p>
             </div>
 
-            {/* Form */}
+            {/* Company selection (only when the same login exists in multiple companies) */}
+            {companyOptions ? (
+              <div className="p-8 space-y-5">
+                <div className="text-center">
+                  <Building2 size={28} className="mx-auto text-blue-600 mb-2" />
+                  <h3 className="text-lg font-bold text-gray-900">เลือกบริษัท</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    บัญชีของคุณใช้งานได้ใน {companyOptions.length} บริษัท กรุณาเลือกบริษัทที่ต้องการเข้าใช้งาน
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  {companyOptions.map((c) => (
+                    <button
+                      key={c.companyId}
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleSelectCompany(c.companyId)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-left text-gray-900 bg-gray-50 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-50 transition-all flex items-center justify-between"
+                    >
+                      <span className="font-semibold">{c.companyName}</span>
+                      <ArrowRight size={16} className="text-blue-600" />
+                    </button>
+                  ))}
+                </div>
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                    {error}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompanyOptions(null);
+                    setError('');
+                  }}
+                  className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  ← กลับไปหน้าเข้าสู่ระบบ
+                </button>
+              </div>
+            ) : (
             <form onSubmit={handleSubmit} className="p-8 space-y-5">
               {/* Username */}
               <div>
@@ -138,6 +192,7 @@ export default function PPELoginPage({ onLoginSuccess }: { onLoginSuccess: () =>
                 )}
               </button>
             </form>
+            )}
           </div>
 
           <p className="text-center text-blue-400 text-xs mt-6">

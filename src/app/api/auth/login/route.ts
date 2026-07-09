@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import bcrypt from 'bcryptjs';
 
-// Use anon key — company_users and admin_accounts both allow anon SELECT
+// Login uses the service-role key — user tables are locked down by RLS and
+// anon has no access. Anon key remains only as a local-dev fallback.
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -11,9 +13,24 @@ function getSupabase() {
   return createClient(url, key);
 }
 
+type UserRow = Record<string, unknown>;
+
+// Stored password may be a bcrypt hash (post-migration) or legacy plaintext.
+function passwordMatches(supplied: string, stored: unknown): boolean {
+  if (typeof stored !== 'string' || stored.length === 0) return false;
+  if (stored.startsWith('$2a$') || stored.startsWith('$2b$') || stored.startsWith('$2y$')) {
+    try {
+      return bcrypt.compareSync(supplied, stored);
+    } catch {
+      return false;
+    }
+  }
+  return stored === supplied;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { username, password } = await request.json();
+    const { username, password, company_id: requestedCompanyId } = await request.json();
 
     if (!username || !password) {
       return NextResponse.json(
@@ -27,15 +44,14 @@ export async function POST(request: NextRequest) {
     const trimmedUsername = username.trim();
 
     // 1) Check admin_accounts first (case-insensitive).
-    // NOTE: fetch all matches instead of .single() — .single() throws when the
-    // same username exists more than once, which used to break login entirely.
+    // Fetch all matches — .single() throws on duplicate usernames.
     const { data: adminRows } = await supabase
       .from('admin_accounts')
       .select('*')
       .ilike('username', trimmedUsername)
       .eq('is_active', true);
 
-    const adminData = (adminRows || []).find(a => a.password === password);
+    const adminData = (adminRows || []).find(a => passwordMatches(password, a.password));
     if (adminData) {
       return NextResponse.json({
         success: true,
@@ -52,10 +68,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 2) Check company_users table first, then tools_users as fallback.
-    // A user may exist in multiple companies with the same username — fetch all
-    // matches and pick the row whose password matches (newest record first).
-    let userData: Record<string, unknown> | null = null;
+    // 2) Check company_users first, then tools_users as fallback.
+    // A user may exist in multiple companies with the same username — collect
+    // every row whose password matches, then disambiguate by company.
+    let matches: UserRow[] = [];
 
     const { data: cuRows } = await supabase
       .from('company_users')
@@ -64,24 +80,64 @@ export async function POST(request: NextRequest) {
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
-    userData = (cuRows || []).find(r => r.password === password) || null;
+    matches = (cuRows || []).filter(r => passwordMatches(password, r.password));
 
-    if (!userData) {
-      // Fallback: check tools_users table
+    if (matches.length === 0) {
       const { data: tuRows } = await supabase
         .from('tools_users')
         .select('*')
         .ilike('username', trimmedUsername)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
-      userData = (tuRows || []).find(r => r.password === password) || null;
+      matches = (tuRows || []).filter(r => passwordMatches(password, r.password));
     }
 
-    if (!userData) {
+    if (matches.length === 0) {
       return NextResponse.json(
         { success: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' },
         { status: 401 }
       );
+    }
+
+    const companyIds = [...new Set(matches.map(m => String(m.company_id)))];
+
+    // Multiple companies and no explicit choice yet → ask the client to pick.
+    // (Company list is only revealed AFTER the password has been verified.)
+    if (companyIds.length > 1 && !requestedCompanyId) {
+      const { data: csRows } = await supabase
+        .from('company_settings')
+        .select('company_id, company_name')
+        .in('company_id', companyIds);
+
+      const names: Record<string, string> = {};
+      (csRows || []).forEach(c => {
+        names[String(c.company_id)] = String(c.company_name);
+      });
+
+      return NextResponse.json({
+        success: false,
+        needCompanySelection: true,
+        companies: companyIds.map(id => ({
+          companyId: id,
+          companyName:
+            names[id] ||
+            ((matches.find(m => String(m.company_id) === id)?.company_name as string) || id),
+        })),
+      });
+    }
+
+    let userData: UserRow;
+    if (requestedCompanyId) {
+      const chosen = matches.find(m => String(m.company_id) === String(requestedCompanyId));
+      if (!chosen) {
+        return NextResponse.json(
+          { success: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' },
+          { status: 401 }
+        );
+      }
+      userData = chosen;
+    } else {
+      userData = matches[0];
     }
 
     // 3) Get company_name from company_settings or from user record
