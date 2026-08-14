@@ -78,6 +78,9 @@ export default function InventoryPage() {
   });
   const [imgError, setImgError] = useState(false);
 
+  // Inline min_stock editor state
+  const [editingMin, setEditingMin] = useState<{ id: string; value: string } | null>(null);
+
   // Image editor state
   const [editing, setEditing] = useState<PPEProduct | null>(null);
   const [editUrl, setEditUrl] = useState('');
@@ -239,6 +242,31 @@ export default function InventoryPage() {
       setIsDeletingNow(false);
     }
   }
+
+  const saveMinStock = async () => {
+    if (!editingMin) return;
+    const target = products.find((p) => p.id === editingMin.id);
+    const newVal = Math.max(0, parseInt(editingMin.value) || 0);
+    setEditingMin(null);
+    if (!target || newVal === (target.min_stock ?? 0)) return;
+    try {
+      const res = await fetch('/api/ppe/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: target.id, min_stock: newVal }),
+      });
+      if (res.ok) {
+        setProducts((prev) =>
+          prev.map((p) => (p.id === target.id ? { ...p, min_stock: newVal } : p))
+        );
+        setToast({ type: 'success', msg: `ตั้งสต็อกขั้นต่ำ "${target.name}" = ${newVal}` });
+      } else {
+        setToast({ type: 'error', msg: 'บันทึกสต็อกขั้นต่ำไม่สำเร็จ' });
+      }
+    } catch {
+      setToast({ type: 'error', msg: 'เกิดข้อผิดพลาดในการบันทึก' });
+    }
+  };
 
   const filtered = useMemo(() => {
     let list = [...products];
@@ -875,7 +903,35 @@ export default function InventoryPage() {
                         className="px-6 py-3 text-center text-sm tabular-nums"
                         style={{ color: VIZ.lightText }}
                       >
-                        {minStock || '—'}
+                        {editingMin?.id === product.id ? (
+                          <input
+                            type="number"
+                            min={0}
+                            autoFocus
+                            value={editingMin.value}
+                            onChange={(e) =>
+                              setEditingMin({ id: product.id, value: e.target.value })
+                            }
+                            onBlur={saveMinStock}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveMinStock();
+                              if (e.key === 'Escape') setEditingMin(null);
+                            }}
+                            className="w-16 px-2 py-1 border rounded-lg text-center text-sm text-gray-900"
+                            style={{ borderColor: VIZ.primary }}
+                          />
+                        ) : (
+                          <button
+                            title="คลิกเพื่อแก้ไขสต็อกขั้นต่ำ"
+                            onClick={() =>
+                              setEditingMin({ id: product.id, value: String(minStock || '') })
+                            }
+                            className="px-2.5 py-1 rounded-lg hover:bg-gray-100 border border-transparent hover:border-gray-200 transition-colors cursor-pointer"
+                            style={{ color: minStock ? VIZ.text : VIZ.neutral }}
+                          >
+                            {minStock || '—'}
+                          </button>
+                        )}
                       </td>
                       <td className="px-6 py-3 text-center">
                         <button
