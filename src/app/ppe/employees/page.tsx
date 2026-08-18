@@ -4,8 +4,8 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
-import { Search, Plus, Users, Building2, X, CheckCircle2 } from 'lucide-react';
-import type { PPEEmployee } from '@/lib/types';
+import { Search, Plus, Users, Building2, X, CheckCircle2, Settings2, Pencil, Trash2, Check } from 'lucide-react';
+import type { PPEEmployee, PPEDepartment } from '@/lib/types';
 import { DEPARTMENTS } from '@/lib/constants';
 
 // Build a lookup that maps a stored department value (either Thai enum or the
@@ -91,6 +91,8 @@ export default function EmployeesPage() {
   const { toasts, add: addToast } = useToast();
 
   const [employees, setEmployees] = useState<PPEEmployee[]>([]);
+  const [departments, setDepartments] = useState<PPEDepartment[]>([]);
+  const [showDeptManager, setShowDeptManager] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -104,7 +106,19 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     fetchEmployees();
+    fetchDepartments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
+
+  async function fetchDepartments() {
+    try {
+      const res = await fetch(`/api/ppe/departments?company_id=${companyId}`);
+      const data = await res.json();
+      setDepartments(data.data || []);
+    } catch {
+      // non-fatal — form falls back to default list
+    }
+  }
 
   async function fetchEmployees() {
     try {
@@ -240,14 +254,26 @@ export default function EmployeesPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-300 hover:shadow-lg"
-          style={{ backgroundColor: VIZ.primary }}
-        >
-          <Plus size={20} />
-          เพิ่มพนักงาน
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDeptManager(true)}
+            disabled={companyId === 'all' || companyId === 'admin'}
+            title={companyId === 'all' || companyId === 'admin' ? 'เลือกบริษัทก่อนจัดการแผนก' : 'เพิ่ม/แก้ไข/ลบแผนก'}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium border transition-all duration-300 hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ borderColor: VIZ.primary, color: VIZ.primary, backgroundColor: 'white' }}
+          >
+            <Settings2 size={18} />
+            จัดการแผนก
+          </button>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-2 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-300 hover:shadow-lg"
+            style={{ backgroundColor: VIZ.primary }}
+          >
+            <Plus size={20} />
+            เพิ่มพนักงาน
+          </button>
+        </div>
       </div>
 
       {/* Department Summary Cards */}
@@ -403,7 +429,10 @@ export default function EmployeesPage() {
                                       }}
                 >
                   <option value="">-- เลือกแผนก --</option>
-                  {DEPARTMENTS.map((dept) => (
+                  {(departments.length > 0
+                    ? departments.map((d) => ({ value: d.name, label: d.name }))
+                    : DEPARTMENTS
+                  ).map((dept) => (
                     <option key={dept.value} value={dept.value}>
                       {dept.label}
                     </option>
@@ -589,6 +618,241 @@ export default function EmployeesPage() {
           แสดง {filteredEmployees.length} จาก {employees.length} พนักงาน
         </div>
       )}
+
+      {/* Department Manager Modal */}
+      {showDeptManager && (
+        <DeptManagerModal
+          companyId={companyId}
+          departments={departments}
+          onClose={() => setShowDeptManager(false)}
+          onChanged={() => {
+            fetchDepartments();
+            fetchEmployees();
+          }}
+          notify={addToast}
+        />
+      )}
+    </div>
+  );
+}
+
+function DeptManagerModal({
+  companyId,
+  departments,
+  onClose,
+  onChanged,
+  notify,
+}: {
+  companyId: string;
+  departments: PPEDepartment[];
+  onClose: () => void;
+  onChanged: () => void;
+  notify: (type: 'success' | 'error', message: string) => void;
+}) {
+  const [newName, setNewName] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const handleAdd = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/ppe/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        notify('error', data.error || 'เพิ่มแผนกไม่สำเร็จ');
+        return;
+      }
+      notify('success', `เพิ่มแผนก "${name}" แล้ว`);
+      setNewName('');
+      onChanged();
+    } catch {
+      notify('error', 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRename = async (id: number) => {
+    const name = editName.trim();
+    const current = departments.find((d) => d.id === id);
+    setEditingId(null);
+    if (!name || !current || name === current.name) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/ppe/departments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        notify('error', data.error || 'เปลี่ยนชื่อไม่สำเร็จ');
+        return;
+      }
+      const moved = (data.cascaded?.employees ?? 0) + (data.cascaded?.transactions ?? 0);
+      notify(
+        'success',
+        moved > 0
+          ? `เปลี่ยนชื่อเป็น "${name}" และอัปเดตข้อมูลเก่า ${moved} รายการ`
+          : `เปลี่ยนชื่อเป็น "${name}" แล้ว`
+      );
+      onChanged();
+    } catch {
+      notify('error', 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    const current = departments.find((d) => d.id === id);
+    setConfirmDeleteId(null);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/ppe/departments?id=${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        notify('error', data.error || 'ลบไม่สำเร็จ');
+        return;
+      }
+      notify('success', `ลบแผนก "${current?.name || ''}" ออกจากรายการแล้ว`);
+      onChanged();
+    } catch {
+      notify('error', 'เกิดข้อผิดพลาดในการเชื่อมต่อ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Building2 size={18} style={{ color: VIZ.primary }} />
+            <h3 className="font-bold" style={{ color: VIZ.text }}>จัดการแผนก</h3>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Add new */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+              placeholder="ชื่อแผนกใหม่..."
+              className="flex-1 px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-900 placeholder:text-gray-400"
+            />
+            <button
+              onClick={handleAdd}
+              disabled={busy || !newName.trim()}
+              className="px-4 py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5"
+              style={{ backgroundColor: VIZ.positive }}
+            >
+              <Plus size={15} /> เพิ่ม
+            </button>
+          </div>
+
+          {/* List */}
+          <div className="max-h-[320px] overflow-y-auto space-y-1.5">
+            {departments.length === 0 ? (
+              <p className="text-center text-sm py-6" style={{ color: VIZ.lightText }}>
+                ยังไม่มีแผนก
+              </p>
+            ) : (
+              departments.map((d) => (
+                <div
+                  key={d.id}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 hover:bg-gray-50"
+                >
+                  {editingId === d.id ? (
+                    <>
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRename(d.id);
+                          if (e.key === 'Escape') setEditingId(null);
+                        }}
+                        className="flex-1 px-2 py-1.5 border rounded-lg text-sm text-gray-900"
+                        style={{ borderColor: VIZ.primary }}
+                      />
+                      <button
+                        onClick={() => handleRename(d.id)}
+                        disabled={busy}
+                        className="p-1.5 rounded-lg hover:bg-green-50"
+                        style={{ color: VIZ.positive }}
+                      >
+                        <Check size={16} />
+                      </button>
+                    </>
+                  ) : confirmDeleteId === d.id ? (
+                    <>
+                      <span className="flex-1 text-sm" style={{ color: VIZ.accent }}>
+                        ลบ &quot;{d.name}&quot; ออกจากรายการ?
+                      </span>
+                      <button
+                        onClick={() => handleDelete(d.id)}
+                        disabled={busy}
+                        className="px-2.5 py-1 rounded-lg text-white text-xs font-semibold"
+                        style={{ backgroundColor: VIZ.accent }}
+                      >
+                        ลบ
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-2.5 py-1 rounded-lg border border-gray-300 text-xs text-gray-600"
+                      >
+                        ยกเลิก
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm" style={{ color: VIZ.text }}>{d.name}</span>
+                      <button
+                        title="เปลี่ยนชื่อแผนก"
+                        onClick={() => { setEditingId(d.id); setEditName(d.name); setConfirmDeleteId(null); }}
+                        className="p-1.5 rounded-lg hover:bg-blue-50"
+                        style={{ color: VIZ.primary }}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        title="ลบแผนกออกจากรายการ"
+                        onClick={() => { setConfirmDeleteId(d.id); setEditingId(null); }}
+                        className="p-1.5 rounded-lg hover:bg-red-50"
+                        style={{ color: VIZ.accent }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          <p className="text-xs" style={{ color: VIZ.lightText }}>
+            เปลี่ยนชื่อแผนก = ข้อมูลพนักงานและประวัติเบิกเก่าจะย้ายไปใช้ชื่อใหม่ด้วย ·
+            ลบแผนก = หายจากตัวเลือกเท่านั้น ข้อมูลเก่าไม่ถูกแก้
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

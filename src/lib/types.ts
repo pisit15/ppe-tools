@@ -54,6 +54,15 @@ export type PPEEmployee = {
   created_at: string;
 };
 
+export type PPEDepartment = {
+  id: number;
+  company_id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CreateProductInput = Omit<PPEProduct, 'id' | 'created_at' | 'updated_at'>;
 export type UpdateProductInput = Partial<CreateProductInput>;
 

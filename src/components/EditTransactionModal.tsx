@@ -43,6 +43,17 @@ export default function EditTransactionModal({
   const prodRef = useRef<HTMLDivElement>(null);
   const empRef = useRef<HTMLDivElement>(null);
 
+  // Company-managed department list (falls back to legacy enum when empty)
+  const [deptList, setDeptList] = useState<string[]>([]);
+  useEffect(() => {
+    const cid = transaction?.company_id;
+    if (!cid) return;
+    fetch(`/api/ppe/departments?company_id=${cid}`)
+      .then((r) => r.json())
+      .then((d) => setDeptList(((d.data || []) as { name: string }[]).map((x) => x.name)))
+      .catch(() => {});
+  }, [transaction?.company_id]);
+
   // Reset form whenever a new transaction is opened
   useEffect(() => {
     if (transaction) {
@@ -255,10 +266,15 @@ export default function EditTransactionModal({
               onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 outline-none">
               <option value="">— เลือกแผนก —</option>
-              {DEPARTMENTS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-              {form.department && !DEPT_LABEL[form.department] && (
-                <option value={form.department}>{form.department}</option>
-              )}
+              {(deptList.length > 0
+                ? deptList.map((n) => ({ value: n, label: n }))
+                : DEPARTMENTS
+              ).map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+              {form.department &&
+                !DEPT_LABEL[form.department] &&
+                !deptList.includes(form.department) && (
+                  <option value={form.department}>{form.department}</option>
+                )}
             </select>
           </div>
 

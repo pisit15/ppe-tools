@@ -40,6 +40,7 @@ export default function StockOutPage() {
     : (user?.companyId || '');
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [employees, setEmployees] = useState<PPEEmployee[]>([]);
+  const [deptList, setDeptList] = useState<string[]>([]);
   const [stockInfo, setStockInfo] = useState<StockInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,7 +70,9 @@ export default function StockOutPage() {
       fetch(`/api/ppe/employees?company_id=${companyId}`).then(r => r.json()),
       fetch(`/api/ppe/stock?company_id=${companyId}`).then(r => r.json()),
       fetch(`/api/ppe/transactions?company_id=${companyId}&limit=100`).then(r => r.json()),
-    ]).then(([prodData, empData, stockData, txData]) => {
+      fetch(`/api/ppe/departments?company_id=${companyId}`).then(r => r.json()),
+    ]).then(([prodData, empData, stockData, txData, deptData]) => {
+      if (deptData?.data) setDeptList((deptData.data as { name: string }[]).map(d => d.name));
       if (prodData.data) setProducts(prodData.data);
       if (empData.data) setEmployees(empData.data);
       if (stockData.data) setStockInfo(stockData.data.map((s: Record<string, unknown>) => ({ product_id: s.product_id, current_stock: s.current_stock, min_stock: s.min_stock })));
@@ -304,7 +307,13 @@ export default function StockOutPage() {
                       selecting an employee with an English department doesn't clear the field. */}
                   {(() => {
                     const options = new Map<string, string>();
-                    DEPARTMENTS.forEach(d => options.set(d.value, d.label));
+                    // Company-managed department list (falls back to the
+                    // legacy enum only when the list is empty).
+                    if (deptList.length > 0) {
+                      deptList.forEach(n => options.set(n, n));
+                    } else {
+                      DEPARTMENTS.forEach(d => options.set(d.value, d.label));
+                    }
                     // Seed with any departments we've seen on employees so the dropdown
                     // has the full set actually used in the company.
                     employees.forEach(e => {
