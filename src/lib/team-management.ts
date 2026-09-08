@@ -16,6 +16,7 @@ export type Member = {
   employment_type: string; updated_at?: string;
 };
 export type Profile = {
+  in_scope?: boolean;
   person_id: string; revision: number; teams: string[]; company_ids: string[];
   family: Family | ''; tier: string; province: string;
   status: keyof typeof STATUS; effective_date: string;
@@ -62,6 +63,7 @@ export function validateReview(r: Review): string | null {
   return null;
 }
 export function validateProfile(p: Profile, people: Member[], profiles: Profile[]): string | null {
+  if (p?.in_scope !== undefined && typeof p.in_scope !== 'boolean') return 'ขอบเขตความรับผิดชอบไม่ถูกต้อง';
   if (!p || !Object.hasOwn(STATUS,p.status)) return 'สถานะบุคลากรไม่ถูกต้อง';
   if (p.family && !Object.hasOwn(FAMILIES,p.family)) return 'กลุ่มงานไม่ถูกต้อง';
   if (!Array.isArray(p.teams)||p.teams.some(t=>!['SHE','ISO','DCC','Environment'].includes(t))) return 'ทีมไม่ถูกต้อง';
