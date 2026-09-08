@@ -69,7 +69,9 @@ export default function TeamManagement({view}:{view:View}) {
     setEdit({member:m,profile:pr});
   };
   const chart=buildOrgChart(filtered,profiles,lineType);
-  const nodes=filtered.map(p=>{const pr=profiles.get(p.id)||blankProfile(p);return {person:p,profile:pr,...(positions[p.id]||{x:pr.x??chart.points[p.id].x,y:Math.max(200,pr.y??chart.points[p.id].y)})};});
+  const legacyLayout=filtered.some(p=>{const pr=profiles.get(p.id);return pr?.y!=null&&pr.y<200;});
+  const useSavedLayout=!legacyLayout&&!company&&!team&&!search&&!familyFilter;
+  const nodes=filtered.map(p=>{const pr=profiles.get(p.id)||blankProfile(p);return {person:p,profile:pr,...(positions[p.id]||(useSavedLayout&&pr.x!=null&&pr.y!=null?{x:pr.x,y:pr.y}:chart.points[p.id]))};});
   const width=Math.max(chart.width,...nodes.map(n=>n.x+310));const height=Math.max(500,...nodes.map(n=>n.y+160));
   const companyName=(id:string)=>data.companies.find(c=>c.company_id===id)?.company_name||id.toUpperCase();
   const chartTitle=company?companyName(company):'กลุ่มบริษัท EA';
