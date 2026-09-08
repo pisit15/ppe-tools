@@ -62,6 +62,10 @@ const SECTIONS: (Section & { matches: (path: string) => boolean })[] = [
     matches: (path) => path.includes('/team'),
     nav: [
       { path: '/team', label: 'ภาพรวมทีม', icon: LayoutDashboard, exact: true },
+      { path: '/team/manage', label: 'บุคลากร SHE / ISO', icon: Users2 },
+      { path: '/team/org-chart', label: 'ORG chart', icon: Users2 },
+      { path: '/team/license-matrix', label: 'License Matrix', icon: BadgeCheck },
+      { path: '/team/performance', label: 'ผลงานและ IDP', icon: Activity },
       { path: '/team/personnel', label: 'บุคลากร SHE', icon: Users2 },
       { path: '/team/licenses', label: 'ใบอนุญาต / ใบรับรอง', icon: BadgeCheck },
     ],
