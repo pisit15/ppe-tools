@@ -14,8 +14,7 @@ Under localhost these paths are prefixed with `/superadmin` as in the existing c
 
 ## Data and migration
 
-Install `supabase/migrations/20260908061226_team_management.sql` before deploying the new routes.
-No live migration or personnel import has been run in this task.
+Migration `supabase/migrations/20260908064658_team_management.sql` was installed on 2026-09-08 before the application release. The filename matches the recorded Supabase migration version. Source personnel have not been imported or reconciled automatically.
 
 `she_personnel` remains the master for names, contact details, company and employment state. New private tables hold profile extensions, review snapshots and change history. Member saves update core fields, extensions and audit in one transaction. Core timestamps and profile revisions detect stale edits. Reporting-graph updates are serialized and checked for cycles in SQL as well as application code.
 
@@ -40,7 +39,7 @@ Existing duplicates, departures and conflicting sources still need human reconci
 - PostgreSQL 17 verification in a dedicated transaction/schema: member revision conflicts, cyclic managers, atomic failed writes, final-review lock, audit row counts and private grants passed. Transaction rolled back; readback confirmed the test schema was gone and production extension tables had not been created.
 - Browser inspection with a temporary synthetic fixture harness: roster/filter controls, reporting chart, Thai text, license matrix and evaluation form rendered. Entering 4/4/3/5 for F2 displayed 3.95 and grade B. Fixture route removed from deliverable.
 
-The real authenticated browser-to-production save path has not been tested because the production migration is not installed. The old console remains live unchanged.
+The production migration grants were verified after installation. The deployment must also be verified through the authenticated browser before release completion.
 
 ## Boundaries for this first version
 
