@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { buildOrgChart, connectorPath, type LineMode } from '@/lib/team-org-chart';
 import { useSuperAdmin } from './SuperAdminShell';
 import { Button, Card, Field, Modal, PageHeader, Spinner, inputClass, saFetch } from './ui';
 import { FAMILIES, WEIGHTS, STATUS, blankProfile, licenseStatus, parseRoster, proposedGrade, scoreReview, type Family, type ImportRow, type License, type Member, type Profile, type Review } from '@/lib/team-management';
@@ -23,7 +24,8 @@ export default function TeamManagement({view}:{view:View}) {
   const [edit,setEdit]=useState<{member:Member;profile:Profile}|null>(null);
   const [review,setReview]=useState<Review|null>(null);const [cycle,setCycle]=useState('2026');const [familyFilter,setFamilyFilter]=useState('');
   const [imports,setImports]=useState<ImportRow[]>([]); const [importTarget,setImportTarget]=useState<Record<number,string>>({});
-  const [positions,setPositions]=useState<Record<string,{x:number;y:number}>>({});const [scale,setScale]=useState(0.8);const [lineType,setLineType]=useState<'direct_manager'|'functional_manager'>('functional_manager');
+  const [positions,setPositions]=useState<Record<string,{x:number;y:number}>>({});const [scale,setScale]=useState(0.8);const [lineType,setLineType]=useState<LineMode>('both');
+  const viewportRef=useRef<HTMLDivElement>(null);
   const svgRef=useRef<SVGSVGElement>(null);const drag=useRef<{id:string;x:number;y:number;startX:number;startY:number}|null>(null);
   const load=useCallback(async()=>{setError('');try {const result=await saFetch<Data>(API);setData({...result,people:result.people.map(cleanMember)});}catch(e){setError((e as Error).message);}finally{setLoading(false);}},[]);
   useEffect(()=>{void load();},[load]);
@@ -66,11 +68,12 @@ export default function TeamManagement({view}:{view:View}) {
     if(row.company_id==='esn')pr.company_ids=[...new Set([...pr.company_ids,'esn','eslo'])];
     setEdit({member:m,profile:pr});
   };
-  const nodes=useMemo(()=>{
-    const groups=[...new Set(filtered.map(p=>p.company_id))].sort();const counts:Record<string,number>={};
-    return filtered.map(p=>{const pr=profiles.get(p.id)||blankProfile(p);const index=counts[p.company_id]||0;counts[p.company_id]=index+1;return {person:p,profile:pr,...(positions[p.id]||{x:pr.x??(groups.indexOf(p.company_id)*300+30),y:pr.y??(index*125+80)})};});
-  },[filtered,profiles,positions]);
-  const width=Math.max(900,...nodes.map(n=>n.x+290));const height=Math.max(450,...nodes.map(n=>n.y+130));
+  const chart=buildOrgChart(filtered,profiles,lineType);
+  const nodes=filtered.map(p=>{const pr=profiles.get(p.id)||blankProfile(p);return {person:p,profile:pr,...(positions[p.id]||{x:pr.x??chart.points[p.id].x,y:Math.max(200,pr.y??chart.points[p.id].y)})};});
+  const width=Math.max(chart.width,...nodes.map(n=>n.x+310));const height=Math.max(500,...nodes.map(n=>n.y+160));
+  const companyName=(id:string)=>data.companies.find(c=>c.company_id===id)?.company_name||id.toUpperCase();
+  const chartTitle=company?companyName(company):'กลุ่มบริษัท EA';
+  const fitChart=()=>{if(viewportRef.current)setScale(Math.min(1.2,Math.max(0.05,(viewportRef.current.clientWidth-20)/width)));};
   const saveLayout=async()=>{setBusy(true);setError('');let count=0;const remaining={...positions};try{
     for(const [id,pos] of Object.entries(positions)){const p=data.people.find(p=>p.id===id);if(!p)continue;await saveMember(p,{...profileFor(p),...pos});delete remaining[id];count++;}
     setNotice(`บันทึกตำแหน่ง ${count} กล่องแล้ว`);
@@ -99,21 +102,31 @@ export default function TeamManagement({view}:{view:View}) {
     </div>}
 
     {view==='org'&&<Card className="mt-5"><div className="mb-4 flex flex-wrap items-center gap-3">
-      <Field label="แสดงสายรายงาน"><select className={inputClass} value={lineType} onChange={e=>setLineType(e.target.value as typeof lineType)}><option value="functional_manager">สายวิชาชีพ</option><option value="direct_manager">สายบังคับบัญชา</option></select></Field>
-      <label>ซูม <input aria-label="ซูมผัง" type="range" min="0.3" max="1.5" step="0.1" value={scale} onChange={e=>setScale(Number(e.target.value))}/></label>
+      <Field label="แสดงสายรายงาน"><select className={inputClass} value={lineType} onChange={e=>setLineType(e.target.value as LineMode)}><option value="both">ทั้งสองสายรายงาน</option><option value="direct_manager">สายบังคับบัญชา</option><option value="functional_manager">สายวิชาชีพ</option></select></Field>
+      <label className="text-sm">ซูม {Math.round(scale*100)}% <input aria-label="ซูมผัง" type="range" min="0.05" max="1.5" step="0.05" value={scale} onChange={e=>setScale(Number(e.target.value))}/></label>
+      <Button variant="secondary" onClick={fitChart}>พอดีความกว้าง</Button>
+      <Button variant="secondary" disabled={busy||!nodes.length} onClick={()=>{setPositions(previous=>({...previous,...chart.points}));setNotice('จัดผังตามสายรายงานแล้ว กดบันทึกตำแหน่งเพื่อเก็บผังนี้');}}>จัดผังอัตโนมัติ</Button>
       <Button disabled={busy||!Object.keys(positions).length} onClick={()=>void saveLayout()}>บันทึกตำแหน่ง ({Object.keys(positions).length})</Button><Button variant="secondary" onClick={exportSvg}>ส่งออก SVG</Button>
-    </div><p className="mb-3 text-sm text-gray-600">ลากกล่องเพื่อจัดหน้า · ดับเบิลคลิกเพื่อแก้ประวัติและสายรายงาน · เส้นทึบ = สายบังคับบัญชา เส้นประ = สายวิชาชีพ · กล่องที่ยังไม่กำหนดหัวหน้าจัดตามบริษัทชั่วคราว</p>
-    <div className="max-h-[70vh] overflow-auto rounded-lg border bg-slate-50"><svg ref={svgRef} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{width:width*scale,height:height*scale,touchAction:'none',fontFamily:'Tahoma, sans-serif'}}
-      onPointerMove={e=>{if(!drag.current)return;const d=drag.current;setPositions(previous=>({...previous,[d.id]:{x:Math.max(0,Math.round(d.x+(e.clientX-d.startX)/scale)),y:Math.max(45,Math.round(d.y+(e.clientY-d.startY)/scale))}}));}}
+    </div><div className="mb-4 flex flex-wrap gap-5 text-sm text-slate-600"><span><span className="mr-2 inline-block w-8 border-t-2 border-slate-700 align-middle"/>ผู้บังคับบัญชาสายตรง</span><span><span className="mr-2 inline-block w-8 border-t-2 border-dashed border-violet-600 align-middle"/>ผู้กำกับสายวิชาชีพ</span><span>{chart.edges.length} เส้นรายงาน · {chart.groups.length} บริษัท</span></div>
+    {chart.hidden.length>0&&<p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">มี {chart.hidden.length} สายรายงานที่หัวหน้าอยู่นอกตัวกรอง จึงไม่แสดงเส้นนั้น ล้างตัวกรองเพื่อดูผังครบ</p>}
+    <p className="mb-3 text-sm text-gray-500">ลากเพื่อจัดตำแหน่ง · ดับเบิลคลิกหรือกด Enter ที่บุคคลเพื่อแก้สายรายงาน · การจัดอัตโนมัติใช้สายบังคับบัญชาเป็นหลักเมื่อแสดงทั้งสองสาย</p>
+    {!nodes.length&&<p className="p-8 text-center text-slate-500">ไม่พบบุคลากรตามตัวกรอง</p>}
+    <div ref={viewportRef} className="max-h-[75vh] overflow-auto rounded-xl border border-slate-200 bg-slate-50"><svg ref={svgRef} role="img" aria-label={`ผังองค์กร ${chartTitle}`} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{width:width*scale,height:height*scale,touchAction:'none',fontFamily:'Tahoma, sans-serif'}}
+      onPointerMove={e=>{if(!drag.current)return;const d=drag.current;setPositions(previous=>({...previous,[d.id]:{x:Math.max(16,Math.round(d.x+(e.clientX-d.startX)/scale)),y:Math.max(200,Math.round(d.y+(e.clientY-d.startY)/scale))}}));}}
       onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}>
-      <rect width="100%" height="100%" fill="#f8fafc"/><text x="30" y="30" fontSize="18" fill="#334155">ทีม SHE / ISO — {lineType==='direct_manager'?'สายบังคับบัญชา':'สายวิชาชีพ'} · {today()}</text>
-      {nodes.map(n=>{const parent=nodes.find(p=>p.person.id===n.profile[lineType]);return parent?<path key={`edge-${n.person.id}`} d={`M ${parent.x+130} ${parent.y+90} V ${(parent.y+n.y+90)/2} H ${n.x+130} V ${n.y}`} fill="none" stroke="#64748b" strokeWidth="2" strokeDasharray={lineType==='functional_manager'?'6 4':undefined}/>:null;})}
+      <rect width="100%" height="100%" fill="#f8fafc"/>
+      <text x="32" y="42" fontSize="26" fontWeight="bold" fill="#0f172a">{chartTitle} · โครงสร้างทีม SHE / ISO</text>
+      <text x="32" y="73" fontSize="14" fill="#64748b">{today()} · {nodes.length} ระเบียน · {lineType==='both'?'ทั้งสองสายรายงาน':lineType==='direct_manager'?'สายบังคับบัญชา':'สายวิชาชีพ'}{team?` · ทีม ${team}`:''}{familyFilter?` · ${familyFilter}`:''}{search?` · ค้นหา ${search}`:''} · {activeOnly?'ทำงานอยู่':'ทุกสถานะ'}</text>
+      <path d="M32 98 H64" stroke="#334155" strokeWidth="2"/><text x="72" y="103" fontSize="12" fill="#475569">ผู้บังคับบัญชาสายตรง</text><path d="M280 98 H312" stroke="#7c3aed" strokeWidth="2" strokeDasharray="7 5"/><text x="320" y="103" fontSize="12" fill="#475569">ผู้กำกับสายวิชาชีพ</text>
+      {chart.groups.map(g=><g key={g.id}><rect x={g.x} y="125" width={g.width} height="50" rx="8" fill="#e2e8f0"/><text x={g.x+18} y="156" fontSize="18" fontWeight="bold" fill="#334155">{companyName(g.id)} · {g.count}</text></g>)}
+      {chart.edges.map(edge=>{const from=nodes.find(n=>n.person.id===edge.from)!;const to=nodes.find(n=>n.person.id===edge.to)!;return <path key={`${edge.type}-${edge.to}`} data-reporting-line={edge.type} d={connectorPath(from,to,edge.type==='functional_manager'?9:0)} fill="none" stroke={edge.type==='functional_manager'?'#7c3aed':'#334155'} strokeWidth="2.5" strokeLinejoin="round" strokeDasharray={edge.type==='functional_manager'?'7 5':undefined}><title>{from.person.full_name} → {to.person.full_name} · {edge.type==='direct_manager'?'สายบังคับบัญชา':'สายวิชาชีพ'}</title></path>;})}
       {nodes.map(n=><g key={n.person.id} transform={`translate(${n.x},${n.y})`} role="button" tabIndex={0} aria-label={`แก้ไข ${n.person.full_name}`} style={{cursor:'move'}}
         onKeyDown={e=>{if(e.key==='Enter')openMember(n.person);}} onDoubleClick={()=>openMember(n.person)}
         onPointerDown={e=>{if(busy)return;e.currentTarget.setPointerCapture(e.pointerId);drag.current={id:n.person.id,x:n.x,y:n.y,startX:e.clientX,startY:e.clientY};}}>
         <title>{n.person.full_name} · {n.person.position} · {n.profile.company_ids.join(', ')}</title>
-        <rect width="260" height="90" rx="9" fill="white" stroke={n.profile.teams.includes('ISO')?'#8b5cf6':'#0891b2'} strokeWidth="2"/>
-        <text x="12" y="25" fontSize="15" fontWeight="bold" fill="#1e293b">{n.person.full_name}</text><text x="12" y="49" fontSize="12" fill="#475569">{n.person.company_id.toUpperCase()} · {n.profile.teams.join(' / ')}</text><text x="12" y="71" fontSize="12" fill="#475569">{n.person.position.length>33?n.person.position.slice(0,33)+'…':n.person.position||'ยังไม่ระบุตำแหน่ง'}</text>
+        <rect width="260" height="104" rx="10" fill="white" stroke="#cbd5e1" strokeWidth="1.5"/>
+        <rect x="0" y="16" width="4" height="72" rx="2" fill={n.profile.teams.includes('ISO')?'#7c3aed':'#0891b2'}/>
+        <text x="16" y="28" fontSize="14" fontWeight="bold" fill="#1e293b">{n.person.full_name.length>30?n.person.full_name.slice(0,30)+'…':n.person.full_name}</text><text x="16" y="53" fontSize="12" fill="#475569">{n.person.position.length>32?n.person.position.slice(0,32)+'…':n.person.position||'ยังไม่ระบุตำแหน่ง'}</text><text x="16" y="80" fontSize="11" fill="#64748b">{companyName(n.person.company_id)} · {n.profile.teams.join(' / ')||'ยังไม่จัดทีม'}</text>
       </g>)}
     </svg></div></Card>}
 
