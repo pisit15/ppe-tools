@@ -3,7 +3,7 @@ import { blankProfile, type Member, type Profile } from './team-management';
 export type LineMode = 'both' | 'direct_manager' | 'functional_manager';
 export type Point = { x: number; y: number };
 export const NODE_WIDTH = 280;
-export const NODE_HEIGHT = 112;
+export const NODE_HEIGHT = 144;
 const GAP = 32;
 const LEVEL_GAP = 64;
 

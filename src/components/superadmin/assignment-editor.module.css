@@ -1,0 +1,28 @@
+.editor { border-top:1px solid #e2e8ed; padding-top:24px; color:#203543; }
+.heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.heading h3 { font-size:17px; font-weight:700; margin:0; }
+.heading p,.explainer { font-size:12px; color:#637580; line-height:1.7; margin:6px 0 16px; }
+.heading p { margin-bottom:0; }
+.outlineButton,.addButton { display:inline-flex; gap:8px; align-items:center; justify-content:center; border:1px solid #b9d5d1; border-radius:8px; padding:9px 12px; font-size:13px; color:#087f78; background:white; cursor:pointer; }
+.roles { display:grid; gap:10px; }
+.role { border:1px solid #dfe7ec; border-radius:12px; overflow:hidden; background:white; }
+.openRole { border-color:#96c8c2; }
+.roleHeader { display:flex; align-items:center; gap:12px; width:100%; padding:15px; text-align:left; cursor:pointer; background:#f8fafb; }
+.companyIcon { display:grid; place-items:center; width:36px; height:36px; background:#eaf3f1; color:#28766c; border-radius:8px; flex-shrink:0; }
+.roleTitle { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; overflow-wrap:anywhere; }
+.roleTitle strong { font-size:14px; font-weight:600; }
+.roleTitle > span,.state { font-size:12px; color:#637580; }
+.badge,.actingBadge { flex-shrink:0; font-size:11px; padding:4px 8px; border-radius:5px; background:#e9eef3; color:#476274; }
+.actingBadge { background:#fff1d5; color:#835616; }
+.roleBody { padding:18px; display:grid; gap:16px; }
+.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.fullWidth { grid-column:1/-1; }
+.roleFooter { border-top:1px solid #edf1f4; padding-top:12px; font-size:12px; color:#6b7c88; }
+.removeButton { display:flex; align-items:center; gap:6px; color:#a44337; cursor:pointer; }
+.warning { font-size:12px; color:#986113; margin-top:6px; }
+.preview { padding:16px 20px; line-height:1.9; font-size:13px; }
+.preview strong { font-size:15px; }
+.addButton { width:100%; margin-top:12px; background:#f1f8f6; border-style:dashed; }
+.editor button:focus-visible { outline:3px solid #26a69b; outline-offset:3px; }
+.editor button:disabled { opacity:.5; cursor:default; }
+@media(max-width:640px) { .grid { grid-template-columns:1fr; } .heading { align-items:flex-start; } .roleHeader { flex-wrap:wrap; gap:8px; } .state { width:100%; padding-left:44px; } .roleBody { padding:14px; } }
