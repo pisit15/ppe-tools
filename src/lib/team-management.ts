@@ -1,3 +1,5 @@
+import type { Assignment } from './team-assignments';
+
 export const FAMILIES = {
   F1: 'ผู้จัดการ / หัวหน้า HSE', F2: 'จป.วิชาชีพ / Safety Supervisor',
   F3: 'จป.เทคนิค / ผู้ช่วย จป.', F4: 'เจ้าหน้าที่ / วิศวกรสิ่งแวดล้อม',
@@ -16,6 +18,8 @@ export type Member = {
   employment_type: string; updated_at?: string;
 };
 export type Profile = {
+  assignment_version?: 1;
+  assignments?: Assignment[];
   in_scope?: boolean;
   person_id: string; revision: number; teams: string[]; company_ids: string[];
   family: Family | ''; tier: string; province: string;
@@ -70,7 +74,7 @@ export function validateProfile(p: Profile, people: Member[], profiles: Profile[
   if (!Array.isArray(p.company_ids)||!p.company_ids.length||p.company_ids.some(v=>typeof v!=='string'||!v)) return 'กรุณาเลือกบริษัทที่รับผิดชอบ';
   if (!['','A','B','C','-'].includes(p.tier)) return 'Site Tier ไม่ถูกต้อง';
   if ((p.user_id && !p.user_source)||(!p.user_id && p.user_source)||!['','company_users','tools_users'].includes(p.user_source)) return 'ข้อมูลบัญชีที่เชื่อมไม่ครบ';
-  for (const field of ['direct_manager','functional_manager'] as const) {
+  for (const field of p.assignments ? [] : ['direct_manager','functional_manager'] as const) {
     if (p[field] && !people.some(person=>person.id===p[field])) return 'ไม่พบผู้บังคับบัญชาที่เลือก';
     const lookup=new Map(profiles.map(row=>[row.person_id,row])); lookup.set(p.person_id,p);
     const seen=new Set([p.person_id]); let next=p[field];

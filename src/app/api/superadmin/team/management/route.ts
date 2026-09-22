@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSuperAdmin, saError } from '@/lib/superAdminGuard';
 import { getSupabaseServer } from '@/lib/supabase';
 import { validateProfile, validateReview, type Member, type Profile, type Review } from '@/lib/team-management';
+import { validateAssignments } from '@/lib/team-assignments';
 export const runtime = 'nodejs';
 const PERSON_COLUMNS='id,full_name,nick_name,company_id,position,bu,department,responsibility,phone,email,is_active,is_she_team,employment_type,updated_at';
 const noCache = { 'Cache-Control': 'private, no-store' };
@@ -11,6 +12,8 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes('TEAM_CONFLICT')) return json({error:'ข้อมูลถูกแก้ไขจากหน้าต่างอื่น กรุณาโหลดใหม่ก่อนบันทึก'},409);
   if (error.message?.includes('TEAM_REVIEW_LOCKED')) return json({error:'ผลประเมินนี้สรุปแล้วและล็อกไว้'},409);
   if (error.message?.includes('TEAM_CYCLE')) return json({error:'สายรายงานวนกลับหาตัวเอง'},400);
+  if (error.message?.includes('TEAM_ASSIGNMENT_CONFLICT')) return json({error:'ข้อมูลการมอบหมายงานเปลี่ยนแล้ว กรุณาโหลดหน้าใหม่ก่อนบันทึก'},409);
+  if (error.message?.includes('TEAM_ASSIGNMENT')) return json({error:'การมอบหมายงานหรือสายรายงานไม่ถูกต้อง กรุณาตรวจบริษัท ช่วงเวลา และบทบาทผู้บังคับบัญชา'},400);
   if (error.code==='23505') return json({error:'ข้อมูลซ้ำกับรายการที่บันทึกแล้ว กรุณาโหลดใหม่และตรวจบัญชีหรือรอบประเมิน'},409);
   return saError(error,'บันทึกหรือโหลดข้อมูลทีมไม่สำเร็จ');
 }
@@ -56,7 +59,7 @@ export async function POST(request: NextRequest) {
       if(p.status!=='working'&&!p.effective_date) return json({error:'กรุณาระบุวันที่สถานะมีผล'},400);
       const [people,profiles,companies]=await Promise.all([db.from('she_personnel').select(PERSON_COLUMNS),db.from('team_member_profiles').select('payload'),db.from('company_settings').select('company_id')]);
       for(const result of [people,profiles,companies]) if(result.error) return databaseError(result.error);
-      const validation=validateProfile(p,people.data as Member[],profiles.data?.map(r=>r.payload) as Profile[]);
+      const validation=validateAssignments(m,p,people.data as Member[],profiles.data?.map(r=>r.payload) as Profile[],companies.data!.map(c=>c.company_id)) || validateProfile(p,people.data as Member[],profiles.data?.map(r=>r.payload) as Profile[]);
       if(validation) return json({error:validation},400);
       if(![m.company_id,...p.company_ids].every(id=>companies.data?.some(c=>c.company_id===id))) return json({error:'ไม่พบบริษัทที่เลือก'},400);
       if(!p.company_ids.includes(m.company_id)) return json({error:'บริษัทที่รับผิดชอบต้องรวมบริษัทหลัก'},400);
