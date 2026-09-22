@@ -1,20 +1,20 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { buildOrgChart, connectorPath, type LineMode } from '@/lib/team-org-chart';
+import dynamic from 'next/dynamic';
 import { useSuperAdmin } from './SuperAdminShell';
 import { Button, Card, Field, Modal, PageHeader, Spinner, inputClass, saFetch } from './ui';
 import { FAMILIES, WEIGHTS, STATUS, blankProfile, licenseStatus, parseRoster, proposedGrade, scoreReview, type Family, type ImportRow, type License, type Member, type Profile, type Review } from '@/lib/team-management';
 
 type Data = { people: Member[]; profiles: Profile[]; reviews: Review[]; companies: {company_id:string;company_name:string}[]; users: {id:string;username:string;display_name:string;company_id:string;source:Profile['user_source']}[]; licenses: License[] };
 type View = 'people' | 'org' | 'performance' | 'matrix';
+const OrgWorkspace=dynamic(()=>import('./OrgWorkspace'));
 const API='/api/superadmin/team/management';
 const TABS: [View,string,string][]=[['people','บุคลากร SHE / ISO','/team/manage'],['org','ORG chart','/team/org-chart'],['matrix','License Matrix','/team/license-matrix'],['performance','ผลงานและ IDP','/team/performance']];
 const emptyData:Data={people:[],profiles:[],reviews:[],companies:[],users:[],licenses:[]};
 const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Bangkok'});
 function cleanMember(p:Member):Member { return {...p,nick_name:p.nick_name||'',position:p.position||'',bu:p.bu||'',department:p.department||'',responsibility:p.responsibility||'',phone:p.phone||'',email:p.email||'',employment_type:p.employment_type||'permanent'}; }
 function newMember(company:string):Member { return {id:crypto.randomUUID(),full_name:'',nick_name:'',company_id:company,position:'',bu:'',department:'',responsibility:'',phone:'',email:'',employment_type:'permanent',is_active:true,is_she_team:true}; }
-function download(text:string,name:string,type:string) {const url=URL.createObjectURL(new Blob([text],{type})); const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 
 export default function TeamManagement({view}:{view:View}) {
   const {href,user}=useSuperAdmin();
@@ -25,9 +25,6 @@ export default function TeamManagement({view}:{view:View}) {
   const [edit,setEdit]=useState<{member:Member;profile:Profile}|null>(null);
   const [review,setReview]=useState<Review|null>(null);const [cycle,setCycle]=useState('2026');const [familyFilter,setFamilyFilter]=useState('');
   const [imports,setImports]=useState<ImportRow[]>([]); const [importTarget,setImportTarget]=useState<Record<number,string>>({});
-  const [positions,setPositions]=useState<Record<string,{x:number;y:number}>>({});const [scale,setScale]=useState(0.8);const [lineType,setLineType]=useState<LineMode>('both');
-  const viewportRef=useRef<HTMLDivElement>(null);
-  const svgRef=useRef<SVGSVGElement>(null);const drag=useRef<{id:string;x:number;y:number;startX:number;startY:number}|null>(null);
   const load=useCallback(async()=>{setError('');try {const result=await saFetch<Data>(API);setData({...result,people:result.people.map(cleanMember)});}catch(e){setError((e as Error).message);}finally{setLoading(false);}},[]);
   useEffect(()=>{void load();},[load]);
   const profiles=useMemo(()=>new Map(data.profiles.map(p=>[p.person_id,p])),[data.profiles]);
@@ -70,23 +67,11 @@ export default function TeamManagement({view}:{view:View}) {
     if(row.company_id==='esn')pr.company_ids=[...new Set([...pr.company_ids,'esn','eslo'])];
     setEdit({member:m,profile:pr});
   };
-  const chart=buildOrgChart(filtered,profiles,lineType);
-  const legacyLayout=filtered.some(p=>{const pr=profiles.get(p.id);return pr?.y!=null&&pr.y<200;});
-  const useSavedLayout=!legacyLayout&&!company&&!team&&!search&&!familyFilter;
-  const nodes=filtered.map(p=>{const pr=profiles.get(p.id)||blankProfile(p);return {person:p,profile:pr,...(positions[p.id]||(useSavedLayout&&pr.x!=null&&pr.y!=null?{x:pr.x,y:pr.y}:chart.points[p.id]))};});
-  const width=Math.max(chart.width,...nodes.map(n=>n.x+310));const height=Math.max(500,...nodes.map(n=>n.y+160));
-  const companyName=(id:string)=>data.companies.find(c=>c.company_id===id)?.company_name||id.toUpperCase();
-  const chartTitle=company?companyName(company):'กลุ่มบริษัท EA';
-  const fitChart=()=>{if(viewportRef.current)setScale(Math.min(1.2,Math.max(0.05,(viewportRef.current.clientWidth-20)/width)));};
-  const saveLayout=async()=>{setBusy(true);setError('');let count=0;const remaining={...positions};try{
-    for(const [id,pos] of Object.entries(positions)){const p=data.people.find(p=>p.id===id);if(!p)continue;await saveMember(p,{...profileFor(p),...pos});delete remaining[id];count++;}
-    setNotice(`บันทึกตำแหน่ง ${count} กล่องแล้ว`);
-  }catch(e){setError(`บันทึกแล้ว ${count} กล่อง ส่วนที่เหลือยังไม่บันทึก: ${(e as Error).message}`);}finally{setPositions(remaining);await load();setBusy(false);}};
-  const exportSvg=()=>{if(svgRef.current)download(new XMLSerializer().serializeToString(svgRef.current),'she-iso-org.svg','image/svg+xml;charset=utf-8');};
   const licenseNames=[...new Set(data.licenses.map(l=>l.legal_requirement_types?.name||'ไม่ระบุประเภท'))].sort();
   const reviewRows=filtered.map(p=>({p,r:data.reviews.find(r=>r.person_id===p.id&&r.cycle===cycle.trim())}));
   if(loading)return <Spinner/>;
   return <div className="text-slate-800">
+    {view!=='org'&&<>
     <PageHeader title={TABS.find(t=>t[0]===view)?.[1]||'ทีม SHE / ISO'} description="บุคลากรหนึ่งคนดูแลหลายไซต์ได้ และเพิ่มประวัติได้โดยไม่ต้องมีบัญชีผู้ใช้" actions={<Button variant="secondary" onClick={()=>void load()}>โหลดใหม่</Button>}/>
     <nav className="mb-5 flex flex-wrap gap-2" aria-label="การจัดการทีม">{TABS.map(([id,label,path])=><Link key={id} href={href(path)} className={`rounded-lg px-4 py-2 text-sm ${id===view?'bg-blue-700 text-white':'bg-white border text-gray-700'}`}>{label}</Link>)}</nav>
     {error&&<div role="alert" className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-900">{error}</div>}
@@ -100,40 +85,17 @@ export default function TeamManagement({view}:{view:View}) {
       <label className="py-2 text-sm"><input type="checkbox" checked={includeOutside} onChange={e=>setIncludeOutside(e.target.checked)}/> รวมคนนอกขอบเขตความรับผิดชอบ</label>
     </div><p className="mt-3 text-sm text-gray-600">แสดง {filtered.length} ระเบียนจากทั้งหมด {data.people.length} · คนที่มีหลายระเบียนเดิมยังต้องกระทบยอดก่อนสรุปจำนวนคนไม่ซ้ำ</p></Card>
 
+    </>}
+    {view==='org'&&<>
+      {error&&<div role="alert" className="mb-4 rounded-lg bg-red-50 p-4 text-red-900">{error}</div>}
+      {notice&&<div role="status" className="mb-4 rounded-lg bg-emerald-50 p-3 text-emerald-900">{notice}</div>}
+      <OrgWorkspace people={data.people} profiles={profiles} companies={data.companies} onEdit={openMember} onReload={load} onSavePosition={async(id,point)=>{const person=data.people.find(p=>p.id===id);if(!person)throw new Error('ไม่พบบุคลากร');return saveMember(person,{...profileFor(person),...point});}}/>
+    </>}
     {view==='people'&&<div className="mt-5 space-y-4">
       <div className="flex flex-wrap gap-3"><Button onClick={()=>{const m=newMember(data.companies[0]?.company_id||'');setEdit({member:m,profile:blankProfile(m)});}}>เพิ่มบุคลากร</Button><label className="cursor-pointer rounded-lg border bg-white px-4 py-2 text-sm">อ่าน Excel เพื่อเตรียมนำเข้า<input className="sr-only" type="file" accept=".xlsx" onChange={e=>{const f=e.target.files?.[0];if(f)void importFile(f);e.target.value='';}}/></label></div>
       {imports.length>0&&<Card><h2 className="font-semibold">ตรวจรายชื่อจาก Excel ก่อนบันทึก</h2><p className="my-2 text-sm text-gray-600">ข้อมูลคนเดิมคงค่าในระบบไว้ กลุ่มงานและหมายเหตุจาก Excel จะเข้าแบบร่าง ใบอนุญาตเป็นข้อมูลรอตรวจ ไม่ยืนยันว่ามีใบโดยอัตโนมัติ</p><div className="max-h-80 overflow-auto"><table className="w-full text-left text-sm"><thead><tr><th>แถว</th><th>ชื่อในไฟล์</th><th>เชื่อมกับบุคคล</th><th>ดำเนินการ</th></tr></thead><tbody>{imports.map(r=><tr key={r.sourceRow} className="border-t"><td className="py-2">{r.sourceRow}</td><td>{r.full_name} · {r.family}</td><td><select aria-label={`จับคู่ ${r.full_name}`} className={inputClass} value={importTarget[r.sourceRow]||''} onChange={e=>setImportTarget({...importTarget,[r.sourceRow]:e.target.value})}><option value="">เลือกเพื่อตรวจสอบ</option><option value="new">สร้างบุคคลใหม่</option>{data.people.map(p=><option key={p.id} value={p.id}>{p.full_name} · {p.company_id}</option>)}</select></td><td><Button variant="secondary" onClick={()=>draftImport(r)}>เปิดแบบร่าง</Button></td></tr>)}</tbody></table></div></Card>}
       <Card><div className="overflow-auto"><table className="w-full text-left text-sm"><thead><tr>{['บุคลากร','บริษัท / ทีม','กลุ่มงาน','บัญชีผู้ใช้','สถานะ',''].map((s,i)=><th key={i} className="p-3">{s}</th>)}</tr></thead><tbody>{filtered.map(p=>{const pr=profileFor(p);const account=data.users.find(u=>u.id===pr.user_id&&u.source===pr.user_source);return <tr key={p.id} className="border-t"><td className="p-3"><strong>{p.full_name}</strong><div className="text-gray-500">{p.nick_name} · {p.position||'ยังไม่ระบุตำแหน่ง'}</div></td><td className="p-3">{pr.company_ids.join(', ')}<div className="text-gray-500">{pr.teams.join(' / ')||'ยังไม่จัดทีม'}</div></td><td>{pr.family||'ยังไม่กำหนด'}</td><td>{account?`${account.username} (${account.source==='company_users'?'eashe.org':'tools'})`:'ยังไม่เชื่อมบัญชี'}</td><td>{STATUS[pr.status]}</td><td><Button variant="secondary" onClick={()=>openMember(p)}>รายละเอียด / แก้ไข</Button></td></tr>;})}</tbody></table>{!filtered.length&&<p className="p-8 text-gray-500">ไม่พบบุคลากรตามตัวกรอง</p>}</div></Card>
     </div>}
-
-    {view==='org'&&<Card className="mt-5"><div className="mb-4 flex flex-wrap items-center gap-3">
-      <Field label="แสดงสายรายงาน"><select className={inputClass} value={lineType} onChange={e=>setLineType(e.target.value as LineMode)}><option value="both">ทั้งสองสายรายงาน</option><option value="direct_manager">สายบังคับบัญชา</option><option value="functional_manager">สายวิชาชีพ</option></select></Field>
-      <label className="text-sm">ซูม {Math.round(scale*100)}% <input aria-label="ซูมผัง" type="range" min="0.05" max="1.5" step="0.05" value={scale} onChange={e=>setScale(Number(e.target.value))}/></label>
-      <Button variant="secondary" onClick={fitChart}>พอดีความกว้าง</Button>
-      <Button variant="secondary" disabled={busy||!nodes.length} onClick={()=>{setPositions(previous=>({...previous,...chart.points}));setNotice('จัดผังตามสายรายงานแล้ว กดบันทึกตำแหน่งเพื่อเก็บผังนี้');}}>จัดผังอัตโนมัติ</Button>
-      <Button disabled={busy||!Object.keys(positions).length} onClick={()=>void saveLayout()}>บันทึกตำแหน่ง ({Object.keys(positions).length})</Button><Button variant="secondary" onClick={exportSvg}>ส่งออก SVG</Button>
-    </div><div className="mb-4 flex flex-wrap gap-5 text-sm text-slate-600"><span><span className="mr-2 inline-block w-8 border-t-2 border-slate-700 align-middle"/>ผู้บังคับบัญชาสายตรง</span><span><span className="mr-2 inline-block w-8 border-t-2 border-dashed border-violet-600 align-middle"/>ผู้กำกับสายวิชาชีพ</span><span>{chart.edges.length} เส้นรายงาน · {chart.groups.length} บริษัท</span></div>
-    {chart.hidden.length>0&&<p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">มี {chart.hidden.length} สายรายงานที่หัวหน้าอยู่นอกตัวกรอง จึงไม่แสดงเส้นนั้น ล้างตัวกรองเพื่อดูผังครบ</p>}
-    <p className="mb-3 text-sm text-gray-500">ลากเพื่อจัดตำแหน่ง · ดับเบิลคลิกหรือกด Enter ที่บุคคลเพื่อแก้สายรายงาน · การจัดอัตโนมัติใช้สายบังคับบัญชาเป็นหลักเมื่อแสดงทั้งสองสาย</p>
-    {!nodes.length&&<p className="p-8 text-center text-slate-500">ไม่พบบุคลากรตามตัวกรอง</p>}
-    <div ref={viewportRef} className="max-h-[75vh] overflow-auto rounded-xl border border-slate-200 bg-slate-50"><svg ref={svgRef} role="img" aria-label={`ผังองค์กร ${chartTitle}`} xmlns="http://www.w3.org/2000/svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{width:width*scale,height:height*scale,touchAction:'none',fontFamily:'Tahoma, sans-serif'}}
-      onPointerMove={e=>{if(!drag.current)return;const d=drag.current;setPositions(previous=>({...previous,[d.id]:{x:Math.max(16,Math.round(d.x+(e.clientX-d.startX)/scale)),y:Math.max(200,Math.round(d.y+(e.clientY-d.startY)/scale))}}));}}
-      onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}>
-      <rect width="100%" height="100%" fill="#f8fafc"/>
-      <text x="32" y="42" fontSize="26" fontWeight="bold" fill="#0f172a">{chartTitle} · โครงสร้างทีม SHE / ISO</text>
-      <text x="32" y="73" fontSize="14" fill="#64748b">{today()} · {nodes.length} ระเบียน · {lineType==='both'?'ทั้งสองสายรายงาน':lineType==='direct_manager'?'สายบังคับบัญชา':'สายวิชาชีพ'}{team?` · ทีม ${team}`:''}{familyFilter?` · ${familyFilter}`:''}{search?` · ค้นหา ${search}`:''} · {activeOnly?'ทำงานอยู่':'ทุกสถานะ'}</text>
-      <path d="M32 98 H64" stroke="#334155" strokeWidth="2"/><text x="72" y="103" fontSize="12" fill="#475569">ผู้บังคับบัญชาสายตรง</text><path d="M280 98 H312" stroke="#7c3aed" strokeWidth="2" strokeDasharray="7 5"/><text x="320" y="103" fontSize="12" fill="#475569">ผู้กำกับสายวิชาชีพ</text>
-      {chart.groups.map(g=><g key={g.id}><rect x={g.x} y="125" width={g.width} height="50" rx="8" fill="#e2e8f0"/><text x={g.x+18} y="156" fontSize="18" fontWeight="bold" fill="#334155">{companyName(g.id)} · {g.count}</text></g>)}
-      {chart.edges.map(edge=>{const from=nodes.find(n=>n.person.id===edge.from)!;const to=nodes.find(n=>n.person.id===edge.to)!;return <path key={`${edge.type}-${edge.to}`} data-reporting-line={edge.type} d={connectorPath(from,to,edge.type==='functional_manager'?9:0)} fill="none" stroke={edge.type==='functional_manager'?'#7c3aed':'#334155'} strokeWidth="2.5" strokeLinejoin="round" strokeDasharray={edge.type==='functional_manager'?'7 5':undefined}><title>{from.person.full_name} → {to.person.full_name} · {edge.type==='direct_manager'?'สายบังคับบัญชา':'สายวิชาชีพ'}</title></path>;})}
-      {nodes.map(n=><g key={n.person.id} transform={`translate(${n.x},${n.y})`} role="button" tabIndex={0} aria-label={`แก้ไข ${n.person.full_name}`} style={{cursor:'move'}}
-        onKeyDown={e=>{if(e.key==='Enter')openMember(n.person);}} onDoubleClick={()=>openMember(n.person)}
-        onPointerDown={e=>{if(busy)return;e.currentTarget.setPointerCapture(e.pointerId);drag.current={id:n.person.id,x:n.x,y:n.y,startX:e.clientX,startY:e.clientY};}}>
-        <title>{n.person.full_name} · {n.person.position} · {n.profile.company_ids.join(', ')}</title>
-        <rect width="260" height="104" rx="10" fill="white" stroke="#cbd5e1" strokeWidth="1.5"/>
-        <rect x="0" y="16" width="4" height="72" rx="2" fill={n.profile.teams.includes('ISO')?'#7c3aed':'#0891b2'}/>
-        <text x="16" y="28" fontSize="14" fontWeight="bold" fill="#1e293b">{n.person.full_name.length>30?n.person.full_name.slice(0,30)+'…':n.person.full_name}</text><text x="16" y="53" fontSize="12" fill="#475569">{n.person.position.length>32?n.person.position.slice(0,32)+'…':n.person.position||'ยังไม่ระบุตำแหน่ง'}</text><text x="16" y="80" fontSize="11" fill="#64748b">{companyName(n.person.company_id)} · {n.profile.teams.join(' / ')||'ยังไม่จัดทีม'}</text>
-      </g>)}
-    </svg></div></Card>}
 
     {view==='matrix'&&<Card className="mt-5"><div className="mb-4 flex justify-between"><p className="text-sm text-gray-600">ทะเบียนใบอนุญาตเดิม ณ {today()} · ช่องว่างหมายถึงยังไม่มีรายการ</p><Link className="text-blue-700 underline" href={href('/team/licenses')}>เพิ่ม / แก้ไขใบอนุญาต</Link></div><div className="overflow-auto"><table className="w-full text-left text-sm"><thead><tr><th className="min-w-52 p-3">บุคลากร</th>{licenseNames.map(n=><th key={n} className="min-w-44 p-3">{n}</th>)}<th className="min-w-64">ข้อมูลจาก Excel ที่รอตรวจ</th></tr></thead><tbody>{filtered.map(p=><tr key={p.id} className="border-t"><th className="p-3">{p.full_name}<div className="font-normal text-gray-500">{p.company_id}</div></th>{licenseNames.map(n=>{const ls=data.licenses.filter(l=>l.personnel_id===p.id&&(l.legal_requirement_types?.name||'ไม่ระบุประเภท')===n);return <td className="p-3 align-top" key={n}>{ls.length?ls.map(l=><div key={l.id} className="mb-2"><span className={licenseStatus(l,today())==='หมดอายุ'?'text-red-700':'text-gray-700'}>{licenseStatus(l,today())}</span><div className="text-xs text-gray-500">{l.license_no||'ยังไม่ระบุเลขใบ'}{l.expiry_date?` · ${l.expiry_date}`:''}</div></div>):<span className="text-gray-400">ยังไม่มีข้อมูล</span>}</td>;})}<td className="p-3 text-gray-600">{profileFor(p).license_claims||'—'}</td></tr>)}</tbody></table></div></Card>}
 
