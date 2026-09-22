@@ -103,6 +103,9 @@ export function SuperAdminShell({ base, children }: { base: string; children: Re
 
   const [user, setUser] = useState<ConsoleUser | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const isOrgWorkspace = pathname.endsWith('/team/org-chart');
+  const compactSidebar = isOrgWorkspace && !sidebarExpanded;
 
   useEffect(() => {
     if (isLoginRoute) return;
@@ -195,13 +198,15 @@ export function SuperAdminShell({ base, children }: { base: string; children: Re
     <Ctx.Provider value={{ base, user, href }}>
       <div className="flex min-h-screen" style={{ backgroundColor: '#F6F7F9' }}>
         <aside
-          className={`fixed inset-y-0 left-0 z-30 flex w-64 transform flex-col transition-transform lg:static lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-30 flex w-64 shrink-0 transform flex-col transition-transform lg:translate-x-0 ${isOrgWorkspace ? 'lg:sticky lg:top-0 lg:h-dvh' : 'lg:static'} ${compactSidebar ? 'lg:w-20' : 'lg:w-64'} ${
             menuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
           style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}
         >
-          <div className="px-4 pt-5">
+          {compactSidebar && <div className="hidden flex-col items-center gap-5 px-3 py-6 lg:flex"><Link href={href('/')} title="ทุกโปรเจกต์" aria-label="ทุกโปรเจกต์" className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white"><ShieldCheck size={22}/></Link><button title="ขยายเมนู" aria-label="ขยายเมนู" onClick={()=>setSidebarExpanded(true)} className="p-2 text-slate-400 hover:text-white"><Menu size={18}/></button></div>}
+          <div className={`px-4 pt-5 ${compactSidebar ? 'lg:hidden' : ''}`}>
             <div className="flex items-center">
+              {isOrgWorkspace && !compactSidebar && <button aria-label="ย่อเมนู" title="ย่อเมนู" onClick={()=>setSidebarExpanded(false)} className="mr-2 hidden p-1 text-slate-400 lg:block"><Menu size={16}/></button>}
               <Link
                 href={href('/')}
                 onClick={() => setMenuOpen(false)}
@@ -238,19 +243,23 @@ export function SuperAdminShell({ base, children }: { base: string; children: Re
                 <Link
                   key={item.path}
                   href={href(item.path)}
+                  title={compactSidebar ? item.label : undefined}
+                  aria-label={item.label}
+                  aria-current={active ? 'page' : undefined}
                   onClick={() => setMenuOpen(false)}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
                     active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/5 hover:text-white'
                   }`}
                 >
                   <Icon size={17} />
-                  {item.label}
+                  <span className={compactSidebar ? 'lg:hidden' : ''}>{item.label}</span>
                 </Link>
               );
             })}
           </nav>
 
-          {userBlock}
+          <div className={compactSidebar ? 'lg:hidden' : ''}>{userBlock}</div>
+          {compactSidebar && <div className="hidden justify-center border-t border-white/10 p-4 lg:flex"><button title="ออกจากระบบ" aria-label="ออกจากระบบ" onClick={logout} className="p-2 text-slate-400 hover:text-white"><LogOut size={18}/></button></div>}
         </aside>
 
         {menuOpen && (
@@ -269,7 +278,7 @@ export function SuperAdminShell({ base, children }: { base: string; children: Re
               {section.title}
             </span>
           </header>
-          <main className="min-w-0 flex-1 p-5 lg:p-8">{children}</main>
+          <main className={`min-w-0 flex-1 ${isOrgWorkspace ? 'p-4 lg:px-7 lg:py-6' : 'p-5 lg:p-8'}`}>{children}</main>
         </div>
       </div>
     </Ctx.Provider>
