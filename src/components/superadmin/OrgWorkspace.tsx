@@ -183,11 +183,12 @@ export default function OrgWorkspace({ people, profiles, companies, onEdit, onSa
           <div className={styles.sectionHeading}><h2>ทีมในแต่ละบริษัท</h2><span>เลือกบุคคลเพื่อดูรายละเอียด · เลือกบริษัทเพื่อดูผัง</span></div>
           {!found.length ? <div className={styles.empty}><Search size={30}/><h3>ไม่พบบุคลากรตามตัวกรอง</h3><p>ลองใช้ชื่อบางส่วน หรือเลือกดูทุกบริษัท</p><button onClick={clearFilters}>ล้างตัวกรอง</button></div> : <div className={styles.companyGrid}>{groups.map(id => {
             const members = found.filter(p => p.company_id === id);
-            return <article className={styles.companyCard} key={id}><header><div className={styles.companyMonogram}>{id.toUpperCase().replace('EA-', '').slice(0,3)}</div><div><h3>{companyName(id)}</h3><span>{members.length} ระเบียน · {id.toUpperCase()}</span></div><button aria-label={`ดูผัง ${companyName(id)}`} title="ดูผังบริษัท" onClick={() => { changeCompany(id); setView('chart'); }}><ArrowRight size={18}/></button></header><div className={styles.companyPeople}>{members.map(p => {
+            const visibleMembers = company || query ? members : members.slice(0, 3);
+            return <article className={styles.companyCard} key={id}><header><div className={styles.companyMonogram}>{id.toUpperCase().replace('EA-', '').slice(0,3)}</div><div><h3>{companyName(id)}</h3><span>{members.length} ระเบียน · {id.toUpperCase()}</span></div><button aria-label={`ดูผัง ${companyName(id)}`} title="ดูผังบริษัท" onClick={() => { changeCompany(id); setView('chart'); }}><ArrowRight size={18}/></button></header><div className={styles.companyPeople}>{visibleMembers.map(p => {
               const profile = profileFor(p);
               const reports = people.filter(child => { const pr = profiles.get(child.id); return pr?.direct_manager === p.id || pr?.functional_manager === p.id; }).length;
               return <button key={p.id} className={`${styles.personRow} ${selectedId === p.id ? styles.selectedRow : ''}`} aria-pressed={selectedId === p.id} onClick={() => selectPerson(p.id)}><span className={`${styles.avatar} ${profile.teams.includes('ISO') ? styles.isoAvatar : ''}`}>{initials(p.full_name)}</span><span className={styles.personCopy}><strong>{p.full_name}</strong><span>{p.position || 'ยังไม่ระบุตำแหน่ง'}</span><span className={styles.personMeta}>{profile.teams.join(' / ') || 'ยังไม่จัดทีม'}{reports > 0 && <span><GitBranch size={12}/>{reports}</span>}</span></span><ChevronRight size={15}/></button>;
-            })}</div></article>;
+            })}</div>{visibleMembers.length < members.length && <button className={styles.showMembers} onClick={() => changeCompany(id)}>ดูทั้งหมด {members.length} ระเบียน<ArrowRight size={14}/></button>}</article>;
           })}</div>}
           <p className={styles.dataNote}>จัดกลุ่มตามบริษัทหลัก · จำนวนเป็นระเบียนบุคลากร ยังไม่รวมระเบียนซ้ำเป็นคนเดียว</p>
         </div> : <div className={styles.chartPanel}>

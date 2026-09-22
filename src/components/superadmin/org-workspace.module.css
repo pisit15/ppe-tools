@@ -53,6 +53,7 @@
 .companyCard header span { font-size:11px; color:#6c818d; display:block; margin-top:3px; }
 .companyCard header button { width:30px; height:30px; color:#a0afb8; border-radius:6px; flex-shrink:0; }
 .companyPeople { padding:5px 6px; }
+.showMembers { width:100%; padding:13px 16px; border-top:1px solid var(--line); font-size:13px; color:var(--teal); background:#fafdfc; }
 .personRow { width:100%; text-align:left; padding:13px 9px; border-radius:8px; border:1px solid transparent; align-items:flex-start!important; gap:11px!important; }
 .personRow + .personRow { border-top:1px solid #f2f5f7; border-radius:0; }
 .personRow.selectedRow { background:#f0faf7; border:1px solid #c7e4dd; border-radius:8px; }

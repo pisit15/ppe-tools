@@ -7,8 +7,9 @@ const {blankProfile}=require('../../src/lib/team-management.ts');
 const companies=['aab','amt','ea-hq','ea-kabin','ebi','esl','eslo','esm','esn','esp','ewhk','gtr','hnm','wmp'].map(id=>({company_id:id,company_name:id.toUpperCase().replace('EA-','EA ')}));
 const names=['กิตติ วิริยะกุล','ณัฐชา พัฒนกิจ','วรินทร์ ธนาภรณ์','สุภาวดี ชาญกิจ','ธีรภัทร วงศ์ไพบูลย์','ปรียา ศิริวัฒนา','ชยุตม์ พรประเสริฐ','ธนพร อมรวิทย์','วรพจน์ ศรีสกุล','กานต์พิชชา วิริยะ','สราวุธ พิพัฒน์','มนัสวี เจริญผล','พรทิพย์ รัตนกุล','ณัฐวุฒิ วิชัย','อภิญญา ธนโชติ','ภัทรพล ศิริพงศ์','จิราพร ชัยวัฒน์'];
 const people=Array.from({length:34},(_,i)=>({id:`person-${i}`,full_name:names[i%names.length]+(i>=names.length?' (ทดสอบ)':''),nick_name:'',company_id:companies[Math.floor(i/3)%companies.length].company_id,position:['HSE Manager','เจ้าหน้าที่ความปลอดภัยวิชาชีพ','วิศวกรสิ่งแวดล้อม','ISO / DCC Officer'][i%4],bu:'',department:'SHE',responsibility:'',phone:'',email:'',is_active:true,is_she_team:true,employment_type:'permanent'}));
-// Spread final records across the remaining companies to exercise a 14-company overview.
-people[30].company_id='ewhk'; people[31].company_id='gtr'; people[32].company_id='hnm'; people[33].company_id='wmp';
+// // Include a large company to catch excessive overview card height.
+let companyOffset=0;
+[2,3,2,12,5,1,1,1,1,1,1,2,1,1].forEach((count,index)=>{for(let n=0;n<count;n++)people[companyOffset++].company_id=companies[index].company_id;});
 const profiles=people.map((p,i)=>({...blankProfile(p),teams:i%4===3?['ISO','DCC']:['SHE'],direct_manager:[1,2,4,5].includes(i)?`person-${i<3?0:3}`:'',functional_manager:i===2?'person-6':'',company_ids:i===6?[p.company_id,'aab']:[p.company_id]}));
 let writes=0, failNext=false;
 const respond=(res,data,status=200)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(data));};
