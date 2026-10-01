@@ -285,7 +285,8 @@ export default function OrderCalculationPage() {
       c.fill = fill(color);
       c.alignment = center;
     });
-    ['A3:A4', 'B3:B4', 'C3:C4', 'D3:F3', 'G3:G4', 'H3:H4', 'I3:N3', 'O3:O4', 'P3:P4', 'Q3:Q4', 'R3:R4'].forEach(r => ws.mergeCells(r));
+    // NOTE: G3/G4 are NOT merged in the original — G3 is "Stock on hand", G4 is the cut-off date
+    ['A3:A4', 'B3:B4', 'C3:C4', 'D3:F3', 'H3:H4', 'I3:N3', 'O3:O4', 'P3:P4', 'Q3:Q4', 'R3:R4'].forEach(r => ws.mergeCells(r));
 
     // Data rows
     const list = filtered;
@@ -298,7 +299,7 @@ export default function OrderCalculationPage() {
       row.height = 50;
       const rm = remarks[r.product.id] || { remark: '', qty: '' };
       const remarkText = rm.qty !== ''
-        ? `(สั่งซื้อจริง ${rm.qty}${rm.remark ? ' — ' + rm.remark : ''})`
+        ? `(สั่งซื้อจริง ${rm.qty}${rm.remark ? ' ' + rm.remark : ''})`
         : rm.remark;
 
       row.getCell(1).value = i + 1;
@@ -326,7 +327,7 @@ export default function OrderCalculationPage() {
         c.font = col === 3 || col === 17 ? TAHOMA : TNR();
         c.alignment = col === 2 || col === 3 || col === 17 ? left : center;
         if (col <= 3) c.fill = fill(C_BLUE_D);
-        else if (col <= 16) c.fill = fill(C_BLUE_L);
+        else if (col <= 17) c.fill = fill(C_BLUE_L);
       }
       // Special cells (colors/formats from the original file)
       row.getCell(7).fill = fill(C_PINK);
