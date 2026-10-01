@@ -20,6 +20,7 @@ import {
   LogOut,
   ChevronDown,
   Network,
+  ShoppingCart,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -81,6 +82,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     { label: 'ประวัติ', href: `/ppe/history${q}`, icon: <History size={20} /> },
     { label: 'รายงาน', href: `/ppe/reports${q}`, icon: <BarChart3 size={20} /> },
     { label: 'รายงานสินค้า', href: `/ppe/reports/product${q}`, icon: <FileBarChart size={20} /> },
+    { label: 'คำนวณสั่งซื้อ', href: `/ppe/reports/order${q}`, icon: <ShoppingCart size={20} /> },
   ];
 
   const sheItems: NavItem[] = [

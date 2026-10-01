@@ -6,6 +6,8 @@ export type PPEProduct = {
   unit: string;
   image_url: string | null;
   min_stock: number;
+  item_code?: string | null;
+  unit_price?: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -52,6 +54,26 @@ export type PPEEmployee = {
   department: string | null;
   is_active: boolean;
   created_at: string;
+};
+
+export type PPEOrderSettings = {
+  company_id: string;
+  quotation_days: number;
+  pr_days: number;
+  wams_open_days: number;
+  wams_process_days: number;
+  delivery_days: number;
+  updated_at?: string;
+};
+
+export type PPEOrderRemark = {
+  id: number;
+  company_id: string;
+  product_id: string;
+  period: string; // end month of the 3-month window, e.g. '2026-08'
+  remark: string;
+  actual_order_qty: number | null;
+  updated_at: string;
 };
 
 export type PPEDepartment = {

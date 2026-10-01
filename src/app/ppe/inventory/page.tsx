@@ -81,6 +81,9 @@ export default function InventoryPage() {
   // Inline min_stock editor state
   const [editingMin, setEditingMin] = useState<{ id: string; value: string } | null>(null);
 
+  // Inline item_code / unit_price editor state (for order calculation export)
+  const [editingField, setEditingField] = useState<{ id: string; field: 'item_code' | 'unit_price'; value: string } | null>(null);
+
   // Image editor state
   const [editing, setEditing] = useState<PPEProduct | null>(null);
   const [editUrl, setEditUrl] = useState('');
@@ -262,6 +265,34 @@ export default function InventoryPage() {
         setToast({ type: 'success', msg: `ตั้งสต็อกขั้นต่ำ "${target.name}" = ${newVal}` });
       } else {
         setToast({ type: 'error', msg: 'บันทึกสต็อกขั้นต่ำไม่สำเร็จ' });
+      }
+    } catch {
+      setToast({ type: 'error', msg: 'เกิดข้อผิดพลาดในการบันทึก' });
+    }
+  };
+
+  const saveField = async () => {
+    if (!editingField) return;
+    const target = products.find((p) => p.id === editingField.id);
+    const { field } = editingField;
+    const raw = editingField.value.trim();
+    setEditingField(null);
+    if (!target) return;
+    const newVal: string | number | null =
+      field === 'unit_price' ? (raw === '' ? null : Math.max(0, parseFloat(raw) || 0)) : (raw || null);
+    const oldVal = field === 'unit_price' ? (target.unit_price ?? null) : (target.item_code ?? null);
+    if (newVal === oldVal) return;
+    try {
+      const res = await fetch('/api/ppe/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: target.id, [field]: newVal }),
+      });
+      if (res.ok) {
+        setProducts((prev) => prev.map((p) => (p.id === target.id ? { ...p, [field]: newVal } : p)));
+        setToast({ type: 'success', msg: field === 'unit_price' ? 'บันทึกราคาแล้ว' : 'บันทึก Item Code แล้ว' });
+      } else {
+        setToast({ type: 'error', msg: 'บันทึกไม่สำเร็จ' });
       }
     } catch {
       setToast({ type: 'error', msg: 'เกิดข้อผิดพลาดในการบันทึก' });
@@ -787,6 +818,9 @@ export default function InventoryPage() {
                 >
                   ชื่อสินค้า<SortIcon field="name" />
                 </th>
+                <th className="px-4 py-3 text-left font-semibold text-sm" style={{ color: VIZ.text }}>
+                  Item Code
+                </th>
                 <th
                   className="px-6 py-3 text-left font-semibold text-sm cursor-pointer select-none hover:bg-gray-50"
                   style={{ color: VIZ.text }}
@@ -814,6 +848,9 @@ export default function InventoryPage() {
                   onClick={() => toggleSort('min_stock')}
                 >
                   สต็อกขั้นต่ำ<SortIcon field="min_stock" />
+                </th>
+                <th className="px-4 py-3 text-right font-semibold text-sm" style={{ color: VIZ.text }}>
+                  ราคา/หน่วย
                 </th>
                 <th
                   className="px-6 py-3 text-center font-semibold text-sm"
@@ -874,6 +911,32 @@ export default function InventoryPage() {
                       <td className="px-6 py-3 font-medium text-sm" style={{ color: VIZ.text }}>
                         {product.name}
                       </td>
+                      <td className="px-4 py-3 text-sm">
+                        {editingField?.id === product.id && editingField.field === 'item_code' ? (
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingField.value}
+                            onChange={(e) => setEditingField({ id: product.id, field: 'item_code', value: e.target.value })}
+                            onBlur={saveField}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveField();
+                              if (e.key === 'Escape') setEditingField(null);
+                            }}
+                            className="w-32 px-2 py-1 border rounded-lg text-sm text-gray-900 font-mono"
+                            style={{ borderColor: VIZ.primary }}
+                          />
+                        ) : (
+                          <button
+                            title="คลิกเพื่อแก้ไข Item Code"
+                            onClick={() => setEditingField({ id: product.id, field: 'item_code', value: product.item_code || '' })}
+                            className="px-2 py-1 rounded-lg hover:bg-gray-100 border border-transparent hover:border-gray-200 transition-colors cursor-pointer font-mono"
+                            style={{ color: product.item_code ? VIZ.text : VIZ.neutral }}
+                          >
+                            {product.item_code || '—'}
+                          </button>
+                        )}
+                      </td>
                       <td className="px-6 py-3 text-sm" style={{ color: VIZ.lightText }}>
                         {getTypeLabel(product.type)}
                       </td>
@@ -933,6 +996,34 @@ export default function InventoryPage() {
                           </button>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-right text-sm tabular-nums">
+                        {editingField?.id === product.id && editingField.field === 'unit_price' ? (
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            autoFocus
+                            value={editingField.value}
+                            onChange={(e) => setEditingField({ id: product.id, field: 'unit_price', value: e.target.value })}
+                            onBlur={saveField}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveField();
+                              if (e.key === 'Escape') setEditingField(null);
+                            }}
+                            className="w-24 px-2 py-1 border rounded-lg text-right text-sm text-gray-900"
+                            style={{ borderColor: VIZ.primary }}
+                          />
+                        ) : (
+                          <button
+                            title="คลิกเพื่อแก้ไขราคาต่อหน่วย"
+                            onClick={() => setEditingField({ id: product.id, field: 'unit_price', value: product.unit_price != null ? String(product.unit_price) : '' })}
+                            className="px-2 py-1 rounded-lg hover:bg-gray-100 border border-transparent hover:border-gray-200 transition-colors cursor-pointer"
+                            style={{ color: product.unit_price != null ? VIZ.text : VIZ.neutral }}
+                          >
+                            {product.unit_price != null ? product.unit_price.toLocaleString('th-TH') : '—'}
+                          </button>
+                        )}
+                      </td>
                       <td className="px-6 py-3 text-center">
                         <button
                           onClick={() => setDeleting(product)}
@@ -955,7 +1046,7 @@ export default function InventoryPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
+                  <td colSpan={9} className="px-6 py-12 text-center">
                     <Package
                       size={48}
                       className="mx-auto mb-3 opacity-40"
