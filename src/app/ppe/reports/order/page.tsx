@@ -219,76 +219,188 @@ export default function OrderCalculationPage() {
   };
 
   const handleExport = useCallback(async () => {
-    const XLSX = await import('xlsx');
+    // ExcelJS replicates the purchasing team's original workbook styling
+    const ExcelJS = (await import('exceljs')).default;
     const cutoff = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' });
-    const header3 = ['No.', 'Item Code', 'Item Name', 'Usage / Month', '', '', 'Stock on hand', 'Lead Time (Month)', 'Stock', '', '', '', '', '', 'Re-order point', 'Need to order', 'สั่งซื้อจริง', 'Remark', 'ราคา/หน่วย'];
-    const header4 = ['', '', '', monthLabelTH(months[0]), monthLabelTH(months[1]), monthLabelTH(months[2]), `Cut-off date\n${cutoff}`, '', 'Usage per 3 months', 'Avg. usage per 3 months', 'Safety Stock', 'MIN', 'MAX', 'AVG.', '', '', '', '', ''];
-    const aoa: (string | number | null)[][] = [
-      ['Calculation Order'],
-      [],
-      header3,
-      header4,
-    ];
-    const list = filtered;
-    list.forEach((r, i) => {
-      const rm = remarks[r.product.id] || { remark: '', qty: '' };
-      aoa.push([
-        i + 1,
-        r.product.item_code || '',
-        r.product.name,
-        r.usage[0], r.usage[1], r.usage[2],
-        r.stockOnHand,
-        null, null, null, null, null, null, null, null, null, // H..P formulas
-        rm.qty === '' ? null : Number(rm.qty),
-        rm.remark,
-        r.product.unit_price ?? null,
-      ]);
-    });
-    const firstDataRow = 5;
-    const lastDataRow = 4 + list.length;
-    const s = settings;
-    aoa.push([]);
-    aoa.push([null, null, null, 'Lead time :', 'Quotation', null, s?.quotation_days ?? 0.5, 'Day', null, null, 'Safety Stock =', 'ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง * Lead Time (Month)']);
-    aoa.push([null, null, null, null, 'PR', null, s?.pr_days ?? 0.5, 'Day', null, null, 'ค่า MIN =', 'ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง + Safety Stock']);
-    aoa.push([null, null, null, null, 'WAMS Open', null, s?.wams_open_days ?? 1, 'Day', null, null, 'ค่า MAX =', '(ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง * Lead Time (Month)) + MIN + Safety Stock']);
-    aoa.push([null, null, null, null, 'WAMS Process', null, s?.wams_process_days ?? 14, 'Days', null, null, 'ค่า AVG. =', '(MAX + MIN) / 2']);
-    aoa.push([null, null, null, null, 'Delivery', null, s?.delivery_days ?? 14, 'Days', null, null, 'Re-order point =', '(ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง * Lead Time (Month)) + Safety Stock']);
-    aoa.push([null, null, null, null, 'Total', null, leadDaysTotal, 'Days', null, null, 'Need to order =', 'AVG. - Stock on hand']);
-    aoa.push([null, null, null, null, 'Lead Time (Month)', null, leadMonths, 'Month']);
-    aoa.push([]);
-    aoa.push([null, null, null, 'Remark :', '- ถ้า Lead time ในใบเสนอราคาอยู่ที่ 1-14 วัน ให้ใส่ที่ 14 วัน']);
-    aoa.push([null, null, null, null, '- ถ้า Lead time ในใบเสนอราคาอยู่ที่ มากกว่า 14 วัน ให้ใส่จำนวนวันตามจริง']);
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    // Formulas H..P per data row (same as the team's Excel)
-    for (let r = firstDataRow; r <= lastDataRow; r++) {
-      ws[`H${r}`] = { t: 'n', v: leadMonths };
-      ws[`I${r}`] = { t: 'n', f: `SUM(D${r}:F${r})` };
-      ws[`J${r}`] = { t: 'n', f: `I${r}/3` };
-      ws[`K${r}`] = { t: 'n', f: `H${r}*J${r}` };
-      ws[`L${r}`] = { t: 'n', f: `J${r}+K${r}` };
-      ws[`M${r}`] = { t: 'n', f: `(J${r}*H${r})+K${r}+L${r}` };
-      ws[`N${r}`] = { t: 'n', f: `(M${r}+L${r})/2` };
-      ws[`O${r}`] = { t: 'n', f: `(J${r}*H${r})+K${r}` };
-      ws[`P${r}`] = { t: 'n', f: `N${r}-G${r}` };
-    }
-    ws['!merges'] = [
-      XLSX.utils.decode_range('A3:A4'), XLSX.utils.decode_range('B3:B4'), XLSX.utils.decode_range('C3:C4'),
-      XLSX.utils.decode_range('D3:F3'), XLSX.utils.decode_range('G3:G4'), XLSX.utils.decode_range('H3:H4'),
-      XLSX.utils.decode_range('I3:N3'), XLSX.utils.decode_range('O3:O4'), XLSX.utils.decode_range('P3:P4'),
-      XLSX.utils.decode_range('Q3:Q4'), XLSX.utils.decode_range('R3:R4'), XLSX.utils.decode_range('S3:S4'),
-    ];
-    ws['!cols'] = [
-      { wch: 4 }, { wch: 14 }, { wch: 45 }, { wch: 7 }, { wch: 7 }, { wch: 7 }, { wch: 10 }, { wch: 9 },
-      { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 },
-      { wch: 9 }, { wch: 45 }, { wch: 9 },
-    ];
-    const wb = XLSX.utils.book_new();
+    // Colors extracted from the team's original file
+    const C_GRAY = 'FFD9D9D9';   // header base
+    const C_CREAM = 'FFFFF2CC';  // Usage/Month + months + Stock on hand
+    const C_GREEN = 'FFC6DEB5';  // Need to order header + cut-off cell
+    const C_ORANGE = 'FFF7860C'; // Re-order point header
+    const C_RED = 'FFFF0000';    // Avg usage header
+    const C_PINK = 'FFFFCCF3';   // Stock on hand data
+    const C_YELLOW = 'FFFFFF00'; // Avg usage data
+    const C_BLUE_D = 'FFBDD7EE'; // No./Code/Name data
+    const C_BLUE_L = 'FFDEEBF7'; // numeric data
+    const C_MINT = 'FFDEF9F7';   // lead-time month cell
+
+    const TNR = (opts: Partial<{ bold: boolean; size: number; underline: boolean; color: string }> = {}) => ({
+      name: 'Times New Roman', size: opts.size ?? 11, bold: opts.bold ?? false,
+      underline: opts.underline ?? false,
+      ...(opts.color ? { color: { argb: opts.color } } : {}),
+    });
+    const TAHOMA = { name: 'Tahoma', size: 11 };
+    const fill = (argb: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb } });
+    const thin = { style: 'thin' as const };
+    const allBorders = { top: thin, bottom: thin, left: thin, right: thin };
+    const center = { horizontal: 'center' as const, vertical: 'middle' as const, wrapText: true };
+    const left = { horizontal: 'left' as const, vertical: 'middle' as const, wrapText: true };
+
+    const wb = new ExcelJS.Workbook();
     const [y, m] = endMonth.split('-').map(Number);
     const sheetName = `Cal. Order-${new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short' })}`;
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    XLSX.writeFile(wb, `Calculation_Order_${companyId.toUpperCase()}_${endMonth}.xlsx`);
-  }, [filtered, remarks, settings, leadDaysTotal, leadMonths, months, endMonth, companyId]);
+    const ws = wb.addWorksheet(sheetName, { views: [{ state: 'frozen', xSplit: 3, ySplit: 4 }] });
+
+    ws.columns = [
+      { width: 5.6 }, { width: 13.5 }, { width: 70.7 }, { width: 10.3 }, { width: 10.3 }, { width: 10.3 },
+      { width: 15.6 }, { width: 20.2 }, { width: 12.6 }, { width: 11 }, { width: 11 }, { width: 10.6 },
+      { width: 10.6 }, { width: 10.6 }, { width: 13 }, { width: 12 }, { width: 30.3 }, { width: 11 },
+    ];
+
+    // Title
+    ws.getCell('A1').value = 'Calculation Order';
+    ws.getCell('A1').font = TNR({ bold: true, size: 18 });
+    ws.getRow(1).height = 22.8;
+
+    // Headers (rows 3-4)
+    ws.getRow(3).height = 35;
+    ws.getRow(4).height = 35;
+    const h3: [string, string, string][] = [
+      ['A3', 'No.', C_GRAY], ['B3', 'Item Code', C_GRAY], ['C3', 'Item Name', C_GRAY],
+      ['D3', 'Usage / Month', C_CREAM], ['G3', 'Stock on hand', C_CREAM], ['H3', 'Lead Time (Month)', C_GRAY],
+      ['I3', 'Stock', C_GRAY], ['O3', 'Re-order point', C_ORANGE], ['P3', 'Need to order', C_GREEN],
+      ['Q3', 'Remark', C_GRAY], ['R3', 'ราคา', C_GRAY],
+    ];
+    const h4: [string, string, string][] = [
+      ['D4', monthLabelTH(months[0]), C_CREAM], ['E4', monthLabelTH(months[1]), C_CREAM], ['F4', monthLabelTH(months[2]), C_CREAM],
+      ['G4', `Cut-off date\n${cutoff}`, C_GREEN],
+      ['I4', 'Usage per 3 months', C_GRAY], ['J4', 'Avg. usage per 3 months', C_RED],
+      ['K4', 'Safety Stock', C_GRAY], ['L4', 'MIN', C_GRAY], ['M4', 'MAX', C_GRAY], ['N4', 'AVG.', C_GRAY],
+    ];
+    [...h3, ...h4].forEach(([addr, label, color]) => {
+      const c = ws.getCell(addr);
+      c.value = label;
+      c.font = TNR({ bold: true });
+      c.fill = fill(color);
+      c.alignment = center;
+    });
+    ['A3:A4', 'B3:B4', 'C3:C4', 'D3:F3', 'G3:G4', 'H3:H4', 'I3:N3', 'O3:O4', 'P3:P4', 'Q3:Q4', 'R3:R4'].forEach(r => ws.mergeCells(r));
+
+    // Data rows
+    const list = filtered;
+    const firstDataRow = 5;
+    const lbTop = firstDataRow + list.length + 1; // lead-time block start
+    const monthCellRef = `$G$${lbTop + 6}`; // Lead Time (Month) cell, like $G$33 in the original
+    list.forEach((r, i) => {
+      const rowN = firstDataRow + i;
+      const row = ws.getRow(rowN);
+      row.height = 50;
+      const rm = remarks[r.product.id] || { remark: '', qty: '' };
+      const remarkText = rm.qty !== ''
+        ? `(สั่งซื้อจริง ${rm.qty}${rm.remark ? ' — ' + rm.remark : ''})`
+        : rm.remark;
+
+      row.getCell(1).value = i + 1;
+      row.getCell(2).value = r.product.item_code || '';
+      row.getCell(3).value = r.product.name;
+      row.getCell(4).value = r.usage[0];
+      row.getCell(5).value = r.usage[1];
+      row.getCell(6).value = r.usage[2];
+      row.getCell(7).value = r.stockOnHand;
+      row.getCell(8).value = { formula: monthCellRef, result: leadMonths };
+      row.getCell(9).value = { formula: `SUM(D${rowN}:F${rowN})` };
+      row.getCell(10).value = { formula: `I${rowN}/3` };
+      row.getCell(11).value = { formula: `H${rowN}*J${rowN}` };
+      row.getCell(12).value = { formula: `J${rowN}+K${rowN}` };
+      row.getCell(13).value = { formula: `(J${rowN}*H${rowN})+K${rowN}+L${rowN}` };
+      row.getCell(14).value = { formula: `(M${rowN}+L${rowN})/2` };
+      row.getCell(15).value = { formula: `(J${rowN}*H${rowN})+K${rowN}` };
+      row.getCell(16).value = { formula: `N${rowN}-G${rowN}` };
+      row.getCell(17).value = remarkText;
+      if (r.product.unit_price != null) row.getCell(18).value = r.product.unit_price;
+
+      for (let col = 1; col <= 18; col++) {
+        const c = row.getCell(col);
+        c.border = allBorders;
+        c.font = col === 3 || col === 17 ? TAHOMA : TNR();
+        c.alignment = col === 2 || col === 3 || col === 17 ? left : center;
+        if (col <= 3) c.fill = fill(C_BLUE_D);
+        else if (col <= 16) c.fill = fill(C_BLUE_L);
+      }
+      // Special cells (colors/formats from the original file)
+      row.getCell(7).fill = fill(C_PINK);
+      row.getCell(7).font = TNR({ bold: true });
+      row.getCell(8).numFmt = '0.0_ ';
+      row.getCell(10).fill = fill(C_YELLOW);
+      row.getCell(10).font = TNR({ bold: true, underline: true });
+      for (const col of [10, 11, 12, 13, 14, 15, 16]) row.getCell(col).numFmt = '0_ ';
+      row.getCell(16).font = TNR({ bold: true, color: C_RED });
+    });
+
+    // Lead time block + formula legend
+    const s = settings;
+    const lb = lbTop;
+    const leadRows: [string, number | { formula: string }, string][] = [
+      ['Quotation', s?.quotation_days ?? 0.5, 'Day'],
+      ['PR', s?.pr_days ?? 0.5, 'Day'],
+      ['WAMS Open', s?.wams_open_days ?? 1, 'Day'],
+      ['WAMS Process', s?.wams_process_days ?? 14, 'Days'],
+      ['Delivery', s?.delivery_days ?? 14, 'Days'],
+      ['Total', { formula: `SUM(G${lb}:G${lb + 4})` }, 'Days'],
+      ['', { formula: `G${lb + 5}/30` }, 'Month'],
+    ];
+    const legend: [string, string][] = [
+      ['Safety Stock =', 'ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง * Lead Time (Month)'],
+      ['ค่า MIN =', 'ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง + Safety Stock'],
+      ['ค่า MAX =', '(ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง * Lead Time (Month)) + MIN + Safety Stock'],
+      ['ค่า AVG. =', '(MAX + MIN) / 2'],
+      ['Re-order point =', '(ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง * Lead Time (Month)) + Safety Stock'],
+      ['Need to order =', 'AVG. - Stock on hand'],
+    ];
+    ws.getCell(`D${lb}`).value = 'Lead time :';
+    ws.getCell(`D${lb}`).font = TNR({ bold: true });
+    leadRows.forEach(([label, val, unit], i) => {
+      const rn = lb + i;
+      ws.getCell(`E${rn}`).value = label;
+      ws.getCell(`E${rn}`).font = TNR({ bold: label === 'Total' });
+      ws.getCell(`G${rn}`).value = val;
+      ws.getCell(`G${rn}`).font = TNR({ bold: label === 'Total' || unit === 'Month' });
+      ws.getCell(`G${rn}`).alignment = center;
+      ws.getCell(`H${rn}`).value = unit;
+      ws.getCell(`H${rn}`).font = TNR();
+      ws.getCell(`H${rn}`).alignment = left;
+      if (unit === 'Month') {
+        ws.getCell(`G${rn}`).fill = fill(C_MINT);
+        ws.getCell(`G${rn}`).numFmt = '0.0_ ';
+      }
+    });
+    legend.forEach(([k, v], i) => {
+      const rn = lb + i;
+      ws.getCell(`K${rn}`).value = k;
+      ws.getCell(`K${rn}`).font = TNR({ bold: true });
+      ws.getCell(`K${rn}`).alignment = { horizontal: 'right', vertical: 'middle' };
+      ws.getCell(`L${rn}`).value = v;
+      ws.getCell(`L${rn}`).font = TAHOMA;
+    });
+    const noteRow = lb + 8;
+    ws.getCell(`D${noteRow}`).value = 'Remark :';
+    ws.getCell(`D${noteRow}`).font = TNR({ bold: true });
+    ws.getCell(`E${noteRow}`).value = '- ถ้า Lead time ในใบเสนอราคาอยู่ที่ 1-14 วัน ให้ใส่ที่ 14 วัน';
+    ws.getCell(`E${noteRow}`).font = TNR();
+    ws.getCell(`E${noteRow + 1}`).value = '- ถ้า Lead time ในใบเสนอราคาอยู่ที่ มากกว่า 14 วัน ให้ใส่จำนวนวันตามจริง';
+    ws.getCell(`E${noteRow + 1}`).font = TNR();
+
+    // Download
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Calculation_Order_${companyId.toUpperCase()}_${endMonth}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filtered, remarks, settings, leadMonths, months, endMonth, companyId]);
 
   const monthOptions = useMemo(() => {
     const opts: string[] = [];
