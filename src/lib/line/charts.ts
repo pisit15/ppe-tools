@@ -26,20 +26,25 @@ export function seriesOf(incidentType?: string | null): SeriesKey {
 
 const CHART_H = 130; // px for the tallest bar
 
+export type Series = { key: string; label: string; color: string };
+type Stack = Record<string, number>;
+
 /**
  * Stacked monthly columns. `months[i] === null` means a future month (drawn as a dash).
  */
-export function stackedMonthlyChart(months: (MonthCounts | null)[]): Json {
-  const totals = months.map(m => (m ? INCIDENT_SERIES.reduce((s, x) => s + m[x.key], 0) : 0));
-  const max = Math.max(1, ...totals);
+export function stackedChart(months: (Stack | null)[], series: readonly Series[], fmtTotal: (n: number) => string = fmt): Json {
+  const totals = months.map(m => (m ? series.reduce((s, x) => s + (m[x.key] || 0), 0) : 0));
+  const max = Math.max(1e-9, ...totals);
   const cols: Json[] = months.map((m, i) => {
     const segs: Json[] = m
-      ? INCIDENT_SERIES.filter(x => m[x.key] > 0)
+      ? series
+          .filter(x => (m[x.key] || 0) > 0)
+          .slice()
           .reverse() // top of the stack first
           .map(x => ({
             type: 'box',
             layout: 'vertical',
-            height: `${Math.max(2, Math.round((m[x.key] / max) * CHART_H))}px`,
+            height: `${Math.max(2, Math.round(((m[x.key] || 0) / max) * CHART_H))}px`,
             backgroundColor: x.color,
             contents: [],
           }))
@@ -49,7 +54,7 @@ export function stackedMonthlyChart(months: (MonthCounts | null)[]): Json {
       layout: 'vertical',
       flex: 1,
       contents: [
-        { type: 'text', text: m ? (totals[i] ? fmt(totals[i]) : '0') : '–', size: 'xxs', color: m ? C.text : C.faint, align: 'center', weight: 'bold' },
+        { type: 'text', text: m ? fmtTotal(totals[i]) : '–', size: 'xxs', color: m ? C.text : C.faint, align: 'center', weight: 'bold' },
         { type: 'box', layout: 'vertical', height: `${CHART_H}px`, justifyContent: 'flex-end', margin: 'xs', contents: segs },
         { type: 'box', layout: 'vertical', height: '1px', backgroundColor: '#CCCCCC', contents: [] },
         { type: 'text', text: MONTHS_TH[i], size: 'xxs', color: C.sub, align: 'center', margin: 'xs' },
@@ -59,14 +64,14 @@ export function stackedMonthlyChart(months: (MonthCounts | null)[]): Json {
   return { type: 'box', layout: 'horizontal', spacing: '3px', contents: cols };
 }
 
-export function seriesLegend(months: (MonthCounts | null)[]): Json {
+export function legend(months: (Stack | null)[], series: readonly Series[], fmtSum: (n: number) => string = fmt): Json {
   return {
     type: 'box',
     layout: 'vertical',
     margin: 'lg',
     spacing: 'xs',
-    contents: INCIDENT_SERIES.map(x => {
-      const sum = months.reduce((s, m) => s + (m ? m[x.key] : 0), 0);
+    contents: series.map(x => {
+      const sum = months.reduce((s, m) => s + (m ? m[x.key] || 0 : 0), 0);
       return {
         type: 'box',
         layout: 'horizontal',
@@ -75,12 +80,16 @@ export function seriesLegend(months: (MonthCounts | null)[]): Json {
         contents: [
           { type: 'box', layout: 'vertical', width: '10px', height: '10px', backgroundColor: x.color, cornerRadius: '2px', contents: [] },
           { type: 'text', text: x.label, size: 'xs', color: C.text, flex: 1 },
-          { type: 'text', text: fmt(sum), size: 'xs', color: C.text, weight: 'bold', align: 'end', flex: 0 },
+          { type: 'text', text: fmtSum(sum), size: 'xs', color: C.text, weight: 'bold', align: 'end', flex: 0 },
         ],
       } as Json;
     }),
   };
 }
+
+/** Incident wrappers (kept for incidentCards). */
+export const stackedMonthlyChart = (months: (MonthCounts | null)[]) => stackedChart(months, INCIDENT_SERIES, n => (n ? fmt(n) : '0'));
+export const seriesLegend = (months: (MonthCounts | null)[]) => legend(months, INCIDENT_SERIES);
 
 /** Single-series vertical bars with the value above each bar (e.g. LTIFR by year). */
 export function valueBars(labels: string[], values: (number | null)[], color: string, highlight = -1): Json {

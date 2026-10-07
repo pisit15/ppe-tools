@@ -108,7 +108,7 @@ test('flex cards: valid shape, capped rows, small payload, quick reply on last m
   const empty=summaryCard([],'AAB');assert.match(JSON.stringify(empty),/ยังไม่มีรายการ PPE/);
   const ok=lowCard([{company_id:'a',name:'x',min_stock:1,current_stock:5}],'A');assert.match(JSON.stringify(ok),/ไม่มีรายการ/);
   const q=withQuickReply([text('a'),text('b')]);
-  assert.equal(q[0].quickReply,undefined);assert.equal(q[1].quickReply.items.length,5);
+  assert.equal(q[0].quickReply,undefined);assert.equal(q[1].quickReply.items.length,6);
   for(const it of q[1].quickReply.items) assert.ok(it.action.label.length<=20);
 });
 
@@ -208,11 +208,46 @@ test('menu card and search help',()=>{
   const m=menuCard(false,HELP_TEXT);const ms=JSON.stringify(m);
   assert.equal(m.type,'flex');
   const texts=[...ms.matchAll(/"type":"message","label":"([^"]+)","text":"([^"]+)"/g)].map(x=>x[2]);
-  assert.deepEqual(texts,['รายการ PPE','PPE คงเหลือ','PPE ใกล้หมด','สถิติอุบัติเหตุ','ค้นหา PPE','บัญชี']);
+  assert.deepEqual(texts,['รายการ PPE','PPE คงเหลือ','PPE ใกล้หมด','สถิติอุบัติเหตุ','การจัดการขยะ','ค้นหา PPE']);
   for(const t of texts) assert.notEqual(parseCommand(t).kind,'ppe_search',`menu button "${t}" should not fall through to search`);
   assert.doesNotMatch(ms,/admin:/);assert.match(JSON.stringify(menuCard(true,HELP_TEXT)),/admin:/);
   assert.equal(parseCommand('ค้นหา PPE').kind,'search_help');
   assert.equal(parseCommand('ค้นหา').kind,'search_help');
   assert.deepEqual(parseCommand('ค้นหา ถุงมือ'),{kind:'ppe_search',query:'ถุงมือ'});
   assert.match(SEARCH_HELP,/ถุงมือ/);
+});
+
+test('waste cards: recycle rule, monthly tonnes, targets, month list, postbacks',()=>{
+  const W=require('../src/lib/line/wasteCards.ts');
+  const {decodePostback}=require('../src/lib/line/browse.ts');
+  const {parseCommand}=require('../src/lib/line/commands.ts');
+  const methods=[{method_name:'Composting',is_recycle:true},{method_name:'Landfilling',is_recycle:false}];
+  const rows=[
+    {id:1,company_id:'aab',record_date:'2025-01-10',waste_category:'Non-Hazardous',disposal_method:'Recycling',waste_type_th:'เศษเหล็ก',quantity_kg:2000,cost:5000,disposal_company:'ร้านรับซื้อ'},
+    {id:2,company_id:'aab',record_date:'2025-01-20',waste_category:'Hazardous',disposal_method:'Landfilling',waste_type_th:'กากสี',quantity_kg:500,cost:-3000},
+    {id:3,company_id:'aab',record_date:'2025-03-05',waste_category:'Non-Hazardous',disposal_method:'Composting',waste_type_th:'เศษอาหาร',quantity_kg:1500,cost:null},
+    {id:4,company_id:'aab',record_date:'2025-03-06',waste_category:'Non-Hazardous',disposal_method:null,waste_type:'Paper',quantity_kg:'bad',cost:0},
+  ];
+  const rset=W.recycleSet(methods);
+  assert.ok(rset.has('Recycling')&&rset.has('Composting')&&!rset.has('Landfilling'));
+  const s=W.summarize(rows,rset);
+  assert.equal(s.total,4);assert.equal(s.rec,3.5);assert.equal(s.dis,0.5);assert.equal(s.haz,0.5);assert.equal(s.income,5000);assert.equal(s.expense,3000);
+  const m=W.monthlyTon(rows,2025,11,rset);assert.deepEqual(m[0],{rec:2,dis:0.5});assert.deepEqual(m[2],{rec:1.5,dis:0});
+  const t=W.targetFor([{company_id:'aab',base_year:2023,base_recycle_nonhaz_ton:10,base_recycle_haz_ton:0,base_disposal_nonhaz_ton:20,base_disposal_haz_ton:0,recycle_step_pct:5,disposal_step_pct:10}],2025);
+  assert.equal(t.rec,11);assert.equal(t.dis,16);
+  assert.equal(W.targetFor([{company_id:'aab',base_year:2025}],2025),null);
+  const car=W.wasteCarousel({c:'aab',companyLabel:'AAB',year:2025,endMonth:11,minYear:2021,maxYear:2026,rows,methods,targets:[],canPickCompany:false});
+  assert.equal(car.contents.contents.length,3);
+  const cs=JSON.stringify(car);assert.match(cs,/87\.5%/);assert.match(cs,/เศษเหล็ก/);assert.ok(Buffer.byteLength(cs)<40000);
+  for(const x of cs.matchAll(/"label":"([^"]*)"/g)) assert.ok([...x[1]].length<=20,`label too long: ${x[1]}`);
+  const tap=car.contents.contents[1].body.contents[1].contents[0].action;
+  assert.deepEqual(decodePostback(tap.data),{a:'wstm',c:'aab',y:2025,m:1});
+  assert.equal(car.contents.contents[1].body.contents[1].contents[1].action,undefined);
+  const empty=W.wasteCarousel({c:'aab',companyLabel:'AAB',year:2022,endMonth:11,minYear:2021,maxYear:2026,rows:[],methods,targets:[],canPickCompany:true});
+  assert.equal(empty.contents.type,'bubble');assert.match(JSON.stringify(empty),/ยังไม่มีข้อมูล/);
+  const mc=JSON.stringify(W.wasteMonthCard(rows,methods,'aab','AAB',2025,1,false));
+  assert.match(mc,/2 รายการ · รวม 2\.5 ตัน/);assert.match(mc,/2,000 กก\./);assert.match(mc,/รีไซเคิล · ร้านรับซื้อ/);assert.match(mc,/อันตราย/);
+  assert.deepEqual(parseCommand('การจัดการขยะ'),{kind:'waste_stats',company:undefined});
+  assert.deepEqual(parseCommand('ขยะ aab 2568'),{kind:'waste_stats',company:'aab',year:2025});
+  assert.match(JSON.stringify(W.wasteCompanyPicker({aab:'AAB'},['aab'],2026)),/AAB/);
 });
