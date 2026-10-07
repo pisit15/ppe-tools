@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { companyNames, getLinkedAccount, type LinkedAccount } from './accounts';
 import { HELP_TEXT, parseCommand, type Command } from './commands';
 import { incidentMonth, type ManHourRow } from './incidentStats';
+import { LAW_PAGE_SIZE, lawHelpCard, lawResultsCard, wordFilter, searchWords, type LawRow } from './lawCards';
 import { wasteCarousel, wasteCompanyPicker, wasteMonthCard, type WasteMethodRow, type WasteRow, type WasteTargetRow } from './wasteCards';
 import { endMonthFor, incidentCompanyPicker, incidentDetailCard, monthListCard, statsCarousel, type IncidentDetailRow, type IncidentListRow } from './incidentCards';
 import type { StockRow } from './ppeFormat';
@@ -225,6 +226,28 @@ async function handleWaste(db: SupabaseClient, account: LinkedAccount, requested
   return [...notice, ...(await wasteStats(db, account, company ?? 'all', year))];
 }
 
+async function lawSearch(db: SupabaseClient, query: string, page: number): Promise<Reply[]> {
+  const words = searchWords(query);
+  if (!words.length) return [lawHelpCard()];
+  let q = db
+    .from('law_documents')
+    .select('id, code, ministry, title, law_type, status, enacted_date, gazette_url, external_url, is_core', { count: 'exact' })
+    .neq('status', 'repealed')
+    .neq('screening', 'excluded');
+  for (const w of words) q = q.or(wordFilter(w));
+  const from = (page - 1) * LAW_PAGE_SIZE;
+  const { data, error, count } = await q
+    .order('is_core', { ascending: false })
+    .order('enacted_date', { ascending: false, nullsFirst: false })
+    .order('code')
+    .range(from, from + LAW_PAGE_SIZE - 1);
+  if (error) throw error;
+  const total = count ?? 0;
+  const pages = Math.max(1, Math.ceil(total / LAW_PAGE_SIZE));
+  if (page > pages && total > 0) return lawSearch(db, query, pages);
+  return [lawResultsCard((data || []) as LawRow[], words.join(' '), total, page)];
+}
+
 const toMessages = (replies: Reply[], quick: boolean): LineMessage[] => {
   const msgs = replies.map(r => (typeof r === 'string' ? text(r) : r));
   return quick ? withQuickReply(msgs) : msgs;
@@ -236,6 +259,8 @@ async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAcc
     switch (cmd.kind) {
       case 'help':
         return [menuCard(account.isGroupAdmin, HELP_TEXT)];
+      case 'law_search':
+        return await lawSearch(db, cmd.query, cmd.page);
       case 'search_help':
         return [SEARCH_HELP];
       case 'whoami':

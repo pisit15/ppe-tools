@@ -108,7 +108,7 @@ test('flex cards: valid shape, capped rows, small payload, quick reply on last m
   const empty=summaryCard([],'AAB');assert.match(JSON.stringify(empty),/ยังไม่มีรายการ PPE/);
   const ok=lowCard([{company_id:'a',name:'x',min_stock:1,current_stock:5}],'A');assert.match(JSON.stringify(ok),/ไม่มีรายการ/);
   const q=withQuickReply([text('a'),text('b')]);
-  assert.equal(q[0].quickReply,undefined);assert.equal(q[1].quickReply.items.length,6);
+  assert.equal(q[0].quickReply,undefined);assert.equal(q[1].quickReply.items.length,7);
   for(const it of q[1].quickReply.items) assert.ok(it.action.label.length<=20);
 });
 
@@ -208,7 +208,7 @@ test('menu card and search help',()=>{
   const m=menuCard(false,HELP_TEXT);const ms=JSON.stringify(m);
   assert.equal(m.type,'flex');
   const texts=[...ms.matchAll(/"type":"message","label":"([^"]+)","text":"([^"]+)"/g)].map(x=>x[2]);
-  assert.deepEqual(texts,['รายการ PPE','PPE คงเหลือ','PPE ใกล้หมด','สถิติอุบัติเหตุ','การจัดการขยะ','ค้นหา PPE']);
+  assert.deepEqual(texts,['รายการ PPE','PPE คงเหลือ','PPE ใกล้หมด','สถิติอุบัติเหตุ','การจัดการขยะ','ค้นหา PPE','ค้นหากฎหมาย','บัญชี']);
   for(const t of texts) assert.notEqual(parseCommand(t).kind,'ppe_search',`menu button "${t}" should not fall through to search`);
   assert.doesNotMatch(ms,/admin:/);assert.match(JSON.stringify(menuCard(true,HELP_TEXT)),/admin:/);
   assert.equal(parseCommand('ค้นหา PPE').kind,'search_help');
@@ -250,4 +250,29 @@ test('waste cards: recycle rule, monthly tonnes, targets, month list, postbacks'
   assert.deepEqual(parseCommand('การจัดการขยะ'),{kind:'waste_stats',company:undefined});
   assert.deepEqual(parseCommand('ขยะ aab 2568'),{kind:'waste_stats',company:'aab',year:2025});
   assert.match(JSON.stringify(W.wasteCompanyPicker({aab:'AAB'},['aab'],2026)),/AAB/);
+});
+
+test('law search: parsing, filters, result and help cards',()=>{
+  const L=require('../src/lib/line/lawCards.ts');
+  const {parseCommand}=require('../src/lib/line/commands.ts');
+  assert.deepEqual(parseCommand('กฎหมาย นั่งร้าน'),{kind:'law_search',query:'นั่งร้าน',page:1});
+  assert.deepEqual(parseCommand('กฎหมาย ความร้อน แสง เสียง หน้า 3'),{kind:'law_search',query:'ความร้อน แสง เสียง',page:3});
+  assert.deepEqual(parseCommand('ค้นหากฎหมาย'),{kind:'law_search',query:'',page:1});
+  assert.deepEqual(parseCommand('กฎหมาย ขยะ'),{kind:'law_search',query:'ขยะ',page:1});
+  assert.equal(parseCommand('กฎหมาย').kind,'law_search');
+  assert.deepEqual(L.searchWords('  สาร,เคมี (อันตราย) %'),['สาร','เคมี','อันตราย']);
+  assert.equal(L.wordFilter('ปฏิกูล'),'title.ilike.%ปฏิกูล%,code.ilike.%ปฏิกูล%,title.ilike.%ปฎิกูล%,code.ilike.%ปฎิกูล%');
+  const rows=[
+    {id:'1',code:'MOL-001',ministry:'MOL',title:'กฎกระทรวงกำหนดมาตรฐานในการบริหาร จัดการ และดำเนินการด้านความปลอดภัย เกี่ยวกับนั่งร้าน',status:'active',enacted_date:'2021-05-01',external_url:'https://drive.google.com/file/d/abc/view',gazette_url:'https://ratchakitcha.soc.go.th/x.pdf',is_core:true},
+    {id:'2',code:'MOL-002',title:'ประกาศ ฯ',status:'partially_repealed',external_url:'javascript:alert(1)'},
+  ];
+  const card=L.lawResultsCard(rows,'นั่งร้าน',17,1);const cs=JSON.stringify(card);
+  assert.match(cs,/พบ 17 ฉบับ/);assert.match(cs,/★ กฎกระทรวง/);assert.match(cs,/แรงงาน · พ\.ศ\. 2564/);assert.match(cs,/ราชกิจจาฯ/);
+  assert.doesNotMatch(cs,/javascript:/,'unsafe links must be dropped');
+  assert.match(cs,/ยกเลิกบางส่วน/);
+  assert.match(cs,/"text":"กฎหมาย นั่งร้าน หน้า 2"/);assert.doesNotMatch(cs,/ก่อนหน้า/);
+  const last=JSON.stringify(L.lawResultsCard(rows,'นั่งร้าน',17,3));assert.match(last,/หน้า 2"/);assert.doesNotMatch(last,/ถัดไป/);
+  assert.match(JSON.stringify(L.lawResultsCard([],'xyz',0,1)),/ไม่พบ/);
+  const help=JSON.stringify(L.lawHelpCard());assert.match(help,/กฎหมาย นั่งร้าน/);
+  for(const m of [card,L.lawHelpCard()]) for(const x of JSON.stringify(m).matchAll(/"label":"([^"]*)"/g)) assert.ok([...x[1]].length<=20,`label too long: ${x[1]}`);
 });
