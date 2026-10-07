@@ -40,6 +40,11 @@ export const QUICK_REPLY: Json = {
   ].map(([label, text]) => ({ type: 'action', action: { type: 'message', label, text } })),
 };
 
+/** Custom quick-reply chips (max 13; labels ≤ 20 chars). */
+export function quickReplyOf(items: { label: string; text: string }[]): Json {
+  return { items: items.slice(0, 13).map(({ label, text }) => ({ type: 'action', action: { type: 'message', label: [...label].slice(0, 20).join(''), text } })) };
+}
+
 export const text = (t: string): LineMessage => ({ type: 'text', text: t.length > 5000 ? `${t.slice(0, 4998)}…` : t });
 
 export function status(r: StockRow): { label: string; color: string; bg: string } {
@@ -240,7 +245,9 @@ export function overviewCard(rows: StockRow[], names: Record<string, string>): L
 /** Attach the command shortcuts to the last message of a reply. */
 export function withQuickReply(messages: LineMessage[]): LineMessage[] {
   if (messages.length === 0) return messages;
-  const last = { ...messages[messages.length - 1], quickReply: QUICK_REPLY };
+  const tail = messages[messages.length - 1];
+  if (tail.quickReply) return messages; // card brought its own suggestions
+  const last = { ...tail, quickReply: QUICK_REPLY };
   return [...messages.slice(0, -1), last];
 }
 

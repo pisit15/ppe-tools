@@ -4,11 +4,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { companyNames, getLinkedAccount, type LinkedAccount } from './accounts';
 import { HELP_TEXT, parseCommand, type Command } from './commands';
 import { incidentMonth, type ManHourRow } from './incidentStats';
-import { LAW_PAGE_SIZE, lawHelpCard, lawResultsCard, wordFilter, searchWords, type LawRow } from './lawCards';
+import { LAW_PAGE_SIZE, lawHelpCard, lawResultsCard, lawTopicsCard, type LawRow } from './lawCards';
+import { addedTerms, anyFilter, expandWords, findTopic, groupFilter, LAW_TOPICS, rankHits, searchWords, suggestions, topicCounts, type ClauseRow, type LawCandidate } from './lawSearch';
 import { wasteCarousel, wasteCompanyPicker, wasteMonthCard, type WasteMethodRow, type WasteRow, type WasteTargetRow } from './wasteCards';
 import { endMonthFor, incidentCompanyPicker, incidentDetailCard, monthListCard, statsCarousel, type IncidentDetailRow, type IncidentListRow } from './incidentCards';
 import type { StockRow } from './ppeFormat';
-import { lowCard, menuCard, overviewCard, searchCard, SEARCH_HELP, summaryCard, text, withQuickReply, type LineMessage } from './flex';
+import { lowCard, menuCard, overviewCard, quickReplyOf, searchCard, SEARCH_HELP, summaryCard, text, withQuickReply, type LineMessage } from './flex';
 import { categoryCard, companyPickerCard, decodePostback, itemCard, listCarousel, type LastMove } from './browse';
 
 export type Reply = string | LineMessage;
@@ -226,17 +227,103 @@ async function handleWaste(db: SupabaseClient, account: LinkedAccount, requested
   return [...notice, ...(await wasteStats(db, account, company ?? 'all', year))];
 }
 
-async function lawSearch(db: SupabaseClient, query: string, page: number): Promise<Reply[]> {
+const LAW_FIELDS = 'id, code, ministry, title, law_type, status, enacted_date, gazette_url, external_url, is_core, screening, primary_category';
+const LAW_COLUMNS = ['title', 'code', 'primary_category'];
+type ClauseWithLaw = ClauseRow & { law_documents: LawCandidate | LawCandidate[] | null };
+
+/** Laws the library shows: not excluded at screening, not repealed. */
+const visibleLaws = (db: SupabaseClient, fields = LAW_FIELDS) => db.from('law_documents').select(fields).neq('status', 'repealed').neq('screening', 'excluded');
+
+/** Approved clauses of visible laws, with the law embedded. */
+const visibleClauses = (db: SupabaseClient) =>
+  db
+    .from('law_requirements')
+    .select(`law_id, clause_ref, requirement, law_documents!inner(${LAW_FIELDS})`)
+    .eq('review_status', 'approved')
+    .neq('law_documents.status', 'repealed')
+    .neq('law_documents.screening', 'excluded');
+
+function splitClauses(rows: ClauseWithLaw[]): { clauses: ClauseRow[]; laws: LawCandidate[] } {
+  const laws: LawCandidate[] = [];
+  const clauses = rows.map(r => {
+    const law = Array.isArray(r.law_documents) ? r.law_documents[0] : r.law_documents;
+    if (law) laws.push(law);
+    return { law_id: r.law_id, clause_ref: r.clause_ref, requirement: r.requirement };
+  });
+  return { clauses, laws };
+}
+
+/**
+ * Search titles, codes, categories and approved clauses; synonyms widen each word.
+ * Every word must match somewhere in the law; if that finds fewer than 3, laws matching
+ * only some words are added below (marked as approximate).
+ */
+export async function lawSearch(db: SupabaseClient, query: string, page: number): Promise<LineMessage[]> {
   const words = searchWords(query);
   if (!words.length) return [lawHelpCard()];
-  let q = db
-    .from('law_documents')
-    .select('id, code, ministry, title, law_type, status, enacted_date, gazette_url, external_url, is_core', { count: 'exact' })
-    .neq('status', 'repealed')
-    .neq('screening', 'excluded');
-  for (const w of words) q = q.or(wordFilter(w));
+  const groups = expandWords(words);
+
+  let lawsQ = visibleLaws(db);
+  let clauseQ = visibleClauses(db);
+  for (const g of groups) {
+    lawsQ = lawsQ.or(groupFilter(g, LAW_COLUMNS));
+    clauseQ = clauseQ.or(groupFilter(g, ['requirement']));
+  }
+  const [lawsRes, clauseRes] = await Promise.all([lawsQ.limit(1000), clauseQ.limit(600)]);
+  if (lawsRes.error) throw lawsRes.error;
+  if (clauseRes.error) throw clauseRes.error;
+  const strictClauses = splitClauses((clauseRes.data || []) as unknown as ClauseWithLaw[]);
+  let hits = rankHits((lawsRes.data || []) as unknown as LawCandidate[], strictClauses.clauses, strictClauses.laws, groups, false);
+
+  let approximate = false;
+  if (hits.length < 3 && groups.length > 1) {
+    const [anyLaws, anyClauses] = await Promise.all([
+      visibleLaws(db).or(anyFilter(groups, LAW_COLUMNS)).order('is_core', { ascending: false }).limit(500),
+      visibleClauses(db).or(anyFilter(groups, ['requirement'])).limit(400),
+    ]);
+    if (anyLaws.error) throw anyLaws.error;
+    if (anyClauses.error) throw anyClauses.error;
+    const loose = splitClauses((anyClauses.data || []) as unknown as ClauseWithLaw[]);
+    const all = rankHits([...((lawsRes.data || []) as unknown as LawCandidate[]), ...((anyLaws.data || []) as unknown as LawCandidate[])], [...strictClauses.clauses, ...loose.clauses], [...strictClauses.laws, ...loose.laws], groups, true);
+    approximate = all.length > hits.length;
+    hits = all;
+  }
+
+  const total = hits.length;
+  const pages = Math.max(1, Math.ceil(total / LAW_PAGE_SIZE));
+  const p = Math.min(page, pages);
+  const rows = hits.slice((p - 1) * LAW_PAGE_SIZE, p * LAW_PAGE_SIZE);
+  const card = lawResultsCard(rows, words.join(' '), total, p, { approximate, synonyms: addedTerms(groups) });
+  return [{ ...card, quickReply: quickReplyOf([...suggestions(groups, hits), { label: 'เมนู', text: 'เมนู' }]) }];
+}
+
+let topicCache: { at: number; counts: Record<string, number> } | null = null;
+
+/** Topic picker with live counts (cached 10 minutes; the library changes rarely). */
+export async function lawTopics(db: SupabaseClient): Promise<LineMessage[]> {
+  if (!topicCache || Date.now() - topicCache.at > 10 * 60 * 1000) {
+    const rows: { categories?: string[] | null }[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await visibleLaws(db, 'categories').range(from, from + 999);
+      if (error) throw error;
+      rows.push(...((data || []) as unknown as { categories?: string[] | null }[]));
+      if (!data || data.length < 1000) break;
+    }
+    topicCache = { at: Date.now(), counts: topicCounts(rows) };
+  }
+  return [lawTopicsCard(topicCache.counts)];
+}
+
+export async function lawTopic(db: SupabaseClient, label: string, page: number): Promise<LineMessage[]> {
+  const topic = findTopic(label);
+  if (!topic) return lawSearch(db, label, page); // typed a word, not a topic name
   const from = (page - 1) * LAW_PAGE_SIZE;
-  const { data, error, count } = await q
+  const { data, error, count } = await db
+    .from('law_documents')
+    .select(LAW_FIELDS, { count: 'exact' })
+    .neq('status', 'repealed')
+    .neq('screening', 'excluded')
+    .overlaps('categories', `{${topic.categories.map(c => `"${c.replace(/["\\]/g, '')}"`).join(',')}}`)
     .order('is_core', { ascending: false })
     .order('enacted_date', { ascending: false, nullsFirst: false })
     .order('code')
@@ -244,8 +331,13 @@ async function lawSearch(db: SupabaseClient, query: string, page: number): Promi
   if (error) throw error;
   const total = count ?? 0;
   const pages = Math.max(1, Math.ceil(total / LAW_PAGE_SIZE));
-  if (page > pages && total > 0) return lawSearch(db, query, pages);
-  return [lawResultsCard((data || []) as LawRow[], words.join(' '), total, page)];
+  if (page > pages && total > 0) return lawTopic(db, label, pages);
+  const others = LAW_TOPICS.filter(t => t.group === topic.group && t.label !== topic.label).slice(0, 4);
+  const card = lawResultsCard((data || []) as unknown as LawRow[], topic.label, total, page, {
+    pagePrefix: `หมวดกฎหมาย ${topic.label}`,
+    kicker: `${topic.icon} หมวด · ${total.toLocaleString('en-US')} ฉบับ`,
+  });
+  return [{ ...card, quickReply: quickReplyOf([{ label: '📚 ทุกหมวด', text: 'หมวดกฎหมาย' }, ...others.map(t => ({ label: `${t.icon} ${t.label}`, text: `หมวดกฎหมาย ${t.label}` })), { label: 'เมนู', text: 'เมนู' }]) }];
 }
 
 const toMessages = (replies: Reply[], quick: boolean): LineMessage[] => {
@@ -261,6 +353,10 @@ async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAcc
         return [menuCard(account.isGroupAdmin, HELP_TEXT)];
       case 'law_search':
         return await lawSearch(db, cmd.query, cmd.page);
+      case 'law_topics':
+        return await lawTopics(db);
+      case 'law_topic':
+        return await lawTopic(db, cmd.topic, cmd.page);
       case 'search_help':
         return [SEARCH_HELP];
       case 'whoami':
