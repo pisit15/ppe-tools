@@ -108,7 +108,7 @@ test('flex cards: valid shape, capped rows, small payload, quick reply on last m
   const empty=summaryCard([],'AAB');assert.match(JSON.stringify(empty),/ยังไม่มีรายการ PPE/);
   const ok=lowCard([{company_id:'a',name:'x',min_stock:1,current_stock:5}],'A');assert.match(JSON.stringify(ok),/ไม่มีรายการ/);
   const q=withQuickReply([text('a'),text('b')]);
-  assert.equal(q[0].quickReply,undefined);assert.equal(q[1].quickReply.items.length,4);
+  assert.equal(q[0].quickReply,undefined);assert.equal(q[1].quickReply.items.length,5);
   for(const it of q[1].quickReply.items) assert.ok(it.action.label.length<=20);
 });
 
@@ -117,4 +117,39 @@ test('flex fallback turns cards into text and keeps quick replies',()=>{
   const msgs=withQuickReply([lowCard([{company_id:'a',name:'x',min_stock:5,current_stock:0}],'A')]);
   const fb=textFallback(msgs);
   assert.equal(fb[0].type,'text');assert.match(fb[0].text,/PPE ใกล้หมด A: 1 รายการ/);assert.ok(fb[0].quickReply);
+});
+
+test('browse: categories, paged carousel, item detail, postback round-trip and rejection',()=>{
+  const {categoryCard,listCarousel,itemCard,companyPickerCard,encodePostback,decodePostback,PAGE_ROWS,PAGE_BUBBLES}=require('../src/lib/line/browse.ts');
+  const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+  const rows=[
+    ...Array.from({length:108},(_,i)=>({product_id:id(i),company_id:'amt',name:`อุปกรณ์อื่น ๆ ที่มีชื่อยาวพอสมควรเพื่อทดสอบการตัดบรรทัด รุ่น ${i}`,type:'others',unit:'piece',min_stock:10,current_stock:i%5})),
+    {product_id:id(900),company_id:'amt',name:'ถุงมือผ้า',type:'gloves',unit:'pair',min_stock:10,current_stock:0},
+    {product_id:id(901),company_id:'amt',name:'ถุงมือหนัง',type:'gloves',unit:'pair',min_stock:0,current_stock:4},
+  ];
+  const cats=categoryCard(rows,'amt','AMT');
+  const cs=JSON.stringify(cats);
+  assert.match(cs,/ถุงมือ/);assert.match(cs,/อื่น ๆ/);assert.ok(cs.indexOf('ถุงมือ')<cs.indexOf('อื่น ๆ'));
+  assert.match(cs,/หมด 1/);
+  const p0=listCarousel(rows,'amt','AMT','others',0);
+  assert.equal(p0.contents.type,'carousel');assert.equal(p0.contents.contents.length,PAGE_BUBBLES);
+  const size=Buffer.byteLength(JSON.stringify(p0));assert.ok(size<40000,`carousel too large: ${size}`);
+  assert.match(JSON.stringify(p0),/หน้าถัดไป/);
+  const p2=listCarousel(rows,'amt','AMT','others',2);
+  assert.match(JSON.stringify(p2),/หน้า 3 \/ 3/);assert.doesNotMatch(JSON.stringify(p2),/หน้าถัดไป/);
+  const g=listCarousel(rows,'amt','AMT','gloves',0);
+  assert.equal(g.contents.contents.length,1);
+  const first=g.contents.contents[0].body.contents[1];
+  assert.equal(first.action.type,'postback');
+  assert.deepEqual(decodePostback(first.action.data),{a:'item',c:'amt',id:id(900)});
+  const item=itemCard(rows[108],'amt','AMT',{transaction_type:'stock_out',quantity:3,transaction_date:'2026-09-15'});
+  const is=JSON.stringify(item);assert.match(is,/คู่/);assert.match(is,/เบิก 3 · 15 ก\.ย\. 2569/);assert.match(is,/หมด/);
+  assert.match(JSON.stringify(itemCard(rows[109],'amt','AMT',null)),/ไม่ได้ตั้ง/);
+  assert.deepEqual(decodePostback(encodePostback({a:'list',c:'amt',t:'gloves',p:1})),{a:'list',c:'amt',t:'gloves',p:1});
+  assert.equal(decodePostback('a=item&c=amt&id=not-a-uuid'),null);
+  assert.equal(decodePostback("a=list&c=amt';drop&t=x&p=0"),null);
+  assert.equal(decodePostback('a=list&c=amt&t=gloves&p=-1'),null);
+  assert.equal(decodePostback('a=other&c=amt'),null);
+  assert.match(JSON.stringify(companyPickerCard(rows,{amt:'AMT'})),/AMT/);
+  for(const m of [cats,p0,item]) for(const s of JSON.stringify(m).matchAll(/"label":"([^"]*)"/g)) assert.ok([...s[1]].length<=20,`label too long: ${s[1]}`);
 });
