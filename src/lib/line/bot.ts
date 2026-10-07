@@ -6,7 +6,7 @@ import { HELP_TEXT, parseCommand, type Command } from './commands';
 import { incidentMonth, type ManHourRow } from './incidentStats';
 import { endMonthFor, incidentCompanyPicker, incidentDetailCard, monthListCard, statsCarousel, type IncidentDetailRow, type IncidentListRow } from './incidentCards';
 import type { StockRow } from './ppeFormat';
-import { lowCard, overviewCard, searchCard, summaryCard, text, withQuickReply, type LineMessage } from './flex';
+import { lowCard, menuCard, overviewCard, searchCard, SEARCH_HELP, summaryCard, text, withQuickReply, type LineMessage } from './flex';
 import { categoryCard, companyPickerCard, decodePostback, itemCard, listCarousel, type LastMove } from './browse';
 
 export type Reply = string | LineMessage;
@@ -187,7 +187,9 @@ async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAcc
   try {
     switch (cmd.kind) {
       case 'help':
-        return [HELP_TEXT + (account.isGroupAdmin ? '\n\nบัญชี admin: ต่อท้ายด้วยรหัสบริษัทได้ เช่น "PPE ใกล้หมด amt"' : '')];
+        return [menuCard(account.isGroupAdmin, HELP_TEXT)];
+      case 'search_help':
+        return [SEARCH_HELP];
       case 'whoami':
         return [`เชื่อมกับบัญชี ${account.displayName} (${account.username})\nบริษัท: ${account.isGroupAdmin ? 'ทุกบริษัท (admin)' : account.companyId}`];
       case 'unlink':

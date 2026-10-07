@@ -2,6 +2,7 @@
 
 export type Command =
   | { kind: 'help' }
+  | { kind: 'search_help' }
   | { kind: 'ppe_summary'; company?: string }
   | { kind: 'ppe_browse'; company?: string }
   | { kind: 'ppe_low'; company?: string }
@@ -29,6 +30,9 @@ export function parseCommand(input: string): Command {
   if (!text || ['help', 'เมนู', 'menu', 'ช่วยเหลือ', '?', 'วิธีใช้'].includes(lower)) return { kind: 'help' };
   if (['ยกเลิกการเชื่อม', 'ยกเลิกเชื่อม', 'unlink'].includes(lower)) return { kind: 'unlink' };
   if (['ฉันคือใคร', 'บัญชี', 'whoami'].includes(lower)) return { kind: 'whoami' };
+
+  // Rich-menu "ค้นหา PPE" button: explain how to search instead of searching for "PPE".
+  if (['ค้นหา', 'ค้นหา ppe', 'search', 'วิธีค้นหา'].includes(lower)) return { kind: 'search_help' };
 
   // Explicit search prefix always searches.
   const s = text.match(/^(?:ค้นหา|หา|search)\s+(.+)$/i);

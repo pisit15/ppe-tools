@@ -201,3 +201,18 @@ test('incident cards: monthly counts, same-period rates, carousel, month list, d
   assert.deepEqual(parseCommand('สถิติอุบัติเหตุ 2566'),{kind:'incident_stats',company:undefined,year:2023});
   assert.match(JSON.stringify(C.incidentCompanyPicker({aab:'AAB'},['aab'],2026)),/ทุกบริษัท/);
 });
+
+test('menu card and search help',()=>{
+  const {menuCard,SEARCH_HELP}=require('../src/lib/line/flex.ts');
+  const {parseCommand,HELP_TEXT}=require('../src/lib/line/commands.ts');
+  const m=menuCard(false,HELP_TEXT);const ms=JSON.stringify(m);
+  assert.equal(m.type,'flex');
+  const texts=[...ms.matchAll(/"type":"message","label":"([^"]+)","text":"([^"]+)"/g)].map(x=>x[2]);
+  assert.deepEqual(texts,['รายการ PPE','PPE คงเหลือ','PPE ใกล้หมด','สถิติอุบัติเหตุ','ค้นหา PPE','บัญชี']);
+  for(const t of texts) assert.notEqual(parseCommand(t).kind,'ppe_search',`menu button "${t}" should not fall through to search`);
+  assert.doesNotMatch(ms,/admin:/);assert.match(JSON.stringify(menuCard(true,HELP_TEXT)),/admin:/);
+  assert.equal(parseCommand('ค้นหา PPE').kind,'search_help');
+  assert.equal(parseCommand('ค้นหา').kind,'search_help');
+  assert.deepEqual(parseCommand('ค้นหา ถุงมือ'),{kind:'ppe_search',query:'ถุงมือ'});
+  assert.match(SEARCH_HELP,/ถุงมือ/);
+});
