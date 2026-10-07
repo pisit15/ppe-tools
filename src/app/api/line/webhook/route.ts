@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
 import { verifyLineSignature } from '@/lib/line/signature';
-import { replyText } from '@/lib/line/api';
+import { replyMessages } from '@/lib/line/api';
+import { text, textFallback } from '@/lib/line/flex';
+import type { LineMessage } from '@/lib/line/flex';
 import { handleFollow, handleText } from '@/lib/line/bot';
 
 export const dynamic = 'force-dynamic';
@@ -42,15 +44,21 @@ export async function POST(request: NextRequest) {
       // 1:1 chats only — never answer company data into group chats.
       if (!ev.replyToken || !userId || ev.source?.type !== 'user') continue;
 
-      let texts: string[] | null = null;
+      let messages: LineMessage[] | null = null;
       if (ev.type === 'follow') {
-        texts = await handleFollow(db, userId);
+        messages = await handleFollow(db, userId);
       } else if (ev.type === 'message' && ev.message?.type === 'text') {
-        texts = await handleText(db, userId, ev.message.text || '');
+        messages = await handleText(db, userId, ev.message.text || '');
       } else if (ev.type === 'message') {
-        texts = ['ตอนนี้รองรับเฉพาะข้อความตัวอักษร พิมพ์ "เมนู" เพื่อดูคำสั่ง'];
+        messages = [text('ตอนนี้รองรับเฉพาะข้อความตัวอักษร พิมพ์ "เมนู" เพื่อดูคำสั่ง')];
       }
-      if (texts?.length) await replyText(ev.replyToken, texts, token);
+      if (messages?.length) {
+        const status = await replyMessages(ev.replyToken, messages, token);
+        // If LINE rejects a card (400), try once more as plain text so the user still gets an answer.
+        if (status === 400 && messages.some(m => m.type === 'flex')) {
+          await replyMessages(ev.replyToken, textFallback(messages), token);
+        }
+      }
     } catch (err) {
       console.error('LINE event failed', err instanceof Error ? err.message : err);
     }
