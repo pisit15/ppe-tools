@@ -90,3 +90,31 @@ test('ppe: low/out rules, urgency order, truncation, search and overview',()=>{
   assert.match(low,/และอีก 15 รายการ/);assert.ok(low.length<5000);
   assert.match(formatCompanyOverview([...rows,{company_id:'b',name:'x',min_stock:1,current_stock:0}],{a:'Alpha'}),/Alpha \(a\): 4 \/ 2 \/ 2/);
 });
+
+const {summaryCard,lowCard,searchCard,overviewCard,withQuickReply,text}=require('../src/lib/line/flex.ts');
+test('flex cards: valid shape, capped rows, small payload, quick reply on last message only',()=>{
+  const big=Array.from({length:120},(_,i)=>({company_id:'aab',name:`กระจกป้องกันแสงเชื่อมและสะเก็ดไฟ หน้ากากเชื่อมชนิดสวมหัว เบอร์ ${i}`,unit:'piece',min_stock:100,current_stock:i%3===0?0:i}));
+  for(const m of [summaryCard(big,'AAB'),lowCard(big,'AAB'),searchCard(big,'กระจก','AAB'),overviewCard([...big,{company_id:'amt',name:'x',min_stock:1,current_stock:0}],{aab:'AAB'})]){
+    assert.equal(m.type,'flex');assert.equal(m.contents.type,'bubble');
+    assert.ok(m.altText.length>0&&m.altText.length<=400);
+    const size=Buffer.byteLength(JSON.stringify(m));
+    assert.ok(size<25000,`bubble too large: ${size}`);
+  }
+  const low=lowCard(big,'AAB');
+  const rows=low.contents.body.contents.filter(c=>c.type==='box');
+  assert.equal(rows.length,10);
+  assert.match(JSON.stringify(low.contents.footer),/และอีก 96 รายการ/);
+  assert.equal(searchCard(big,'ไม่มีแน่นอน','AAB').type,'text');
+  const empty=summaryCard([],'AAB');assert.match(JSON.stringify(empty),/ยังไม่มีรายการ PPE/);
+  const ok=lowCard([{company_id:'a',name:'x',min_stock:1,current_stock:5}],'A');assert.match(JSON.stringify(ok),/ไม่มีรายการ/);
+  const q=withQuickReply([text('a'),text('b')]);
+  assert.equal(q[0].quickReply,undefined);assert.equal(q[1].quickReply.items.length,4);
+  for(const it of q[1].quickReply.items) assert.ok(it.action.label.length<=20);
+});
+
+test('flex fallback turns cards into text and keeps quick replies',()=>{
+  const {textFallback,lowCard,withQuickReply}=require('../src/lib/line/flex.ts');
+  const msgs=withQuickReply([lowCard([{company_id:'a',name:'x',min_stock:5,current_stock:0}],'A')]);
+  const fb=textFallback(msgs);
+  assert.equal(fb[0].type,'text');assert.match(fb[0].text,/PPE ใกล้หมด A: 1 รายการ/);assert.ok(fb[0].quickReply);
+});

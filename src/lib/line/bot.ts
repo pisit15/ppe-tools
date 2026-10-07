@@ -1,10 +1,13 @@
-// Server-only: turns one LINE event into reply texts.
+// Server-only: turns one LINE event into reply messages (plain strings or Flex cards).
 import { randomBytes } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { companyNames, getLinkedAccount, type LinkedAccount } from './accounts';
 import { HELP_TEXT, parseCommand, type Command } from './commands';
 import { computeCompanyStats, formatIncidentStats, type IncidentRow, type ManHourRow } from './incidentStats';
-import { formatCompanyOverview, formatLow, formatSearch, formatSummary, type StockRow } from './ppeFormat';
+import type { StockRow } from './ppeFormat';
+import { lowCard, overviewCard, searchCard, summaryCard, text, withQuickReply, type LineMessage } from './flex';
+
+export type Reply = string | LineMessage;
 
 const CODE_TTL_MS = 15 * 60 * 1000;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -18,7 +21,7 @@ function siteBase(): string {
   return (process.env.LINE_LINK_BASE_URL || 'https://tools.eashe.org').replace(/\/+$/, '');
 }
 
-async function linkPrompt(db: SupabaseClient, lineUserId: string): Promise<string[]> {
+async function linkPrompt(db: SupabaseClient, lineUserId: string): Promise<Reply[]> {
   await db.from('line_link_codes').delete().eq('line_user_id', lineUserId).is('used_at', null);
   const code = newCode();
   const { error } = await db.from('line_link_codes').insert({
@@ -57,29 +60,26 @@ async function stockRows(db: SupabaseClient, company: string | null): Promise<St
   return rows;
 }
 
-async function handlePpe(db: SupabaseClient, account: LinkedAccount, cmd: Extract<Command, { kind: 'ppe_summary' | 'ppe_low' | 'ppe_search' }>): Promise<string[]> {
+async function handlePpe(db: SupabaseClient, account: LinkedAccount, cmd: Extract<Command, { kind: 'ppe_summary' | 'ppe_low' | 'ppe_search' }>): Promise<Reply[]> {
   const { company, denied } = scopeFor(account, cmd.company);
-  const notice = denied ? ['บัญชีนี้ดูได้เฉพาะบริษัทของตัวเอง จึงแสดงข้อมูลบริษัทของคุณแทน'] : [];
+  const notice: Reply[] = denied ? ['บัญชีนี้ดูได้เฉพาะบริษัทของตัวเอง จึงแสดงข้อมูลบริษัทของคุณแทน'] : [];
   const names = await companyNames(db);
 
   if (company === null) {
     const rows = await stockRows(db, null);
-    if (cmd.kind === 'ppe_search') {
-      const tagged = rows.map(r => ({ ...r, name: `${r.name} [${r.company_id}]` }));
-      return [formatSearch(tagged, cmd.query, 'ทุกบริษัท')];
-    }
-    return [formatCompanyOverview(rows, names)];
+    if (cmd.kind === 'ppe_search') return [searchCard(rows, cmd.query, 'ทุกบริษัท', true)];
+    return [overviewCard(rows, names)];
   }
 
   const rows = await stockRows(db, company);
   const name = names[company] || company;
   if (rows.length === 0 && account.isGroupAdmin && !names[company]) return [`ไม่พบรหัสบริษัท "${company}"`];
-  if (cmd.kind === 'ppe_low') return [...notice, formatLow(rows, name)];
-  if (cmd.kind === 'ppe_search') return [...notice, formatSearch(rows, cmd.query, name)];
-  return [...notice, formatSummary(rows, name)];
+  if (cmd.kind === 'ppe_low') return [...notice, lowCard(rows, name)];
+  if (cmd.kind === 'ppe_search') return [...notice, searchCard(rows, cmd.query, name)];
+  return [...notice, summaryCard(rows, name)];
 }
 
-async function handleIncidents(db: SupabaseClient, account: LinkedAccount, requested?: string): Promise<string[]> {
+async function handleIncidents(db: SupabaseClient, account: LinkedAccount, requested?: string): Promise<Reply[]> {
   const { company, denied } = scopeFor(account, requested);
   // Bangkok time decides "this year". Like the dashboard's default, the period
   // ends at the last complete month (January shows January).
@@ -115,11 +115,13 @@ async function handleIncidents(db: SupabaseClient, account: LinkedAccount, reque
   return [...(denied ? ['บัญชีนี้ดูได้เฉพาะบริษัทของตัวเอง จึงแสดงข้อมูลบริษัทของคุณแทน'] : []), text + footer];
 }
 
-export async function handleText(db: SupabaseClient, lineUserId: string, text: string): Promise<string[]> {
-  const account = await getLinkedAccount(db, lineUserId);
-  if (!account) return linkPrompt(db, lineUserId);
+const toMessages = (replies: Reply[], quick: boolean): LineMessage[] => {
+  const msgs = replies.map(r => (typeof r === 'string' ? text(r) : r));
+  return quick ? withQuickReply(msgs) : msgs;
+};
 
-  const cmd = parseCommand(text);
+async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAccount, input: string): Promise<Reply[]> {
+  const cmd = parseCommand(input);
   try {
     switch (cmd.kind) {
       case 'help':
@@ -140,8 +142,15 @@ export async function handleText(db: SupabaseClient, lineUserId: string, text: s
   }
 }
 
-export async function handleFollow(db: SupabaseClient, lineUserId: string): Promise<string[]> {
+export async function handleText(db: SupabaseClient, lineUserId: string, input: string): Promise<LineMessage[]> {
   const account = await getLinkedAccount(db, lineUserId);
-  if (account) return [`ยินดีต้อนรับกลับ ${account.displayName}\n\n${HELP_TEXT}`];
-  return ['สวัสดีครับ นี่คือ EA SHE Bot ใช้ถามข้อมูล PPE และสถิติอุบัติเหตุ', ...(await linkPrompt(db, lineUserId))];
+  if (!account) return toMessages(await linkPrompt(db, lineUserId), false);
+  const unlinking = parseCommand(input).kind === 'unlink';
+  return toMessages(await answer(db, lineUserId, account, input), !unlinking);
+}
+
+export async function handleFollow(db: SupabaseClient, lineUserId: string): Promise<LineMessage[]> {
+  const account = await getLinkedAccount(db, lineUserId);
+  if (account) return toMessages([`ยินดีต้อนรับกลับ ${account.displayName}\n\n${HELP_TEXT}`], true);
+  return toMessages(['สวัสดีครับ นี่คือ EA SHE Bot ใช้ถามข้อมูล PPE และสถิติอุบัติเหตุ', ...(await linkPrompt(db, lineUserId))], false);
 }
