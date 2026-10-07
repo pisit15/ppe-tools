@@ -273,6 +273,63 @@ test('law search: parsing, filters, result and help cards',()=>{
   assert.match(cs,/"text":"กฎหมาย นั่งร้าน หน้า 2"/);assert.doesNotMatch(cs,/ก่อนหน้า/);
   const last=JSON.stringify(L.lawResultsCard(rows,'นั่งร้าน',17,3));assert.match(last,/หน้า 2"/);assert.doesNotMatch(last,/ถัดไป/);
   assert.match(JSON.stringify(L.lawResultsCard([],'xyz',0,1)),/ไม่พบ/);
-  const help=JSON.stringify(L.lawHelpCard());assert.match(help,/กฎหมาย นั่งร้าน/);
+  const help=JSON.stringify(L.lawHelpCard());assert.match(help,/กฎหมาย นั่งร้าน/);assert.match(help,/"text":"หมวดกฎหมาย"/);
   for(const m of [card,L.lawHelpCard()]) for(const x of JSON.stringify(m).matchAll(/"label":"([^"]*)"/g)) assert.ok([...x[1]].length<=20,`label too long: ${x[1]}`);
+});
+
+test('law search v2: synonyms, ranking, clause excerpts, topics and suggestions',()=>{
+  const S=require('../src/lib/line/lawSearch.ts');
+  const L=require('../src/lib/line/lawCards.ts');
+  const {parseCommand}=require('../src/lib/line/commands.ts');
+  const {withQuickReply,quickReplyOf}=require('../src/lib/line/flex.ts');
+  // topic commands
+  assert.deepEqual(parseCommand('หมวดกฎหมาย'),{kind:'law_topics'});
+  assert.deepEqual(parseCommand('กฎหมาย หมวด'),{kind:'law_topics'});
+  assert.deepEqual(parseCommand('หมวดกฎหมาย ความร้อน แสง เสียง หน้า 2'),{kind:'law_topic',topic:'ความร้อน แสง เสียง',page:2});
+  assert.deepEqual(parseCommand('กฎหมาย เครน หน้า 3'),{kind:'law_search',query:'เครน',page:3});
+  // synonyms
+  const [crane]=S.expandWords(['เครน']);assert.deepEqual(crane.terms,['เครน','ปั้นจั่น']);
+  const [jp]=S.expandWords(['จป']);assert.ok(!jp.terms.includes('จป'),'abbreviation must not search itself (ตรวจประเมิน contains จป)');
+  assert.deepEqual(S.expandWords(['ปฏิกูล'])[0].terms,['ปฏิกูล','ปฎิกูล']);
+  assert.deepEqual(S.addedTerms(S.expandWords(['เครน','ปฏิกูล'])),['ปั้นจั่น']);
+  assert.equal(S.groupFilter(crane,['title','requirement']),'title.ilike.%เครน%,requirement.ilike.%เครน%,title.ilike.%ปั้นจั่น%,requirement.ilike.%ปั้นจั่น%');
+  for(const g of S.SYNONYM_GROUPS) for(const t of g.terms) assert.doesNotMatch(t,/[\s,()"]/,`term breaks PostgREST or(): ${t}`);
+  // ranking: all words > some words; title > clause; core first; hidden laws dropped
+  const groups=S.expandWords(['ตรวจ','นั่งร้าน']);
+  const laws=[
+    {id:'a',title:'กฎกระทรวง นั่งร้าน',is_core:true,enacted_date:'2021-01-01'},
+    {id:'b',title:'ประกาศการตรวจนั่งร้าน',enacted_date:'2010-01-01'},
+    {id:'c',title:'มาตรฐานงานก่อสร้าง',screening:'recommended'},
+  ];
+  const clauses=[{law_id:'c',clause_ref:'ข้อ 7',requirement:'นายจ้างต้องจัดให้มีการตรวจนั่งร้านก่อนใช้งานทุกครั้ง'},{law_id:'zz',requirement:'ตรวจนั่งร้าน'}];
+  const strict=S.rankHits(laws,clauses,[],groups,false);
+  assert.deepEqual(strict.map(h=>h.id),['b','c']);
+  assert.equal(strict[0].clause,null,'title match needs no excerpt');
+  assert.match(strict[1].clause.text,/ตรวจนั่งร้าน/);assert.equal(strict[1].clause.ref,'ข้อ 7');
+  const loose=S.rankHits(laws,clauses,[],groups,true);
+  assert.deepEqual(loose.map(h=>h.id),['b','c','a']);
+  assert.ok(S.snippet('ก'.repeat(300)+'นั่งร้าน'+'ข'.repeat(300),groups).includes('นั่งร้าน'));
+  // topics
+  const counts=S.topicCounts([{categories:['ความปลอดภัยเกี่ยวกับไฟฟ้า']},{categories:['ความปลอดภัยเกี่ยวกับไฟฟ้า','การป้องกันและระงับอัคคีภัย และเหตุฉุกเฉิน']},{categories:null}]);
+  assert.equal(counts['ไฟฟ้า'],2);assert.equal(counts['อัคคีภัย ฉุกเฉิน'],1);
+  assert.equal(S.findTopic('ความร้อนแสงเสียง').label,'ความร้อน แสง เสียง');
+  for(const t of S.LAW_TOPICS){assert.ok([...t.label].length<=20);assert.doesNotMatch(t.label,/\d$/);assert.equal(S.findTopic(t.label),t);}
+  const topicsCard=JSON.stringify(L.lawTopicsCard(counts));
+  assert.match(topicsCard,/หมวดกฎหมาย ไฟฟ้า/);assert.doesNotMatch(topicsCard,/หมวดกฎหมาย รังสี/,'empty topics hidden');
+  const full=JSON.stringify(L.lawTopicsCard(Object.fromEntries(S.LAW_TOPICS.map(t=>[t.label,1234]))));
+  assert.ok(full.length<25000,`topic card too large: ${full.length}`);
+  // results card with excerpt + notes + topic paging
+  const card=JSON.stringify(L.lawResultsCard(loose,'ตรวจ นั่งร้าน',3,1,{approximate:true,synonyms:['ปั้นจั่น']}));
+  assert.match(card,/📌 ข้อ 7: /);assert.match(card,/ตรงบางคำ/);assert.match(card,/รวมคำใกล้เคียง: ปั้นจั่น/);
+  const topicPage=JSON.stringify(L.lawResultsCard(laws,'ไฟฟ้า',20,1,{pagePrefix:'หมวดกฎหมาย ไฟฟ้า'}));
+  assert.match(topicPage,/"text":"หมวดกฎหมาย ไฟฟ้า หน้า 2"/);
+  const bigRows=Array.from({length:8},(_,i)=>({id:String(i),title:'ก'.repeat(200),code:'MOL-1',ministry:'MOL',external_url:'https://drive.google.com/x',gazette_url:'https://x.go.th/y.pdf',clause:{ref:'ข้อ 1',text:'ข'.repeat(110)}}));
+  assert.ok(JSON.stringify(L.lawResultsCard(bigRows,'x',100,2)).length<25000);
+  // suggestions become the card's own quick reply and are kept
+  const sug=S.suggestions(S.expandWords(['เครน']),[{primary_category:'เครื่องจักร ปั้นจั่น ฟอร์คลิฟท์ และอัตราน้ำหนักยกด้วยมือ'}]);
+  assert.deepEqual(sug.map(x=>x.text),['กฎหมาย รถยก','กฎหมาย ลิฟต์','กฎหมาย เครื่องจักร','หมวดกฎหมาย เครื่องจักร ปั้นจั่น','หมวดกฎหมาย']);
+  for(const x of sug) assert.ok([...x.label].length<=20);
+  const msg={type:'text',text:'x',quickReply:quickReplyOf(sug)};
+  assert.equal(withQuickReply([msg])[0].quickReply.items[0].action.text,'กฎหมาย รถยก');
+  assert.equal(withQuickReply([{type:'text',text:'y'}])[0].quickReply.items.length,7);
 });

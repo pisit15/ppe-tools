@@ -4,6 +4,8 @@ export type Command =
   | { kind: 'help' }
   | { kind: 'search_help' }
   | { kind: 'law_search'; query: string; page: number }
+  | { kind: 'law_topics' }
+  | { kind: 'law_topic'; topic: string; page: number }
   | { kind: 'ppe_summary'; company?: string }
   | { kind: 'ppe_browse'; company?: string }
   | { kind: 'ppe_low'; company?: string }
@@ -23,6 +25,12 @@ function splitCompany(lower: string): { company?: string; rest: string } {
   return { rest: lower };
 }
 
+/** Trailing "หน้า N" (paging buttons). */
+function splitPage(q: string): { rest: string; page: number } {
+  const pm = q.match(/^(.*?)\s*หน้า\s*(\d{1,3})$/);
+  return pm ? { rest: pm[1].trim(), page: Math.max(1, Number(pm[2])) } : { rest: q, page: 1 };
+}
+
 const has = (s: string, words: string[]) => words.some(w => s.includes(w));
 
 export function parseCommand(input: string): Command {
@@ -33,17 +41,18 @@ export function parseCommand(input: string): Command {
   if (['ยกเลิกการเชื่อม', 'ยกเลิกเชื่อม', 'unlink'].includes(lower)) return { kind: 'unlink' };
   if (['ฉันคือใคร', 'บัญชี', 'whoami'].includes(lower)) return { kind: 'whoami' };
 
+  // Legal library by topic: "หมวดกฎหมาย", "หมวดกฎหมาย ไฟฟ้า หน้า 2", "กฎหมาย หมวด".
+  const topic = text.match(/^(?:หมวดกฎหมาย|กฎหมาย\s*หมวด)(?:\s+(.*))?$/i);
+  if (topic) {
+    const { rest, page } = splitPage((topic[1] || '').trim());
+    return rest ? { kind: 'law_topic', topic: rest.slice(0, 40), page } : { kind: 'law_topics' };
+  }
+
   // Legal library: "กฎหมาย นั่งร้าน", "กฎหมาย นั่งร้าน หน้า 2", "ค้นหากฎหมาย".
   const law = text.match(/^(?:ค้นหา\s*)?(?:กฎหมาย|กม\.?|law)(?:\s+(.*))?$/i);
   if (law) {
-    let q = (law[1] || '').trim();
-    let page = 1;
-    const pm = q.match(/^(.*?)\s*หน้า\s*(\d{1,3})$/);
-    if (pm) {
-      q = pm[1].trim();
-      page = Math.max(1, Number(pm[2]));
-    }
-    return { kind: 'law_search', query: q.slice(0, 60), page };
+    const { rest, page } = splitPage((law[1] || '').trim());
+    return { kind: 'law_search', query: rest.slice(0, 60), page };
   }
 
   // Rich-menu "ค้นหา PPE" button: explain how to search instead of searching for "PPE".
@@ -90,5 +99,6 @@ export const HELP_TEXT = [
   '• สถิติอุบัติเหตุ — สรุป กราฟรายเดือน LTIFR/TRIR (ต่อท้ายปีได้ เช่น สถิติอุบัติเหตุ 2023)',
   '• การจัดการขยะ — ปริมาณ รีไซเคิล/กำจัด รายเดือน และชนิดของเสีย (ต่อท้ายปีได้)',
   '• กฎหมาย + คำค้น — ค้นคลังกฎหมาย SHE พร้อมลิงก์ เช่น กฎหมาย นั่งร้าน',
+  '• หมวดกฎหมาย — เลือกดูกฎหมายตามหมวด',
   '• ยกเลิกการเชื่อม — เลิกผูกบัญชี LINE นี้',
 ].join('\n');
