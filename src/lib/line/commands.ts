@@ -8,6 +8,7 @@ export type Command =
   | { kind: 'ppe_low'; company?: string }
   | { kind: 'ppe_search'; query: string; company?: string }
   | { kind: 'incident_stats'; company?: string; year?: number }
+  | { kind: 'waste_stats'; company?: string; year?: number }
   | { kind: 'unlink' }
   | { kind: 'whoami' };
 
@@ -53,6 +54,7 @@ export function parseCommand(input: string): Command {
   }
 
   // Keyword commands (free word order: "สรุปรายการ PPE คงเหลือ", "PPE ใกล้หมด amt").
+  if (has(rest, ['ขยะ', 'ของเสีย', 'waste'])) return { kind: 'waste_stats', company, ...(year ? { year } : {}) };
   if (has(rest, ['อุบัติเหตุ', 'สถิติ', 'incident'])) return { kind: 'incident_stats', company, ...(year ? { year } : {}) };
   if (has(rest, ['ใกล้หมด', 'ต่ำกว่าขั้นต่ำ']) || /\bppe\s*low\b/.test(rest)) return { kind: 'ppe_low', company };
   if (rest === 'ppe' || (rest.includes('ppe') && has(rest, ['คงเหลือ', 'สรุป', 'สต็อก', 'สต๊อก', 'stock'])) || ['คงเหลือ', 'สต็อก', 'สต๊อก', 'stock'].includes(rest)) {
@@ -72,5 +74,6 @@ export const HELP_TEXT = [
   '• PPE ใกล้หมด — รายการที่ต่ำกว่าจุดสั่งขั้นต่ำ',
   '• พิมพ์ชื่ออุปกรณ์ เช่น ถุงมือ — ดูยอดคงเหลือ',
   '• สถิติอุบัติเหตุ — สรุป กราฟรายเดือน LTIFR/TRIR (ต่อท้ายปีได้ เช่น สถิติอุบัติเหตุ 2023)',
+  '• การจัดการขยะ — ปริมาณ รีไซเคิล/กำจัด รายเดือน และชนิดของเสีย (ต่อท้ายปีได้)',
   '• ยกเลิกการเชื่อม — เลิกผูกบัญชี LINE นี้',
 ].join('\n');

@@ -15,7 +15,11 @@ export type Postback =
   | { a: 'inc'; c: string; y: number }
   | { a: 'incm'; c: string; y: number; m: number }
   | { a: 'incd'; c: string; id: string }
-  | { a: 'incpick'; c: string; y: number };
+  | { a: 'incpick'; c: string; y: number }
+  // Waste: overview for a company/year, month records, admin company picker.
+  | { a: 'wst'; c: string; y: number }
+  | { a: 'wstm'; c: string; y: number; m: number }
+  | { a: 'wstpick'; c: string; y: number };
 
 export function encodePostback(p: Postback): string {
   return new URLSearchParams(Object.entries(p).map(([k, v]) => [k, String(v)])).toString();
@@ -40,10 +44,10 @@ export function decodePostback(data: string): Postback | null {
     const id = q.get('id') || '';
     return UUID.test(id) ? { a, c, id } : null;
   }
-  if (a === 'inc' || a === 'incm' || a === 'incpick') {
+  if (a === 'inc' || a === 'incm' || a === 'incpick' || a === 'wst' || a === 'wstm' || a === 'wstpick') {
     const y = Number(q.get('y'));
     if (!Number.isInteger(y) || y < 2000 || y > 2100) return null;
-    if (a === 'incm') {
+    if (a === 'incm' || a === 'wstm') {
       const m = Number(q.get('m'));
       return Number.isInteger(m) && m >= 1 && m <= 12 ? { a, c, y, m } : null;
     }

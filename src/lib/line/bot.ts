@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { companyNames, getLinkedAccount, type LinkedAccount } from './accounts';
 import { HELP_TEXT, parseCommand, type Command } from './commands';
 import { incidentMonth, type ManHourRow } from './incidentStats';
+import { wasteCarousel, wasteCompanyPicker, wasteMonthCard, type WasteMethodRow, type WasteRow, type WasteTargetRow } from './wasteCards';
 import { endMonthFor, incidentCompanyPicker, incidentDetailCard, monthListCard, statsCarousel, type IncidentDetailRow, type IncidentListRow } from './incidentCards';
 import type { StockRow } from './ppeFormat';
 import { lowCard, menuCard, overviewCard, searchCard, SEARCH_HELP, summaryCard, text, withQuickReply, type LineMessage } from './flex';
@@ -177,6 +178,53 @@ async function incidentDetail(db: SupabaseClient, account: LinkedAccount, id: st
   return [incidentDetailCard(row, names[row.company_id] || row.company_id)];
 }
 
+const WASTE_FIELDS = 'id, company_id, record_date, waste_category, disposal_method, waste_type, waste_type_th, quantity_kg, cost, disposal_company';
+
+async function wasteRows(db: SupabaseClient, c: string, year: number): Promise<WasteRow[]> {
+  return pageAll<WasteRow>(from => {
+    let q = db.from('waste_records').select(WASTE_FIELDS).gte('record_date', `${year}-01-01`).lte('record_date', `${year}-12-31`).order('id').range(from, from + 999);
+    if (c !== 'all') q = q.eq('company_id', c);
+    return q;
+  });
+}
+
+async function wasteMethods(db: SupabaseClient): Promise<WasteMethodRow[]> {
+  const { data, error } = await db.from('waste_methods').select('method_name, method_name_th, is_recycle');
+  if (error) throw error;
+  return (data || []) as WasteMethodRow[];
+}
+
+/** c: company id, or 'all' (admins only — callers enforce scope). */
+async function wasteStats(db: SupabaseClient, account: LinkedAccount, c: string, requestedYear?: number): Promise<Reply[]> {
+  const now = bangkokNow();
+  const year = Math.min(now.year, Math.max(MIN_INCIDENT_YEAR, requestedYear || now.year));
+  const endMonth = year < now.year ? 11 : now.month0;
+  let tq = db.from('waste_targets').select('company_id, base_year, base_recycle_nonhaz_ton, base_recycle_haz_ton, base_disposal_nonhaz_ton, base_disposal_haz_ton, recycle_step_pct, disposal_step_pct');
+  if (c !== 'all') tq = tq.eq('company_id', c);
+  const [rows, methods, targets, names] = await Promise.all([wasteRows(db, c, year), wasteMethods(db), tq, c === 'all' ? Promise.resolve({} as Record<string, string>) : companyNames(db, [c])]);
+  if (targets.error) throw targets.error;
+  return [
+    wasteCarousel({
+      c,
+      companyLabel: c === 'all' ? 'ทุกบริษัท' : names[c] || c,
+      year,
+      endMonth,
+      minYear: MIN_INCIDENT_YEAR,
+      maxYear: now.year,
+      rows,
+      methods,
+      targets: (targets.data || []) as WasteTargetRow[],
+      canPickCompany: account.isGroupAdmin,
+    }),
+  ];
+}
+
+async function handleWaste(db: SupabaseClient, account: LinkedAccount, requested?: string, year?: number): Promise<Reply[]> {
+  const { company, denied } = scopeFor(account, requested);
+  const notice: Reply[] = denied ? ['บัญชีนี้ดูได้เฉพาะบริษัทของตัวเอง จึงแสดงข้อมูลบริษัทของคุณแทน'] : [];
+  return [...notice, ...(await wasteStats(db, account, company ?? 'all', year))];
+}
+
 const toMessages = (replies: Reply[], quick: boolean): LineMessage[] => {
   const msgs = replies.map(r => (typeof r === 'string' ? text(r) : r));
   return quick ? withQuickReply(msgs) : msgs;
@@ -195,6 +243,8 @@ async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAcc
       case 'unlink':
         await db.from('line_links').delete().eq('line_user_id', lineUserId);
         return ['ยกเลิกการเชื่อมบัญชีแล้ว ส่งข้อความใดก็ได้หากต้องการเชื่อมใหม่'];
+      case 'waste_stats':
+        return await handleWaste(db, account, cmd.company, cmd.year);
       case 'incident_stats':
         return await handleIncidents(db, account, cmd.company, cmd.year);
       default:
@@ -225,6 +275,18 @@ export async function handlePostback(db: SupabaseClient, lineUserId: string, dat
     if (pb.a === 'inc') return toMessages(await incidentStats(db, account, company, pb.y), true);
     if (pb.a === 'incm') return toMessages(await incidentMonthList(db, company, pb.y, pb.m), true);
     if (pb.a === 'incd') return toMessages(await incidentDetail(db, account, pb.id), true);
+    if (pb.a === 'wst') return toMessages(await wasteStats(db, account, company, pb.y), true);
+    if (pb.a === 'wstm') {
+      const [rows, methods] = await Promise.all([wasteRows(db, company, pb.y), wasteMethods(db)]);
+      const names = company === 'all' ? {} : await companyNames(db, [company]);
+      return toMessages([wasteMonthCard(rows, methods, company, company === 'all' ? 'ทุกบริษัท' : names[company] || company, pb.y, pb.m, company === 'all')], true);
+    }
+    if (pb.a === 'wstpick') {
+      if (!account.isGroupAdmin) return toMessages(await wasteStats(db, account, account.companyId, pb.y), true);
+      const ids = new Set((await wasteRows(db, 'all', pb.y)).map(r => r.company_id));
+      const names = await companyNames(db, [...ids]);
+      return toMessages([wasteCompanyPicker(names, [...ids], pb.y)], true);
+    }
     if (pb.a === 'incpick') {
       if (!account.isGroupAdmin) return toMessages(await incidentStats(db, account, account.companyId, pb.y), true);
       const names = await companyNames(db);
