@@ -3,12 +3,15 @@
 // out = current <= 0.
 
 export type StockRow = {
+  product_id?: string;
   company_id: string;
   name: string;
   type?: string | null;
   unit?: string | null;
   min_stock?: number | null;
   current_stock?: number | null;
+  total_in?: number | null;
+  total_out?: number | null;
 };
 
 const cur = (r: StockRow) => Number(r.current_stock ?? 0);

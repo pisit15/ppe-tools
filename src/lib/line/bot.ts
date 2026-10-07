@@ -6,6 +6,7 @@ import { HELP_TEXT, parseCommand, type Command } from './commands';
 import { computeCompanyStats, formatIncidentStats, type IncidentRow, type ManHourRow } from './incidentStats';
 import type { StockRow } from './ppeFormat';
 import { lowCard, overviewCard, searchCard, summaryCard, text, withQuickReply, type LineMessage } from './flex';
+import { categoryCard, companyPickerCard, decodePostback, itemCard, listCarousel, type LastMove } from './browse';
 
 export type Reply = string | LineMessage;
 
@@ -50,7 +51,7 @@ async function stockRows(db: SupabaseClient, company: string | null): Promise<St
   const rows: StockRow[] = [];
   // Page through: PostgREST caps responses at 1000 rows.
   for (let from = 0; ; from += 1000) {
-    let q = db.from('ppe_stock_summary').select('company_id, name, type, unit, min_stock, current_stock').order('name').range(from, from + 999);
+    let q = db.from('ppe_stock_summary').select('product_id, company_id, name, type, unit, min_stock, current_stock, total_in, total_out').order('name').range(from, from + 999);
     if (company) q = q.eq('company_id', company);
     const { data, error } = await q;
     if (error) throw error;
@@ -60,7 +61,7 @@ async function stockRows(db: SupabaseClient, company: string | null): Promise<St
   return rows;
 }
 
-async function handlePpe(db: SupabaseClient, account: LinkedAccount, cmd: Extract<Command, { kind: 'ppe_summary' | 'ppe_low' | 'ppe_search' }>): Promise<Reply[]> {
+async function handlePpe(db: SupabaseClient, account: LinkedAccount, cmd: Extract<Command, { kind: 'ppe_summary' | 'ppe_low' | 'ppe_search' | 'ppe_browse' }>): Promise<Reply[]> {
   const { company, denied } = scopeFor(account, cmd.company);
   const notice: Reply[] = denied ? ['บัญชีนี้ดูได้เฉพาะบริษัทของตัวเอง จึงแสดงข้อมูลบริษัทของคุณแทน'] : [];
   const names = await companyNames(db);
@@ -68,12 +69,14 @@ async function handlePpe(db: SupabaseClient, account: LinkedAccount, cmd: Extrac
   if (company === null) {
     const rows = await stockRows(db, null);
     if (cmd.kind === 'ppe_search') return [searchCard(rows, cmd.query, 'ทุกบริษัท', true)];
+    if (cmd.kind === 'ppe_browse') return [companyPickerCard(rows, names)];
     return [overviewCard(rows, names)];
   }
 
   const rows = await stockRows(db, company);
   const name = names[company] || company;
   if (rows.length === 0 && account.isGroupAdmin && !names[company]) return [`ไม่พบรหัสบริษัท "${company}"`];
+  if (cmd.kind === 'ppe_browse') return [...notice, categoryCard(rows, company, name)];
   if (cmd.kind === 'ppe_low') return [...notice, lowCard(rows, name)];
   if (cmd.kind === 'ppe_search') return [...notice, searchCard(rows, cmd.query, name)];
   return [...notice, summaryCard(rows, name)];
@@ -147,6 +150,45 @@ export async function handleText(db: SupabaseClient, lineUserId: string, input: 
   if (!account) return toMessages(await linkPrompt(db, lineUserId), false);
   const unlinking = parseCommand(input).kind === 'unlink';
   return toMessages(await answer(db, lineUserId, account, input), !unlinking);
+}
+
+/** Taps on browse cards. The postback data is re-checked against the account's scope. */
+export async function handlePostback(db: SupabaseClient, lineUserId: string, data: string): Promise<LineMessage[]> {
+  const account = await getLinkedAccount(db, lineUserId);
+  if (!account) return toMessages(await linkPrompt(db, lineUserId), false);
+  const pb = decodePostback(data);
+  if (!pb) return toMessages(['ปุ่มนี้หมดอายุแล้ว พิมพ์ "รายการ PPE" เพื่อเริ่มใหม่'], true);
+  const company = account.isGroupAdmin ? pb.c : account.companyId;
+
+  try {
+    const names = await companyNames(db, [company]);
+    const name = names[company] || company;
+    if (pb.a === 'item') {
+      const { data: row, error } = await db
+        .from('ppe_stock_summary')
+        .select('product_id, company_id, name, type, unit, min_stock, current_stock, total_in, total_out')
+        .eq('company_id', company)
+        .eq('product_id', pb.id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!row) return toMessages(['ไม่พบรายการนี้ อาจถูกลบหรือย้ายไปแล้ว'], true);
+      const { data: tx } = await db
+        .from('ppe_transactions')
+        .select('transaction_type, quantity, transaction_date')
+        .eq('company_id', company)
+        .eq('product_id', pb.id)
+        .order('transaction_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1);
+      return toMessages([itemCard(row as StockRow, company, name, ((tx || [])[0] as LastMove) || null)], true);
+    }
+    const rows = await stockRows(db, company);
+    if (pb.a === 'cats') return toMessages([categoryCard(rows, company, name)], true);
+    return toMessages([listCarousel(rows, company, name, pb.t, pb.p)], true);
+  } catch (err) {
+    console.error('LINE postback failed', err instanceof Error ? err.message : err);
+    return toMessages(['ดึงข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'], true);
+  }
 }
 
 export async function handleFollow(db: SupabaseClient, lineUserId: string): Promise<LineMessage[]> {

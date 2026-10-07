@@ -1,11 +1,12 @@
 // LINE Flex Message cards for PPE replies. Pure (no I/O), so it can be unit-tested.
 // Low/out rules come from ppeFormat (same as /api/ppe/stock).
 import { isLow, isOut, type StockRow } from './ppeFormat';
+import { UNIT_TYPES } from '../constants';
 
-type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
+export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 export type LineMessage = { [k: string]: Json };
 
-const C = {
+export const C = {
   primary: '#4E79A7',
   warn: '#F28E2B',
   danger: '#E15759',
@@ -19,14 +20,17 @@ const C = {
   okBg: '#EEF6EC',
 };
 
-const SITE = 'https://tools.eashe.org/ppe';
+export const SITE = 'https://tools.eashe.org/ppe';
 const MAX_ROWS = 10;
-const fmt = (n: number) => n.toLocaleString('en-US');
+export const fmt = (n: number) => n.toLocaleString('en-US');
+/** Thai unit label (piece → ชิ้น); unknown units pass through. */
+export const unitLabel = (u?: string | null) => (u ? UNIT_TYPES.find(t => t.value === u)?.label || u : '');
 const cur = (r: StockRow) => Number(r.current_stock ?? 0);
 const min = (r: StockRow) => Number(r.min_stock ?? 0);
 
 export const QUICK_REPLY: Json = {
   items: [
+    ['รายการ PPE', 'รายการ PPE'],
     ['PPE คงเหลือ', 'PPE คงเหลือ'],
     ['PPE ใกล้หมด', 'PPE ใกล้หมด'],
     ['สถิติอุบัติเหตุ', 'สถิติอุบัติเหตุ'],
@@ -36,13 +40,13 @@ export const QUICK_REPLY: Json = {
 
 export const text = (t: string): LineMessage => ({ type: 'text', text: t.length > 5000 ? `${t.slice(0, 4998)}…` : t });
 
-function status(r: StockRow): { label: string; color: string; bg: string } {
+export function status(r: StockRow): { label: string; color: string; bg: string } {
   if (isOut(r)) return { label: 'หมด', color: C.danger, bg: C.dangerBg };
   if (isLow(r)) return { label: 'ต่ำ', color: C.warn, bg: C.warnBg };
   return { label: 'ปกติ', color: C.ok, bg: C.okBg };
 }
 
-function pill(label: string, color: string, bg: string): Json {
+export function pill(label: string, color: string, bg: string): Json {
   return {
     type: 'box',
     layout: 'vertical',
@@ -58,7 +62,7 @@ function pill(label: string, color: string, bg: string): Json {
 }
 
 // Stock vs minimum as a bar; full when at or above the minimum.
-function bar(r: StockRow, color: string): Json {
+export function bar(r: StockRow, color: string): Json {
   const pct = min(r) > 0 ? Math.max(0, Math.min(100, Math.round((cur(r) / min(r)) * 100))) : cur(r) > 0 ? 100 : 0;
   return {
     type: 'box',
@@ -76,7 +80,7 @@ function bar(r: StockRow, color: string): Json {
 
 function itemRow(r: StockRow, tag?: string): Json {
   const s = status(r);
-  const unit = r.unit ? ` ${r.unit}` : '';
+  const unit = r.unit ? ` ${unitLabel(r.unit)}` : '';
   const qty = min(r) > 0 ? `${fmt(cur(r))} / ${fmt(min(r))}${unit}` : `${fmt(cur(r))}${unit}`;
   return {
     type: 'box',
@@ -120,7 +124,7 @@ function kpi(label: string, value: number, color: string): Json {
   };
 }
 
-function header(kicker: string, title: string, color: string): Json {
+export function header(kicker: string, title: string, color: string): Json {
   return {
     type: 'box',
     layout: 'vertical',
@@ -149,7 +153,7 @@ function bubble(head: Json, body: Json[], foot: Json): Json {
   return { type: 'bubble', size: 'mega', header: head, body: { type: 'box', layout: 'vertical', contents: body }, footer: foot };
 }
 
-function flex(altText: string, contents: Json): LineMessage {
+export function flex(altText: string, contents: Json): LineMessage {
   return { type: 'flex', altText: altText.slice(0, 400), contents };
 }
 

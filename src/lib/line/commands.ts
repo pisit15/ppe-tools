@@ -3,6 +3,7 @@
 export type Command =
   | { kind: 'help' }
   | { kind: 'ppe_summary'; company?: string }
+  | { kind: 'ppe_browse'; company?: string }
   | { kind: 'ppe_low'; company?: string }
   | { kind: 'ppe_search'; query: string; company?: string }
   | { kind: 'incident_stats'; company?: string }
@@ -35,6 +36,11 @@ export function parseCommand(input: string): Command {
 
   const { company, rest } = splitCompany(lower);
 
+  // Browse by category: "รายการ PPE", "PPE ทั้งหมด", "รายการ".
+  if (['รายการ', 'รายการ ppe', 'ppe ทั้งหมด', 'รายการ ppe ทั้งหมด', 'ชื่อ ppe', 'ดู ppe', 'หมวด ppe'].includes(rest)) {
+    return { kind: 'ppe_browse', company };
+  }
+
   // Keyword commands (free word order: "สรุปรายการ PPE คงเหลือ", "PPE ใกล้หมด amt").
   if (has(rest, ['อุบัติเหตุ', 'สถิติ', 'incident'])) return { kind: 'incident_stats', company };
   if (has(rest, ['ใกล้หมด', 'ต่ำกว่าขั้นต่ำ']) || /\bppe\s*low\b/.test(rest)) return { kind: 'ppe_low', company };
@@ -50,6 +56,7 @@ export function parseCommand(input: string): Command {
 
 export const HELP_TEXT = [
   'คำสั่งที่ใช้ได้',
+  '• รายการ PPE — ดูชื่อ PPE ตามหมวด แตะเพื่อดูยอดคงเหลือ',
   '• PPE คงเหลือ — สรุปสต็อก PPE',
   '• PPE ใกล้หมด — รายการที่ต่ำกว่าจุดสั่งขั้นต่ำ',
   '• พิมพ์ชื่ออุปกรณ์ เช่น ถุงมือ — ดูยอดคงเหลือ',

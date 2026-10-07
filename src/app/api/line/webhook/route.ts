@@ -4,7 +4,7 @@ import { verifyLineSignature } from '@/lib/line/signature';
 import { replyMessages } from '@/lib/line/api';
 import { text, textFallback } from '@/lib/line/flex';
 import type { LineMessage } from '@/lib/line/flex';
-import { handleFollow, handleText } from '@/lib/line/bot';
+import { handleFollow, handlePostback, handleText } from '@/lib/line/bot';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +13,7 @@ type LineEvent = {
   replyToken?: string;
   source?: { type?: string; userId?: string };
   message?: { type?: string; text?: string };
+  postback?: { data?: string };
 };
 
 export async function POST(request: NextRequest) {
@@ -49,6 +50,8 @@ export async function POST(request: NextRequest) {
         messages = await handleFollow(db, userId);
       } else if (ev.type === 'message' && ev.message?.type === 'text') {
         messages = await handleText(db, userId, ev.message.text || '');
+      } else if (ev.type === 'postback') {
+        messages = await handlePostback(db, userId, ev.postback?.data || '');
       } else if (ev.type === 'message') {
         messages = [text('ตอนนี้รองรับเฉพาะข้อความตัวอักษร พิมพ์ "เมนู" เพื่อดูคำสั่ง')];
       }
