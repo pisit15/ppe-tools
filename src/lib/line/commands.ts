@@ -3,6 +3,7 @@
 export type Command =
   | { kind: 'help' }
   | { kind: 'search_help' }
+  | { kind: 'law_search'; query: string; page: number }
   | { kind: 'ppe_summary'; company?: string }
   | { kind: 'ppe_browse'; company?: string }
   | { kind: 'ppe_low'; company?: string }
@@ -31,6 +32,19 @@ export function parseCommand(input: string): Command {
   if (!text || ['help', 'เมนู', 'menu', 'ช่วยเหลือ', '?', 'วิธีใช้'].includes(lower)) return { kind: 'help' };
   if (['ยกเลิกการเชื่อม', 'ยกเลิกเชื่อม', 'unlink'].includes(lower)) return { kind: 'unlink' };
   if (['ฉันคือใคร', 'บัญชี', 'whoami'].includes(lower)) return { kind: 'whoami' };
+
+  // Legal library: "กฎหมาย นั่งร้าน", "กฎหมาย นั่งร้าน หน้า 2", "ค้นหากฎหมาย".
+  const law = text.match(/^(?:ค้นหา\s*)?(?:กฎหมาย|กม\.?|law)(?:\s+(.*))?$/i);
+  if (law) {
+    let q = (law[1] || '').trim();
+    let page = 1;
+    const pm = q.match(/^(.*?)\s*หน้า\s*(\d{1,3})$/);
+    if (pm) {
+      q = pm[1].trim();
+      page = Math.max(1, Number(pm[2]));
+    }
+    return { kind: 'law_search', query: q.slice(0, 60), page };
+  }
 
   // Rich-menu "ค้นหา PPE" button: explain how to search instead of searching for "PPE".
   if (['ค้นหา', 'ค้นหา ppe', 'search', 'วิธีค้นหา'].includes(lower)) return { kind: 'search_help' };
@@ -75,5 +89,6 @@ export const HELP_TEXT = [
   '• พิมพ์ชื่ออุปกรณ์ เช่น ถุงมือ — ดูยอดคงเหลือ',
   '• สถิติอุบัติเหตุ — สรุป กราฟรายเดือน LTIFR/TRIR (ต่อท้ายปีได้ เช่น สถิติอุบัติเหตุ 2023)',
   '• การจัดการขยะ — ปริมาณ รีไซเคิล/กำจัด รายเดือน และชนิดของเสีย (ต่อท้ายปีได้)',
+  '• กฎหมาย + คำค้น — ค้นคลังกฎหมาย SHE พร้อมลิงก์ เช่น กฎหมาย นั่งร้าน',
   '• ยกเลิกการเชื่อม — เลิกผูกบัญชี LINE นี้',
 ].join('\n');
