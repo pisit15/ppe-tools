@@ -3,7 +3,8 @@ import { randomBytes } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { companyNames, getLinkedAccount, type LinkedAccount } from './accounts';
 import { HELP_TEXT, parseCommand, type Command } from './commands';
-import { computeCompanyStats, formatIncidentStats, type IncidentRow, type ManHourRow } from './incidentStats';
+import { incidentMonth, type ManHourRow } from './incidentStats';
+import { endMonthFor, incidentCompanyPicker, incidentDetailCard, monthListCard, statsCarousel, type IncidentDetailRow, type IncidentListRow } from './incidentCards';
 import type { StockRow } from './ppeFormat';
 import { lowCard, overviewCard, searchCard, summaryCard, text, withQuickReply, type LineMessage } from './flex';
 import { categoryCard, companyPickerCard, decodePostback, itemCard, listCarousel, type LastMove } from './browse';
@@ -82,40 +83,98 @@ async function handlePpe(db: SupabaseClient, account: LinkedAccount, cmd: Extrac
   return [...notice, summaryCard(rows, name)];
 }
 
-async function handleIncidents(db: SupabaseClient, account: LinkedAccount, requested?: string): Promise<Reply[]> {
-  const { company, denied } = scopeFor(account, requested);
-  // Bangkok time decides "this year". Like the dashboard's default, the period
-  // ends at the last complete month (January shows January).
-  const now = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  const year = now.getUTCFullYear();
-  const endMonth = Math.max(0, now.getUTCMonth() - 1);
+const bangkokNow = () => {
+  const d = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  return { year: d.getUTCFullYear(), month0: d.getUTCMonth() };
+};
+const MIN_INCIDENT_YEAR = 2021; // first year on the eashe.org dashboard
 
-  const incidents: IncidentRow[] = [];
+async function pageAll<T>(build: (from: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const out: T[] = [];
   for (let from = 0; ; from += 1000) {
-    let q = db
-      .from('incidents')
-      .select('company_id, incident_type, actual_severity, recordable_override, work_related, incident_date, month')
-      .eq('year', year)
-      .neq('report_status', 'Draft')
-      .order('id')
-      .range(from, from + 999);
-    if (company) q = q.eq('company_id', company);
-    const { data, error } = await q;
-    if (error) throw error;
-    incidents.push(...((data || []) as IncidentRow[]));
+    const { data, error } = await build(from);
+    if (error) throw new Error(error.message);
+    out.push(...((data || []) as T[]));
     if (!data || data.length < 1000) break;
   }
+  return out;
+}
 
-  let mq = db.from('man_hours').select('company_id, month, employee_manhours, contractor_manhours').eq('year', year);
-  if (company) mq = mq.eq('company_id', company);
-  const { data: mh, error: mhErr } = await mq;
-  if (mhErr) throw mhErr;
+const INCIDENT_STAT_FIELDS = 'id, year, company_id, incident_no, incident_type, actual_severity, recordable_override, work_related, incident_date, month';
 
-  const names = await companyNames(db, company ? [company] : undefined);
-  const stats = computeCompanyStats(incidents, (mh || []) as ManHourRow[], endMonth, company ? { [company]: names[company] || company } : {});
-  const text = formatIncidentStats(stats, year, endMonth, company !== null);
-  const footer = '\n\nรายละเอียดเพิ่มเติม: eashe.org/projects/incidents';
-  return [...(denied ? ['บัญชีนี้ดูได้เฉพาะบริษัทของตัวเอง จึงแสดงข้อมูลบริษัทของคุณแทน'] : []), text + footer];
+/** c: company id, or 'all' (admins only — callers enforce scope). */
+async function incidentStats(db: SupabaseClient, account: LinkedAccount, c: string, requestedYear?: number): Promise<Reply[]> {
+  const now = bangkokNow();
+  const year = Math.min(now.year, Math.max(MIN_INCIDENT_YEAR, requestedYear || now.year));
+  const endMonth = endMonthFor(year, now);
+  const years = [year - 3, year - 2, year - 1, year].filter(y => y >= MIN_INCIDENT_YEAR);
+  const all = c === 'all';
+
+  const incidents = await pageAll<IncidentListRow>(from => {
+    let q = db.from('incidents').select(INCIDENT_STAT_FIELDS).in('year', years).neq('report_status', 'Draft').order('id').range(from, from + 999);
+    if (!all) q = q.eq('company_id', c);
+    return q;
+  });
+  const manHours = await pageAll<ManHourRow & { year: number }>(from => {
+    let q = db.from('man_hours').select('company_id, year, month, employee_manhours, contractor_manhours').in('year', years).order('id').range(from, from + 999);
+    if (!all) q = q.eq('company_id', c);
+    return q;
+  });
+  const names = all ? {} : await companyNames(db, [c]);
+  return [
+    statsCarousel({
+      c,
+      companyLabel: all ? 'ทุกบริษัท' : names[c] || c,
+      year,
+      endMonth,
+      minYear: MIN_INCIDENT_YEAR,
+      maxYear: now.year,
+      incidents,
+      manHours,
+      canPickCompany: account.isGroupAdmin,
+    }),
+  ];
+}
+
+async function handleIncidents(db: SupabaseClient, account: LinkedAccount, requested?: string, year?: number): Promise<Reply[]> {
+  const { company, denied } = scopeFor(account, requested);
+  const notice: Reply[] = denied ? ['บัญชีนี้ดูได้เฉพาะบริษัทของตัวเอง จึงแสดงข้อมูลบริษัทของคุณแทน'] : [];
+  return [...notice, ...(await incidentStats(db, account, company ?? 'all', year))];
+}
+
+async function incidentMonthList(db: SupabaseClient, c: string, year: number, month: number): Promise<Reply[]> {
+  const all = c === 'all';
+  const rows = await pageAll<IncidentListRow>(from => {
+    let q = db
+      .from('incidents')
+      .select(`${INCIDENT_STAT_FIELDS}, area, description`)
+      .eq('year', year)
+      .neq('report_status', 'Draft')
+      .order('incident_date')
+      .range(from, from + 999);
+    if (!all) q = q.eq('company_id', c);
+    return q;
+  });
+  const inMonth = rows.filter(r => incidentMonth(r) === month - 1);
+  const names = all ? {} : await companyNames(db, [c]);
+  return [monthListCard(inMonth, c, all ? 'ทุกบริษัท' : names[c] || c, year, month, all)];
+}
+
+async function incidentDetail(db: SupabaseClient, account: LinkedAccount, id: string): Promise<Reply[]> {
+  let q = db
+    .from('incidents')
+    .select(
+      `${INCIDENT_STAT_FIELDS}, area, description, incident_time, activity, report_status, immediate_cause, corrective_action_1, ca1_status, ca1_due_date, corrective_action_2, ca2_status, ca2_due_date`,
+    )
+    .eq('id', id)
+    .neq('report_status', 'Draft');
+  if (!account.isGroupAdmin) q = q.eq('company_id', account.companyId);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw error;
+  if (!data) return ['ไม่พบเหตุการณ์นี้ หรือบัญชีนี้ไม่มีสิทธิ์ดู'];
+  const row = data as IncidentDetailRow;
+  const names = await companyNames(db, [row.company_id]);
+  return [incidentDetailCard(row, names[row.company_id] || row.company_id)];
 }
 
 const toMessages = (replies: Reply[], quick: boolean): LineMessage[] => {
@@ -135,7 +194,7 @@ async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAcc
         await db.from('line_links').delete().eq('line_user_id', lineUserId);
         return ['ยกเลิกการเชื่อมบัญชีแล้ว ส่งข้อความใดก็ได้หากต้องการเชื่อมใหม่'];
       case 'incident_stats':
-        return await handleIncidents(db, account, cmd.company);
+        return await handleIncidents(db, account, cmd.company, cmd.year);
       default:
         return await handlePpe(db, account, cmd);
     }
@@ -161,6 +220,15 @@ export async function handlePostback(db: SupabaseClient, lineUserId: string, dat
   const company = account.isGroupAdmin ? pb.c : account.companyId;
 
   try {
+    if (pb.a === 'inc') return toMessages(await incidentStats(db, account, company, pb.y), true);
+    if (pb.a === 'incm') return toMessages(await incidentMonthList(db, company, pb.y, pb.m), true);
+    if (pb.a === 'incd') return toMessages(await incidentDetail(db, account, pb.id), true);
+    if (pb.a === 'incpick') {
+      if (!account.isGroupAdmin) return toMessages(await incidentStats(db, account, account.companyId, pb.y), true);
+      const names = await companyNames(db);
+      return toMessages([incidentCompanyPicker(names, Object.keys(names), pb.y)], true);
+    }
+    if (company === 'all') return toMessages(['พิมพ์ "รายการ PPE" แล้วเลือกบริษัทก่อน'], true);
     const names = await companyNames(db, [company]);
     const name = names[company] || company;
     if (pb.a === 'item') {

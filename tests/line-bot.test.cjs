@@ -153,3 +153,51 @@ test('browse: categories, paged carousel, item detail, postback round-trip and r
   assert.match(JSON.stringify(companyPickerCard(rows,{amt:'AMT'})),/AMT/);
   for(const m of [cats,p0,item]) for(const s of JSON.stringify(m).matchAll(/"label":"([^"]*)"/g)) assert.ok([...s[1]].length<=20,`label too long: ${s[1]}`);
 });
+
+test('incident cards: monthly counts, same-period rates, carousel, month list, detail, postbacks',()=>{
+  const C=require('../src/lib/line/incidentCards.ts');
+  const {decodePostback,encodePostback}=require('../src/lib/line/browse.ts');
+  const {parseCommand}=require('../src/lib/line/commands.ts');
+  const id=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+  let n=0;const mk=(year,date,type,extra={})=>({id:id(n++),year,company_id:'aab',incident_no:`AAB-${n}`,incident_type:type,work_related:'ใช่',incident_date:date,month:null,area:'โรงงาน',description:'รายละเอียดเหตุ',...extra});
+  const inc=[
+    mk(2023,'2023-01-05','ทรัพย์สินเสียหาย'),mk(2023,'2023-01-06','บาดเจ็บ - ไม่หยุดงาน',{actual_severity:'S1 ปฐมพยาบาล'}),
+    mk(2023,'2023-02-01','บาดเจ็บ - หยุดงาน > 3 วัน'),mk(2023,'2023-03-01','บาดเจ็บ - หยุดงาน ≤ 3 วัน'),
+    mk(2023,'2023-03-02','Near Miss'),mk(2023,'2023-03-03','ทรัพย์สินเสียหาย',{work_related:'ไม่ใช่'}),
+    mk(2023,'2023-11-01','ทรัพย์สินเสียหาย'),mk(2022,'2022-02-01','บาดเจ็บ - ไม่หยุดงาน',{actual_severity:'S2'}),
+  ];
+  const months=C.monthlyCounts(inc,2023,11,i=>i.year);
+  assert.deepEqual(months[0],{pd:1,nlt:1,lt3:0,lt4:0,oth:0});
+  assert.deepEqual(months[2],{pd:0,nlt:0,lt3:1,lt4:0,oth:1});
+  assert.equal(C.monthlyCounts(inc,2023,8,i=>i.year)[10],null);
+  const mh=[{company_id:'aab',year:2023,month:1,employee_manhours:500000,contractor_manhours:0},{company_id:'aab',year:2023,month:2,employee_manhours:500000,contractor_manhours:0},{company_id:'aab',year:2022,month:2,employee_manhours:1000000,contractor_manhours:0}];
+  const r=C.yearRates(inc,mh,[2022,2023],8);
+  assert.equal(r[1].recordable,2);assert.equal(r[1].lti,2);assert.equal(r[1].manHours,1000000);assert.equal(r[1].ltifr,2);
+  assert.equal(r[0].trir,1);
+  assert.equal(C.endMonthFor(2023,{year:2026,month0:9}),11);
+  assert.equal(C.endMonthFor(2026,{year:2026,month0:9}),8);
+  assert.equal(C.endMonthFor(2026,{year:2026,month0:0}),0);
+
+  const car=C.statsCarousel({c:'aab',companyLabel:'AAB',year:2023,endMonth:11,minYear:2021,maxYear:2026,incidents:inc,manHours:mh,canPickCompany:true});
+  assert.equal(car.contents.type,'carousel');assert.equal(car.contents.contents.length,3);
+  const cs=JSON.stringify(car);
+  assert.ok(Buffer.byteLength(cs)<40000,`too large ${Buffer.byteLength(cs)}`);
+  assert.match(cs,/‹ 2022/);assert.match(cs,/2024 ›/);assert.match(cs,/เลือกบริษัท/);
+  const first=C.statsCarousel({c:'aab',companyLabel:'AAB',year:2021,endMonth:11,minYear:2021,maxYear:2026,incidents:[],manHours:[],canPickCompany:false});
+  assert.doesNotMatch(JSON.stringify(first),/‹ 2020/);assert.doesNotMatch(JSON.stringify(first),/เลือกบริษัท/);
+  for(const s of cs.matchAll(/"label":"([^"]*)"/g)) assert.ok([...s[1]].length<=20,`label too long: ${s[1]}`);
+  const monthTap=car.contents.contents[1].body.contents[1].contents[0].action;
+  assert.deepEqual(decodePostback(monthTap.data),{a:'incm',c:'aab',y:2023,m:1});
+
+  const list=C.monthListCard(inc.filter(i=>i.incident_date.startsWith('2023-03')),'aab','AAB',2023,3,false);
+  assert.match(JSON.stringify(list),/2 เหตุการณ์/);
+  const tap=list.contents.body.contents[1].action;
+  assert.equal(decodePostback(tap.data).a,'incd');
+  const det=C.incidentDetailCard({...inc[2],incident_time:'08:30:00',corrective_action_1:'อบรมซ้ำ',ca1_status:'เสร็จแล้ว',ca1_due_date:'2023-03-01'},'AAB');
+  const ds=JSON.stringify(det);assert.match(ds,/1 ก\.พ\. 2566 · 08:30/);assert.match(ds,/อบรมซ้ำ/);assert.match(ds,/กำหนด 1 มี\.ค\. 2566/);
+  assert.deepEqual(decodePostback(encodePostback({a:'inc',c:'all',y:2024})),{a:'inc',c:'all',y:2024});
+  assert.equal(decodePostback('a=incm&c=aab&y=2023&m=13'),null);
+  assert.equal(decodePostback('a=inc&c=aab&y=1999'),null);
+  assert.deepEqual(parseCommand('สถิติอุบัติเหตุ 2566'),{kind:'incident_stats',company:undefined,year:2023});
+  assert.match(JSON.stringify(C.incidentCompanyPicker({aab:'AAB'},['aab'],2026)),/ทุกบริษัท/);
+});
