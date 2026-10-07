@@ -101,3 +101,23 @@ export type DashboardStats = {
   total_stock_in: number;
   total_stock_out: number;
 };
+
+// LINE chatbot (supabase/migrations/20261007120000_line_chatbot.sql) — server-only tables
+export type LineLink = {
+  line_user_id: string;
+  account_source: 'admin_accounts' | 'company_users' | 'tools_users';
+  account_id: string;
+  username: string;
+  company_id: string;
+  linked_at: string;
+  last_seen_at: string | null;
+};
+
+export type LineLinkCode = {
+  code: string;
+  line_user_id: string;
+  expires_at: string;
+  attempts: number;
+  used_at: string | null;
+  created_at: string;
+};
