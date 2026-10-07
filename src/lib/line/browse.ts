@@ -10,7 +10,12 @@ export const PAGE_BUBBLES = 3; // bubbles per carousel page
 export type Postback =
   | { a: 'cats'; c: string }
   | { a: 'list'; c: string; t: string; p: number }
-  | { a: 'item'; c: string; id: string };
+  | { a: 'item'; c: string; id: string }
+  // Incidents: stats for a company/year, month list, one incident, admin company picker.
+  | { a: 'inc'; c: string; y: number }
+  | { a: 'incm'; c: string; y: number; m: number }
+  | { a: 'incd'; c: string; id: string }
+  | { a: 'incpick'; c: string; y: number };
 
 export function encodePostback(p: Postback): string {
   return new URLSearchParams(Object.entries(p).map(([k, v]) => [k, String(v)])).toString();
@@ -31,16 +36,25 @@ export function decodePostback(data: string): Postback | null {
     if (!SAFE.test(t) || !Number.isInteger(p) || p < 0 || p > 50) return null;
     return { a, c, t, p };
   }
-  if (a === 'item') {
+  if (a === 'item' || a === 'incd') {
     const id = q.get('id') || '';
     return UUID.test(id) ? { a, c, id } : null;
+  }
+  if (a === 'inc' || a === 'incm' || a === 'incpick') {
+    const y = Number(q.get('y'));
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) return null;
+    if (a === 'incm') {
+      const m = Number(q.get('m'));
+      return Number.isInteger(m) && m >= 1 && m <= 12 ? { a, c, y, m } : null;
+    }
+    return { a, c, y };
   }
   return null;
 }
 
 const typeInfo = (t?: string | null) => PPE_TYPES.find(x => x.value === t) || { value: t || 'others', label: t || 'อื่น ๆ', icon: '📦' };
 
-function postbackAction(label: string, p: Postback, displayText: string): Json {
+export function postbackAction(label: string, p: Postback, displayText: string): Json {
   return { type: 'postback', label: label.slice(0, 20), data: encodePostback(p), displayText: displayText.slice(0, 300) };
 }
 
