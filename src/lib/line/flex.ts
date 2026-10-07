@@ -250,3 +250,54 @@ export function textFallback(messages: LineMessage[]): LineMessage[] {
     return { ...text(`${alt}\nดูรายละเอียดที่ ${SITE}`), ...(m.quickReply ? { quickReply: m.quickReply } : {}) };
   });
 }
+
+const MENU_ITEMS: [string, string, string, string][] = [
+  ['🦺', 'รายการ PPE', 'ดูตามหมวด แตะดูยอด', 'รายการ PPE'],
+  ['📦', 'PPE คงเหลือ', 'สรุปสต็อก', 'PPE คงเหลือ'],
+  ['⚠️', 'PPE ใกล้หมด', 'ต่ำกว่าขั้นต่ำ', 'PPE ใกล้หมด'],
+  ['📊', 'สถิติอุบัติเหตุ', 'กราฟ LTIFR TRIR', 'สถิติอุบัติเหตุ'],
+  ['🔍', 'ค้นหา PPE', 'พิมพ์ชื่ออุปกรณ์', 'ค้นหา PPE'],
+  ['👤', 'บัญชีของฉัน', 'บัญชีที่เชื่อมอยู่', 'บัญชี'],
+];
+
+function menuTile([icon, title, sub, send]: [string, string, string, string]): Json {
+  return {
+    type: 'box',
+    layout: 'vertical',
+    flex: 1,
+    paddingAll: '12px',
+    backgroundColor: '#F5F8FC',
+    cornerRadius: '10px',
+    action: { type: 'message', label: title.slice(0, 20), text: send },
+    contents: [
+      { type: 'text', text: icon, size: 'xl' },
+      { type: 'text', text: title, size: 'sm', weight: 'bold', color: C.text, margin: 'sm', wrap: true },
+      { type: 'text', text: sub, size: 'xxs', color: C.faint, wrap: true },
+    ],
+  };
+}
+
+/** Reply to "เมนู": tappable tiles instead of a wall of text. */
+export function menuCard(isAdmin: boolean, helpText: string): LineMessage {
+  const rows: Json[] = [];
+  for (let i = 0; i < MENU_ITEMS.length; i += 2) {
+    rows.push({ type: 'box', layout: 'horizontal', spacing: 'sm', margin: i ? 'sm' : 'none', contents: [menuTile(MENU_ITEMS[i]), menuTile(MENU_ITEMS[i + 1])] });
+  }
+  return flex(helpText.slice(0, 400), {
+    type: 'bubble',
+    size: 'mega',
+    header: header('EA SHE Bot', 'เมนู', C.primary),
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        ...rows,
+        { type: 'text', text: 'พิมพ์ชื่ออุปกรณ์ได้เลย เช่น "ถุงมือ" · ต่อท้ายปีได้ เช่น "สถิติอุบัติเหตุ 2023"', size: 'xxs', color: C.faint, wrap: true, margin: 'lg' },
+        ...(isAdmin ? [{ type: 'text', text: 'admin: ต่อท้ายรหัสบริษัทได้ เช่น "PPE ใกล้หมด amt"', size: 'xxs', color: C.faint, wrap: true } as Json] : []),
+      ],
+    },
+  });
+}
+
+export const SEARCH_HELP =
+  'พิมพ์ชื่ออุปกรณ์ที่ต้องการได้เลย เช่น\n• ถุงมือ\n• รองเท้า\n• หน้ากาก N95\n\nบอทจะแสดงยอดคงเหลือของรายการที่ตรงกัน หรือกด "รายการ PPE" เพื่อดูตามหมวด';
