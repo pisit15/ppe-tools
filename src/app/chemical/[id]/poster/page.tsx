@@ -74,7 +74,7 @@ export default function SdsPosterPage() {
       </div>
 
       <article className="poster">
-        {(s.is_demo || s.review_status !== 'reviewed') && <p style={{padding: '8px 16px', border: '2px solid #92400e', fontWeight: 700, color: '#78350f'}}>{s.is_demo ? 'ข้อมูลสาธิต — ไม่ใช่ทะเบียนใช้งานจริง' : 'ยังไม่ตรวจทานข้อมูลกับ SDS ต้นฉบับ'}</p>}
+        {s.is_demo && <p style={{padding: '8px 16px', border: '2px solid #92400e', fontWeight: 700, color: '#78350f'}}>ข้อมูลสาธิต — ไม่ใช่ทะเบียนใช้งานจริง</p>}
         {/* Header */}
         <header style={{ background: headerBg, color: '#fff', padding: '14px 18px', borderRadius: '12px 12px 0 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>

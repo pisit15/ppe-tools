@@ -54,10 +54,9 @@ const parseCodes = (text: string, prefix: 'H' | 'P'): string[] =>
 export default function SubstanceForm({ companyId, companyName, areas, initial, createdBy, onClose, onSaved, onToast }: Props) {
   const [f, setF] = useState<FormState>(initial ? fromSubstance(initial) : empty());
   const [saving, setSaving] = useState(false);
-  const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [aiFields, setAiFields] = useState<string[]>(initial?.ai_filled_fields || []);
-  const markChanged = () => { setDirty(true); setReviewConfirmed(false); };
+  const markChanged = () => setDirty(true);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', warn);
@@ -170,7 +169,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
       }
       if (!initial) payload.created_by = createdBy;
       const res = await fetch(initial ? `/api/chemical/substances/${initial.id}` : '/api/chemical/substances', {
-        method: initial ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, ai_filled_fields: aiFields, review_confirmed: reviewConfirmed, expected_updated_at: initial?.updated_at }),
+        method: initial ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, ai_filled_fields: aiFields, expected_updated_at: initial?.updated_at }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || data.error || 'บันทึกไม่สำเร็จ');
@@ -183,7 +182,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
   };
 
   return (
-    <div className="max-w-7xl mx-auto" onChangeCapture={e => { if (!(e.target instanceof HTMLInputElement && e.target.name === 'review-confirmation')) markChanged(); }}>
+    <div className="max-w-7xl mx-auto" onChangeCapture={markChanged}>
       <fieldset disabled={saving || extracting} className="w-full min-w-0">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10 gap-4">
           <div><h1 ref={headingRef} tabIndex={-1} className="text-xl font-bold text-gray-900 outline-none">{initial ? 'แก้ไขสารเคมี' : 'เพิ่มสารเคมีใหม่'}</h1><p className="text-sm text-purple-800 mt-1">บริษัท {companyName} · บริษัทถูกล็อกไว้สำหรับฟอร์มนี้</p></div>
@@ -201,7 +200,6 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
               { id: 'safety', label: 'ข้อมูลความปลอดภัย', values: [f.ppe_required.length, Object.values(f.first_aid).some(Boolean), f.fire_fighting, f.spill_response] },
             ].map(s => <a key={s.id} href={'#' + s.id} className="block rounded-lg p-3 hover:bg-purple-50 focus-visible:ring-2 focus-visible:ring-purple-600 text-sm text-gray-800"><span className="font-semibold">{s.label}</span><span className="block text-gray-600">มีข้อมูล {s.values.filter(Boolean).length}/{s.values.length} ช่องแนะนำ</span></a>)}
             <p className="text-xs text-gray-600 mt-3">จำนวนช่องมีไว้ช่วยกรอก ไม่ใช่การยืนยันว่าข้อมูลถูกต้องหรือปลอดภัย</p>
-            <a href="#review" className="block p-3 text-purple-700 font-semibold">ตรวจทานก่อนบันทึก</a>
           </nav>
           <div className="space-y-5 min-w-0">
           {/* SDS source + AI */}
@@ -361,15 +359,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
             </div>
           </Section>
 
-          <section id="review" className="scroll-mt-28 rounded-xl border bg-white p-5 space-y-3">
-            <h2 className="font-bold text-gray-900">สถานะการตรวจทาน</h2>
-            <p className="text-sm text-gray-700">{reviewConfirmed ? 'พร้อมบันทึกการยืนยันตรวจทาน' : dirty || initial?.review_status !== 'reviewed' ? 'ยังไม่ตรวจทาน' : `ตรวจทานแล้วโดย ${initial.reviewed_by || '—'}`}</p>
-            {aiFields.length > 0 && <p className="text-sm text-amber-900 bg-amber-50 p-3 rounded">มีข้อมูลจาก AI {aiFields.length} ช่อง — การแก้ไขช่องข้อมูลไม่ถือเป็นการยืนยันตรวจทาน ที่มาจาก AI จะเก็บไว้หลังบันทึก</p>}
-            <label className="flex items-start gap-3 text-sm text-gray-800" onChange={e => e.stopPropagation()}>
-              <input name="review-confirmation" type="checkbox" checked={reviewConfirmed} onChange={e => { setReviewConfirmed(e.target.checked); setDirty(true); }} />
-              ฉันตรวจทานข้อมูลกับ SDS ต้นฉบับแล้ว และยืนยันบันทึกชื่อผู้ตรวจและเวลาตรวจ
-            </label>
-          </section>
+          {aiFields.length > 0 && <p className="text-sm text-gray-600">มีข้อมูลจาก AI {aiFields.length} ช่อง</p>}
           {error && <p role="alert" className="text-sm rounded-lg px-3 py-2" style={{ background: '#fee2e2', color: '#b91c1c' }}>{error}</p>}
         </div>
 

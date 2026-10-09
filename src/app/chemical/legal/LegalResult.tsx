@@ -2,10 +2,9 @@
 import { useState } from 'react';
 import { Download, ExternalLink } from 'lucide-react';
 import { CATEGORY_LABELS, LEGAL_CATEGORIES, type LegalCheck, type LegalEntry, type LegalRelease, type LegalSource } from '@/lib/chemical/legal/types';
-import { LegalAssessmentForm } from './LegalAssessmentForm';
 import { inputCls } from '../components/ui';
 
-const reviewLabels = { verified: '✓ ยืนยันข้อมูลต้นฉบับ', pending: '… รอตรวจทาน', conflict: '! ตัวตน/CAS ต้องตรวจเพิ่ม' };
+const reviewLabels = { verified: '✓ ยืนยันข้อมูลต้นฉบับ', pending: '… ข้อมูลบางส่วนต้องตรวจเพิ่ม', conflict: '! ตัวตน/CAS ต้องตรวจเพิ่ม' };
 const statusLabels = { active: 'มีผลตามเงื่อนไข', repealed: 'ยกเลิกเฉพาะรายการนี้', superseded: 'ข้อความเดิม — ถูกแทนที่' };
 function SourceLink({ entry, sources }: { entry: LegalEntry; sources: LegalSource[] }) {
   const source = sources.find(s => s.id === entry.source_id);
@@ -35,7 +34,7 @@ function exportCsv(check: LegalCheck, release: LegalRelease, sources: LegalSourc
   const url = URL.createObjectURL(new Blob(['\uFEFF' + rows.map(row => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
   const anchor = document.createElement('a'); anchor.href = url; anchor.download = `chemical-legal-${check.cas}.csv`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-export function LegalResult({ check, sources, release, substance }: { check: LegalCheck; sources: LegalSource[]; release: LegalRelease; substance?: { id: string; name: string; updated_at: string } }) {
+export function LegalResult({ check, sources, release }: { check: LegalCheck; sources: LegalSource[]; release: LegalRelease }) {
   const [category, setCategory] = useState('');
   const [history, setHistory] = useState(false);
   const [onlyVerified, setOnlyVerified] = useState(false);
@@ -43,7 +42,7 @@ export function LegalResult({ check, sources, release, substance }: { check: Leg
   return <div className="space-y-5">
     <section className="legal-card" aria-label="ผลการค้นหากฎหมาย">
       <div className="flex flex-wrap gap-3 items-start justify-between"><div><p className="text-sm text-purple-800 font-semibold">จับคู่ด้วย CAS {check.cas}</p><h2 className="text-xl font-bold mt-1">{check.entries.find(e => e.legal_status === 'active')?.name || 'ยังไม่พบรายการในชุดข้อมูล'}</h2><p className="text-sm text-gray-600 mt-2">ต้องยืนยันว่า CAS นี้ตรงกับสารหรือองค์ประกอบใน SDS ของคุณ</p></div><button className="legal-btn" onClick={() => exportCsv(check, release, sources)}><Download size={16} /> ส่งออกผล CSV</button></div>
-      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3 mt-5">{LEGAL_CATEGORIES.map(c => <button key={c} aria-pressed={category === c} onClick={() => setCategory(category === c ? '' : c)} className={`p-4 rounded-xl border text-left ${category === c ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}><strong className="block text-sm">{CATEGORY_LABELS[c]}</strong><span className="block mt-2 text-sm">{check.counts[c].verified ? `พบ ${check.counts[c].verified} รายการยืนยัน` : c === 'health' ? 'ต้องตรวจงาน/กลุ่มสาร' : 'ยังไม่มีข้อสรุป'}</span><small className="block text-amber-900 mt-1">{check.counts[c].pending ? `รอตรวจทาน ${check.counts[c].pending} รายการ` : 'พิจารณาเงื่อนไขประกอบ'}</small></button>)}</div>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3 mt-5">{LEGAL_CATEGORIES.map(c => <button key={c} aria-pressed={category === c} onClick={() => setCategory(category === c ? '' : c)} className={`p-4 rounded-xl border text-left ${category === c ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}><strong className="block text-sm">{CATEGORY_LABELS[c]}</strong><span className="block mt-2 text-sm">{check.counts[c].verified ? `พบ ${check.counts[c].verified} รายการยืนยัน` : c === 'health' ? 'ตามกลุ่มสาร/งานที่สัมผัส' : 'ไม่พบในชุดข้อมูลนี้'}</span><small className="block text-amber-900 mt-1">{check.counts[c].pending ? `ข้อมูลต้องตรวจเพิ่ม ${check.counts[c].pending} รายการ` : 'มีเงื่อนไขตามกฎหมาย'}</small></button>)}</div>
     </section>
     <section className="legal-card">
       <div className="flex flex-wrap gap-4 items-center mb-4"><h2 className="font-bold mr-auto">รายการและเงื่อนไขกฎหมาย</h2><select aria-label="หมวดกฎหมาย" value={category} onChange={e => setCategory(e.target.value)} className={`${inputCls} sm:max-w-[200px]`}><option value="">ทุกเรื่อง</option>{LEGAL_CATEGORIES.map(c => <option value={c} key={c}>{CATEGORY_LABELS[c]}</option>)}</select><label className="text-sm flex gap-2 items-center"><input type="checkbox" checked={history} onChange={e => setHistory(e.target.checked)} /> รวมยกเลิก/ข้อความเดิม</label><label className="text-sm flex gap-2 items-center"><input type="checkbox" checked={onlyVerified} onChange={e => setOnlyVerified(e.target.checked)} /> เฉพาะที่ยืนยันแล้ว</label></div>
@@ -51,6 +50,5 @@ export function LegalResult({ check, sources, release, substance }: { check: Leg
       {rows.length ? <LegalEntryList entries={rows} sources={sources} /> : <p className="rounded-lg bg-amber-50 p-4 text-amber-950">ยังไม่มีรายการตามตัวกรองนี้ ต้องตรวจต้นฉบับและกลุ่มสารเพิ่มเติม ห้ามสรุปว่า “ไม่ควบคุม”</p>}
     </section>
     <section className="legal-card"><h2 className="font-bold mb-2">ข้อกำหนดที่ต้องตรวจเพิ่ม แม้ไม่พบ CAS</h2><p className="text-sm text-gray-600 mb-3">รายการด้านล่างเป็นเกณฑ์ทั่วไป ไม่ใช่ผลจับคู่ยืนยันว่าสารนี้เข้าข่าย</p><LegalEntryList entries={check.general} sources={sources} /></section>
-    <LegalAssessmentForm check={check} release={release} substance={substance} />
   </div>;
 }

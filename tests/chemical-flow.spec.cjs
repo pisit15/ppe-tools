@@ -4,7 +4,7 @@ const login=async(request,username='audit-admin')=>{
  const r=await request.post('/api/auth/login',{data:{username,password:'local-test-only'}});
  expect(r.status(),await r.text()).toBe(200);
 };
-test('direct company link, quality filters, real POST and durable human review',async({page,request})=>{
+test('direct company link, quality filters and saving without a review workflow',async({page,request})=>{
  request = page.request;
  await login(request);
  await page.goto('/chemical?company_id=amt');
@@ -21,20 +21,19 @@ test('direct company link, quality filters, real POST and durable human review',
  await expect(page.getByRole('navigation',{name:'หมวดข้อมูลสารเคมี'})).toBeVisible();
  await expect(page.getByLabel('เลือกบริษัท')).toHaveCount(0);
  await page.getByLabel('ชื่อสารเคมี / ชื่อทางการค้า *',{exact:true}).fill('Integration saved to AMT');
- await page.getByRole('link',{name:'ตรวจทานก่อนบันทึก'}).click();
- await page.getByRole('checkbox',{name:'ฉันตรวจทานข้อมูลกับ SDS ต้นฉบับแล้ว',exact:false}).check();
+ await expect(page.getByRole('heading',{name:'สถานะการตรวจทาน'})).toHaveCount(0);
  const sent=page.waitForRequest(r=>r.url().endsWith('/api/chemical/substances')&&r.method()==='POST');
  await page.getByRole('button',{name:'บันทึกสารเคมี',exact:true}).click();
  expect((await sent).postDataJSON().company_id).toBe('amt');
  await expect(page.getByRole('row').filter({has:page.getByText('Integration saved to AMT',{exact:true})})).toBeVisible();
  const state=await (await request.get('http://127.0.0.1:4311/__test/state')).json();
  const row=state.find(x=>x.name==='Integration saved to AMT');
- expect(row.company_id).toBe('amt');expect(row.review_status).toBe('reviewed');expect(row.reviewed_by).toBe('audit-admin');
+ expect(row.company_id).toBe('amt');expect(row.review_status).toBe('unreviewed');expect(row.reviewed_by).toBeNull();
  await page.getByRole('link',{name:'แก้ไข Integration saved to AMT',exact:true}).click();
- await expect(page.getByText('ตรวจทานแล้วโดย audit-admin',{exact:true})).toBeVisible();
+ await expect(page.getByText('ตรวจทานแล้วโดย audit-admin',{exact:true})).toHaveCount(0);
  await page.getByLabel('ชื่อทางเคมี',{exact:true}).fill('Changed after approval');
  await page.getByRole('button',{name:'บันทึกการแก้ไข',exact:true}).click();
- await expect(page.getByRole('row').filter({has:page.getByText('Integration saved to AMT',{exact:true})})).toContainText('ยังไม่ตรวจทาน');
+ await expect(page.getByRole('row').filter({has:page.getByText('Integration saved to AMT',{exact:true})})).not.toContainText('ยังไม่ตรวจทาน');
  await page.getByLabel('เลือกบริษัท').selectOption('aab');
  await expect(page.getByText('บริษัท AAB',{exact:false})).toBeVisible();
  await expect(page.getByRole('row').filter({has:page.getByText('Test AAB Only',{exact:true})})).toBeVisible();
@@ -62,16 +61,16 @@ test('anonymous, unauthorized company, cross-company area, stale write, and demo
  const demo=(await (await request.get('/api/chemical/substances?company_id=amt&demo=1')).json()).data;
  expect(demo.map(x=>x.name)).toEqual(['Demo only']);
 });
-test('policy, accessible matrices, desktop and mobile layouts',async({page,request})=>{
+test('emergency settings without review policy, accessible matrices, desktop and mobile layouts',async({page,request})=>{
  request = page.request;
  await login(request);
  await page.goto('/chemical/settings?company_id=amt');
- await page.getByLabel('รอบทบทวน (ปี)',{exact:false}).fill('1');
- await page.getByLabel('ชื่อนโยบาย / เอกสารอ้างอิงของบริษัท').fill('Annual review test');
+ await expect(page.getByRole('heading',{name:'นโยบายรอบทบทวน SDS'})).toHaveCount(0);
+ await page.getByRole('button',{name:'ดับเพลิง 199',exact:true}).click();
  await page.getByRole('button',{name:'บันทึกการตั้งค่า'}).click();
  await expect(page.getByRole('status')).toContainText('บันทึกการตั้งค่า');
  const policy=(await (await request.get('/api/chemical/settings?company_id=amt')).json()).data;
- expect(policy.sds_review_years).toBe(1);
+ expect(policy.emergency_contacts.some(c=>c.phone==='199')).toBe(true);
  await page.goto('/chemical/compatibility?company_id=amt');
  await page.getByRole('button',{name:'ตารางอ้างอิง 23 × 23'}).click();
  const cell=page.getByRole('button',{name:/ประเภท 3A กับ 5.1B:/});
@@ -117,7 +116,7 @@ test('loading is not empty, failed fetch is recoverable, and fast scope switch i
  await expect(page.getByRole('row').filter({has:page.getByText('Test Acetone',{exact:true})})).toBeVisible();
 });
 
-test('AI provenance survives reopening, explicit review, demo restoration, and scope change blocks an open form', async({page})=>{
+test('AI provenance survives reopening without review controls; demo restoration and form scope guard', async({page})=>{
  const request=page.request; await login(request);
  await page.route('**/api/chemical/extract',route=>route.fulfill({json:route.request().method()==='GET'?{available:true}:{data:{name:'AI proposed name',chemical_name:'AI chemical',h_codes:['H225'],ghs_pictograms:['GHS02'],extraction_notes:'Fixture extraction'}}}));
  await page.goto('/chemical/new?company_id=amt');
@@ -133,14 +132,14 @@ test('AI provenance survives reopening, explicit review, demo restoration, and s
  expect(row.review_status).toBe('unreviewed');expect(row.ai_filled_fields).toContain('chemical_name');expect(row.ai_filled_fields).not.toContain('name');
  await page.getByRole('link',{name:'แก้ไข Human named chemical',exact:true}).click();
  await expect(page.getByText('มีข้อมูลจาก AI',{exact:false})).toBeVisible();
- await page.getByRole('checkbox',{name:'ฉันตรวจทานข้อมูลกับ SDS ต้นฉบับแล้ว',exact:false}).check();
+ await expect(page.getByRole('checkbox',{name:'ฉันตรวจทานข้อมูลกับ SDS ต้นฉบับแล้ว',exact:false})).toHaveCount(0);
  await page.getByRole('button',{name:'บันทึกการแก้ไข',exact:true}).click();
  await expect(page.getByText('Human named chemical',{exact:true})).toBeVisible();
  row=(await (await request.get('/api/chemical/substances/'+row.id)).json()).data;
- expect(row.review_status).toBe('reviewed');expect(row.ai_filled_fields).toContain('chemical_name');
- const same=await request.put('/api/chemical/substances/'+row.id,{data:{name:row.name,expected_updated_at:row.updated_at}});expect(same.ok()).toBe(true);row=(await same.json()).data;expect(row.review_status).toBe('reviewed');
+ expect(row.review_status).toBe('unreviewed');expect(row.ai_filled_fields).toContain('chemical_name');
+ const same=await request.put('/api/chemical/substances/'+row.id,{data:{name:row.name,expected_updated_at:row.updated_at}});expect(same.ok()).toBe(true);row=(await same.json()).data;expect(row.review_status).toBe('unreviewed');
  const demo=await request.put('/api/chemical/substances/'+row.id,{data:{demo_action:'mark',expected_updated_at:row.updated_at}});expect(demo.ok()).toBe(true);row=(await demo.json()).data;expect(row.is_demo).toBe(true);
- const restore=await request.put('/api/chemical/substances/'+row.id,{data:{demo_action:'restore',expected_updated_at:row.updated_at}});expect(restore.ok()).toBe(true);expect((await restore.json()).data.review_status).toBe('reviewed');
+ const restore=await request.put('/api/chemical/substances/'+row.id,{data:{demo_action:'restore',expected_updated_at:row.updated_at}});expect(restore.ok()).toBe(true);expect((await restore.json()).data.review_status).toBe('unreviewed');
  await page.goto('/chemical/new?company_id=amt');
  await expect(page.getByRole('heading',{name:'เพิ่มสารเคมีใหม่'})).toBeVisible();
  await page.evaluate(()=>window.history.pushState(null,'','?company_id=aab'));

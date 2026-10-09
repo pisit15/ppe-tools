@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const catalog = require('../data/chemical-legal/catalog-2026-10-09.json');
+const catalog = require('../data/chemical-legal/catalog-2026-10-09-v2.json');
 const substanceId = '11111111-1111-4111-8111-111111111111';
 const context = { purpose: 'Industrial cleaning; checked SDS and six-month possession log', concentration: '99', concentration_unit: '%w/w', reporting_period: '2569-1', reporting_scope: 'in', possessed_100kg: 'yes', workplace_exposure: 'yes' };
 const login = async (request, username = 'audit-admin') => {
@@ -8,7 +8,22 @@ const login = async (request, username = 'audit-admin') => {
 };
 test.beforeEach(async ({ request }) => { expect((await request.post('http://127.0.0.1:4311/__test/reset')).ok()).toBe(true); });
 
-test('register → legal API → persisted company assessment → history survives reload', async ({ page }) => {
+test('previously audited peroxide and hydroxide show verified references, with no assessment UI', async ({ page }) => {
+  await login(page.request);
+  await page.goto('/chemical/legal?company_id=amt');
+  await expect(page.getByText('ฐานข้อมูลอยู่ระหว่างตรวจทาน', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'ค้นหาสารอื่น', exact: true }).click();
+  for (const cas of ['7722-84-1','1310-73-2']) {
+    await page.getByLabel('ชื่อสารภาษาไทย / อังกฤษ หรือเลข CAS').fill(cas);
+    await page.getByRole('button', { name: 'ค้นหา', exact: true }).click();
+    await expect(page.getByText('จับคู่ด้วย CAS ' + cas)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^สอ\.1 พบ [12] รายการยืนยัน/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^ตรวจความเข้มข้น พบ 1 รายการยืนยัน/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'บันทึกผลคัดกรอง', exact: true })).toHaveCount(0);
+  }
+});
+
+test('register → verified legal reference → source and CSV, without assessment workflow', async ({ page }) => {
   await login(page.request);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/chemical?company_id=amt');
@@ -19,28 +34,8 @@ test('register → legal API → persisted company assessment → history surviv
   await expect(page.getByText('ชนิดที่ 3 ตามเงื่อนไขรายการ')).toBeVisible();
   await expect(page.getByText('ความเข้มข้นมากกว่าร้อยละ 75', { exact: false })).toBeVisible();
   await expect(page.getByRole('link', { name: 'ต้นฉบับ หน้า PDF 127' })).toHaveAttribute('href', /hazard\.fda\.moph\.go\.th.*#page=127/);
-  await page.getByLabel('ลักษณะการใช้ / ผลิตภัณฑ์ / งานที่สัมผัส').fill(context.purpose);
-  await page.getByLabel('ความเข้มข้นตาม SDS (ถ้าทราบ)').fill('99');
-  await page.getByLabel('หน่วยความเข้มข้น', { exact: true }).selectOption('%w/w');
-  await page.getByLabel('รอบ วอ./อก.7 (ปี พ.ศ.-ครึ่งปี)').fill('2569-1');
-  await page.getByLabel('ตรวจเงื่อนไขรายการ วอ./อก.7 แล้ว').selectOption('in');
-  await page.getByLabel('มีหรือเคยมีในครอบครอง ≥100 กก. ต่อรายชื่อในรอบนั้น').selectOption('yes');
-  await page.getByLabel('ข้อมูลการสัมผัสของลูกจ้าง').selectOption('yes');
-  await expect(page.getByText('เข้าข่ายแจ้ง วอ./อก.7 ตามบริบทที่ระบุ', { exact: false })).toBeVisible();
-  await page.getByLabel('บันทึกเหตุผล / หลักฐาน / สิ่งที่ต้องตรวจเพิ่ม').fill('Reviewed SDS and possession record for January–June 2569');
-  await page.getByRole('checkbox', { name: 'ฉันได้ตรวจทานบริบท', exact: false }).check();
-  await page.getByRole('button', { name: 'บันทึกผลคัดกรอง', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'บันทึกผลคัดกรองของ AMT แล้ว' })).toBeVisible();
-  const records = await (await page.request.get('http://127.0.0.1:4311/__test/legal-state')).json();
-  expect(records).toHaveLength(1); const row = records[0];
-  expect(row.company_id).toBe('amt'); expect(row.substance_id).toBe(substanceId); expect(row.review_status).toBe('reviewed');
-  expect(row.actor_name).toBe('Local test admin'); expect(row.snapshot.context).toEqual(context);
-  expect(row.snapshot.check.entries.some(e => e.source_id === 'labour')).toBe(true);
-  expect(row.snapshot.obligations.find(e => e.category === 'reporting').status).toBe('action');
-  await page.reload();
-  await expect(page.locator('summary').filter({ hasText: 'ตรวจทานบริบทแล้ว' })).toBeVisible();
-  await page.locator('summary').filter({ hasText: 'ตรวจทานบริบทแล้ว' }).click();
-  await expect(page.getByText('Reviewed SDS and possession record for January–June 2569')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'บันทึกบริบทและผลคัดกรอง' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'บันทึกผลคัดกรอง', exact: true })).toHaveCount(0);
   const downloaded = page.waitForEvent('download'); await page.getByRole('button', { name: 'ส่งออกผล CSV' }).click();
   expect((await downloaded).suggestedFilename()).toBe('chemical-legal-67-64-1.csv');
   await page.screenshot({ path: 'test-results/chemical-legal-desktop.png', fullPage: true });
@@ -95,7 +90,7 @@ test('mobile search, explicit uncertainty and company switch clear prior assessm
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/chemical/legal?company_id=amt&substance_id=${substanceId}`);
   await expect(page.getByText('จับคู่ด้วย CAS 67-64-1')).toBeVisible();
-  await page.getByLabel('ลักษณะการใช้ / ผลิตภัณฑ์ / งานที่สัมผัส').fill('Unsaved AMT context must not reach AAB');
+  await expect(page.getByRole('button', { name: 'บันทึกผลคัดกรอง', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'เปิดเมนู Chemical' }).click();
   await page.getByLabel('เลือกบริษัท', { exact: true }).selectOption('aab');
   await expect(page).toHaveURL('/chemical/legal?company_id=aab');
@@ -105,7 +100,7 @@ test('mobile search, explicit uncertainty and company switch clear prior assessm
   await page.getByLabel('ชื่อสารภาษาไทย / อังกฤษ หรือเลข CAS').fill('7732-18-5');
   await page.getByRole('button', { name: 'ค้นหา', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'ยังไม่พบรายการในชุดข้อมูล' })).toBeVisible();
-  await expect(page.getByLabel('ลักษณะการใช้ / ผลิตภัณฑ์ / งานที่สัมผัส')).toHaveValue('');
+  await expect(page.getByLabel('ลักษณะการใช้ / ผลิตภัณฑ์ / งานที่สัมผัส')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/chemical-legal-mobile.png', fullPage: true });
 });

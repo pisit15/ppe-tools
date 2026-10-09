@@ -27,8 +27,6 @@ function SettingsEditor({initial, canWrite}: {initial: ChemCompanySettings; canW
   const [baseline, setBaseline] = useState(initial);
   const [contacts, setContacts] = useState<ChemEmergencyContact[]>(initial.emergency_contacts);
   const [show, setShow] = useState(initial.show_emergency);
-  const [years, setYears] = useState(initial.sds_review_years?.toString() || '');
-  const [policy, setPolicy] = useState(initial.sds_review_policy || '');
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{type: 'success' | 'error'; msg: string} | null>(null);
@@ -36,24 +34,17 @@ function SettingsEditor({initial, canWrite}: {initial: ChemCompanySettings; canW
   const save = async () => {
     setSaving(true); setToast(null);
     try {
-      const r = await fetch('/api/chemical/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({company_id: initial.company_id, emergency_contacts: contacts, show_emergency: show, sds_review_years: years === '' ? null : Number(years), sds_review_policy: policy})});
+      const r = await fetch('/api/chemical/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({company_id: initial.company_id, emergency_contacts: contacts, show_emergency: show})});
       const d = await r.json(); if (!r.ok) throw new Error(d.error);
       setBaseline(d.data); setContacts(d.data.emergency_contacts);
       setDirty(false); setToast({type: 'success', msg: 'บันทึกการตั้งค่าบริษัท ' + initial.company_id.toUpperCase() + ' แล้ว'});
     } catch(e) { setToast({type: 'error', msg: e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'}); }
     finally { setSaving(false); }
   };
-  const reset = () => { setContacts(baseline.emergency_contacts); setShow(baseline.show_emergency); setYears(baseline.sds_review_years?.toString() || ''); setPolicy(baseline.sds_review_policy || ''); setDirty(false); setToast(null); };
+  const reset = () => { setContacts(baseline.emergency_contacts); setShow(baseline.show_emergency); setDirty(false); setToast(null); };
   const move = (i: number, step: number) => { setContacts(prev => { const next = [...prev]; [next[i], next[i + step]] = [next[i + step], next[i]]; return next; }); setDirty(true); };
   return <form className="space-y-5" onChange={() => setDirty(true)} onSubmit={e => { e.preventDefault(); void save(); }}>
     <fieldset disabled={!canWrite || saving} className="space-y-5">
-      <section className="rounded-xl border bg-white p-5 space-y-4">
-        <h2 className="text-lg font-bold text-gray-900">นโยบายรอบทบทวน SDS</h2>
-        <p className="text-sm text-gray-700">นับจากวันที่ปรับปรุง SDS ไม่ใช่วันหมดอายุเอกสาร หากไม่ระบุวันที่ จะประเมินรอบทบทวนไม่ได้</p>
-        <div><label htmlFor="review-years" className={labelCls}>รอบทบทวน (ปี) — เว้นว่างหากยังไม่กำหนดนโยบาย</label><input id="review-years" className={inputCls} type="number" min="1" max="50" step="1" value={years} onChange={e => setYears(e.target.value)} /></div>
-        <div><label htmlFor="review-policy" className={labelCls}>ชื่อนโยบาย / เอกสารอ้างอิงของบริษัท</label><input id="review-policy" className={inputCls} value={policy} required={years !== ''} onChange={e => setPolicy(e.target.value)} /></div>
-        {!years && <p className="text-sm text-amber-900">ยังไม่กำหนดนโยบาย — ระบบจะไม่สรุปว่า SDS ถึงรอบหรือยังอยู่ในรอบ</p>}
-      </section>
       <section className="rounded-xl border bg-white p-5 space-y-4">
         <h2 className="text-lg font-bold text-gray-900">เบอร์ฉุกเฉินบนโปสเตอร์ SDS</h2>
         <label className="flex gap-2 text-sm text-gray-800"><input type="checkbox" checked={show} onChange={e => setShow(e.target.checked)} /> แสดงเบอร์ฉุกเฉินบนโปสเตอร์</label>

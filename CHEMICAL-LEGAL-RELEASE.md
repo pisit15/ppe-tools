@@ -35,3 +35,9 @@ Uses an isolated, in-memory PGlite test database and local-only test accounts. T
 3. Deploy the source with the project's actual configured environment. Do not publish the local placeholder build.
 4. Verify login → same-company register lookup → source links → approved test assessment → database snapshot and cross-company denial.
 5. Keep the reference release immutable; publish subsequent data corrections as new releases.
+
+## Follow-up: reuse audited evidence; defer review workflows
+
+Catalog applied in hosted migration 20261009084432; UI deployment pending. Reference v2 reconciles 1,911 entries with existing dated audit evidence, yielding 1,970 verified / 85 pending / 34 conflicts. No old release or assessment is deleted. UI now focuses on register, SDS and source-backed legal lookup. Removed review-period settings, review counters/status, review checkbox, unreviewed poster banner and legal assessment form. Emergency settings, source links, conditions and CSV remain.
+
+Validation for the follow-up: 15 unit/PostgreSQL tests and 11 browser scenarios passed; targeted ESLint passed. Production SQL confirms v2 is current, both immutable reference versions remain, and existing company substances (3) and assessments (0) are unchanged.

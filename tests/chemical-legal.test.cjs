@@ -5,7 +5,7 @@ const path = require('node:path');
 const Module = require('node:module');
 const ts = require('typescript');
 const { createDb } = require('./chemical-db-fixture.cjs');
-const catalog = require('../data/chemical-legal/catalog-2026-10-09.json');
+const catalog = require('../data/chemical-legal/catalog-2026-10-09-v2.json');
 const cache = new Map();
 function load(file) {
   const filename = path.join(__dirname, '..', file);
@@ -18,6 +18,27 @@ function load(file) {
 }
 const { normalizeCas, searchLegalCatalog, checkLegalCatalog, parseLegalContext, evaluateObligations } = load('src/lib/chemical/legal/engine.ts');
 const { EMPTY_LEGAL_CONTEXT } = load('src/lib/chemical/legal/types.ts');
+
+test('prior audit becomes usable reference data while actual conflicts and missing subsidiary rows stay explicit', () => {
+  const old = require('../data/chemical-legal/catalog-2026-10-09.json');
+  for (const id of ['labour-901','labour-1287','labour-1288','exposure-182','exposure-279']) {
+    assert.equal(old.entries.find(e => e.id === id).review_state, 'pending');
+    const entry = catalog.entries.find(e => e.id === id);
+    assert.equal(entry.review_state, 'verified');
+    assert.ok(entry.details.verification.fields.includes('source_cas'));
+    assert.deepEqual(entry.cas_numbers, old.entries.find(e => e.id === id).cas_numbers);
+  }
+  assert.equal(catalog.entries.filter(e => e.review_state === 'verified').length, 1970);
+  assert.equal(catalog.entries.find(e => e.id === 'labour-72').review_state, 'conflict');
+  assert.equal(catalog.entries.find(e => e.id === 'exposure-17').review_state, 'pending');
+  assert.equal(catalog.entries.find(e => e.id === 'exposure-284').review_state, 'pending');
+  assert.equal(catalog.entries.find(e => e.id === 'reporting-5.5-11').review_state, 'pending');
+  const group = catalog.entries.find(e => e.id === 'labour-14');
+  assert.equal(group.review_state, 'verified');
+  assert.deepEqual(group.cas_numbers, []);
+  assert.equal(catalog.entries.find(e => e.id === 'labour-12').source_cas, '50 - 78 - 2');
+  assert.deepEqual(catalog.entries.find(e => e.id === 'labour-12').cas_numbers, ['50-78-2']);
+});
 
 test('CAS requires an intact identifier and checksum; never repairs Excel numbers or multiple ingredients', () => {
   assert.equal(normalizeCas(' 67–64–1 '), '67-64-1');
@@ -80,7 +101,7 @@ test('release completeness and source references are checked, with all canonical
 test('database enforces tenant relation, immutable application references/snapshots, and denies direct client access', async () => {
   const db = await createDb();
   try {
-    assert.equal((await db.query('select count(*)::int as n from chem_legal_entries')).rows[0].n, catalog.release.entry_count);
+    assert.equal((await db.query('select count(*)::int as n from chem_legal_entries where release_id=$1', [catalog.release.id])).rows[0].n, catalog.release.entry_count);
     const sql = `insert into chem_legal_assessments(company_id,substance_id,cas,release_id,review_status,review_note,actor_id,actor_name,snapshot) values ($1,$2,'67-64-1',$3,'pending','','actor','Reviewer','{}')`;
     await assert.rejects(db.query(sql, ['aab','11111111-1111-4111-8111-111111111111',catalog.release.id]), /foreign key/);
     for (const role of ['anon', 'authenticated']) {

@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Search, FileText, Link2, Printer, Pencil, Trash2, FlaskConical, Scale } from 'lucide-react';
 import type { ChemStorageArea, ChemSubstance } from '@/lib/types';
@@ -9,12 +9,12 @@ import { GHS_PICTOGRAMS } from '@/lib/chemical/ghs';
 import { STORAGE_CLASSES } from '@/lib/chemical/storage-classes';
 import { useCompanyScope } from '@/lib/chemical/useCompanyScope';
 import { useChemicalData } from '@/lib/chemical/useChemicalData';
-import { matchesQuality, sdsState, type QualityFilter } from '@/lib/chemical/data-quality';
-import type { ChemCompanySettings } from '@/lib/types';
+import { matchesQuality } from '@/lib/chemical/data-quality';
 import { GhsIcons, StorageClassChip, SignalWordBadge, Toast, VIZ, inputCls } from './components/ui';
 
 import { ConfirmDialog } from './components/ConfirmDialog';
 
+type QualityFilter = '' | 'missing_sds' | 'missing_date' | 'no_class';
 const PAGE_SIZE = 30;
 const EMPTY_ITEMS: ChemSubstance[] = [];
 type SortKey = 'name' | 'storage_class' | 'updated_at' | 'quantity';
@@ -30,12 +30,10 @@ function ScopedRegister() {
   const [quality, setQuality] = useState<QualityFilter>('');
   const substances = useChemicalData<{data: ChemSubstance[]}>(`/api/chemical/substances${q}&demo=${demo ? 1 : 0}`, refresh);
   const storage = useChemicalData<{data: ChemStorageArea[]}>(`/api/chemical/storage-areas${q}`, refresh);
-  const settings = useChemicalData<{data: ChemCompanySettings; policies?: ChemCompanySettings[]}>(`/api/chemical/settings${q}`, refresh);
   const items = substances.data?.data || EMPTY_ITEMS;
   const areas = storage.data?.data || [];
-  const loading = substances.loading || storage.loading || settings.loading;
-  const loadError = substances.error || storage.error || settings.error;
-  const policyFor = useCallback((id: string) => settings.data?.policies?.find(p => p.company_id === id) || (settings.data?.data.company_id === id ? settings.data.data : undefined), [settings.data]);
+  const loading = substances.loading || storage.loading;
+  const loadError = substances.error || storage.error;
   const load = () => setRefresh(v => v + 1);
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('');
@@ -51,14 +49,14 @@ function ScopedRegister() {
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     return items.filter(i => {
-      if (!matchesQuality(i, quality, policyFor(i.company_id))) return false;
+      if (!matchesQuality(i, quality)) return false;
       if (s && ![i.name, i.chemical_name, i.cas_no, i.un_no, i.supplier, i.usage_purpose].some(v => (v || '').toLowerCase().includes(s))) return false;
       if (classFilter === '__none') { if (i.storage_class) return false; } else if (classFilter && i.storage_class !== classFilter) return false;
       if (pictoFilter && !i.ghs_pictograms.includes(pictoFilter as ChemSubstance['ghs_pictograms'][number])) return false;
       if (areaFilter && i.storage_area_id !== areaFilter) return false;
       return true;
     });
-  }, [items, search, classFilter, pictoFilter, areaFilter, quality, policyFor]);
+  }, [items, search, classFilter, pictoFilter, areaFilter, quality]);
 
   const sorted = useMemo(() => {
     const d = sortAsc ? 1 : -1;
@@ -75,10 +73,8 @@ function ScopedRegister() {
   const cards: { label: string; filter: QualityFilter; color: string; value: number }[] = [
     { label: 'สารเคมีในทะเบียน', filter: '', color: VIZ.primary, value: items.length },
     { label: 'ขาด SDS', filter: 'missing_sds', color: VIZ.accent, value: items.filter(i => matchesQuality(i, 'missing_sds')).length },
-    { label: 'SDS ไม่มีวันที่ — ประเมินรอบไม่ได้', filter: 'missing_date', color: '#92400e', value: items.filter(i => matchesQuality(i, 'missing_date')).length },
-    { label: isAll ? 'ถึงรอบทบทวนตามนโยบายแต่ละบริษัท' : settings.data?.data.sds_review_years ? `ถึงรอบทบทวน (ครบ ${settings.data.data.sds_review_years} ปีตามนโยบายบริษัท)` : 'ถึงรอบทบทวน — ยังไม่กำหนดนโยบาย', filter: 'due', color: '#92400e', value: items.filter(i => matchesQuality(i, 'due', policyFor(i.company_id))).length },
+    { label: 'SDS ยังไม่ระบุวันที่', filter: 'missing_date', color: '#92400e', value: items.filter(i => matchesQuality(i, 'missing_date')).length },
     { label: 'ยังไม่ระบุประเภทจัดเก็บ', filter: 'no_class', color: '#92400e', value: items.filter(i => !i.storage_class).length },
-    { label: 'ยังไม่ตรวจทาน', filter: 'unreviewed', color: '#92400e', value: items.filter(i => i.review_status !== 'reviewed').length },
   ];
 
   const openSds = async (i: ChemSubstance) => {
@@ -135,16 +131,14 @@ function ScopedRegister() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3" aria-busy={loading}>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3" aria-busy={loading}>
         {cards.map(k => <button key={k.label} disabled={loading || !!loadError} aria-pressed={quality === k.filter} onClick={() => { setQuality(k.filter); setPage(1); setSearch(''); setClassFilter(''); setPictoFilter(''); setAreaFilter(''); }}
           className={`text-left bg-white rounded-xl border p-4 focus-visible:ring-2 focus-visible:ring-purple-600 ${quality === k.filter ? 'border-purple-600 ring-1 ring-purple-600' : 'border-gray-200'}`}>
           <span className="text-sm text-gray-700">{k.label}</span>
-          <span className="block text-2xl font-bold mt-2" style={{ color: k.value > 0 ? k.color : '#4b5563' }}>{loading ? '…' : loadError ? '—' : k.filter === 'due' && !isAll && !settings.data?.data.sds_review_years ? '—' : k.value}</span>
+          <span className="block text-2xl font-bold mt-2" style={{ color: k.value > 0 ? k.color : '#4b5563' }}>{loading ? '…' : loadError ? '—' : k.value}</span>
         </button>)}
       </div>
       {!loading && !loadError && <div className="flex flex-wrap gap-3 text-sm text-gray-700">
-        <button className="underline" onClick={() => { setQuality('no_policy'); setPage(1); setSearch(''); setClassFilter(''); setPictoFilter(''); setAreaFilter(''); }}>ยังประเมินรอบไม่ได้เพราะไม่กำหนดนโยบาย: {items.filter(i => matchesQuality(i, 'no_policy', policyFor(i.company_id))).length} รายการ</button>
-        {!isAll && <Link className="text-purple-700 underline" href={`/chemical/settings${q}`}>ตั้งนโยบายรอบทบทวน</Link>}
         <label className="ml-auto flex gap-2"><input type="checkbox" checked={demo} onChange={e => { setDemo(e.target.checked); setPage(1); }} /> ดูข้อมูลสาธิต</label>
       </div>}
       {demo && <p className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-amber-900">ข้อมูลสาธิต — ไม่รวมในทะเบียนใช้งานจริง</p>}
@@ -204,11 +198,10 @@ function ScopedRegister() {
               </thead>
               <tbody>
                 {rows.map(i => {
-                  const status = sdsState(i, policyFor(i.company_id));
                   return (
                     <tr key={i.id} className="border-b border-gray-100 hover:bg-purple-50/40">
                       <td className="px-3 py-2.5">
-                        <div className="font-semibold text-gray-900">{i.name}</div>{isAdmin && <button onClick={() => changeDemo(i)} className="text-xs text-purple-800 underline my-1">{i.is_demo ? 'นำกลับทะเบียนจริง' : 'ย้ายไปข้อมูลสาธิต'}</button>}<div className="text-xs mt-1 text-gray-700">{i.review_status === 'reviewed' ? `✓ ตรวจทานแล้วโดย ${i.reviewed_by || '—'}` : '! ยังไม่ตรวจทาน'}{i.ai_filled_fields?.length ? ' · มีข้อมูลจาก AI' : ''}</div>
+                        <div className="font-semibold text-gray-900">{i.name}</div>{isAdmin && <button onClick={() => changeDemo(i)} className="text-xs text-purple-800 underline my-1">{i.is_demo ? 'นำกลับทะเบียนจริง' : 'ย้ายไปข้อมูลสาธิต'}</button>}{(i.ai_filled_fields?.length || 0) > 0 && <div className="text-xs mt-1 text-gray-600">มีข้อมูลจาก AI</div>}
                         <div className="text-sm text-gray-500">{[i.chemical_name, i.cas_no && `CAS ${i.cas_no}`, i.un_no && `UN ${i.un_no}`].filter(Boolean).join(' · ')}</div>
                       </td>
                       <td className="px-3 py-2.5"><GhsIcons codes={i.ghs_pictograms} size={26} /></td>
@@ -220,7 +213,7 @@ function ScopedRegister() {
                         {(i.sds_file_path || i.sds_url) ? (
                           <button onClick={() => openSds(i)} className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 hover:underline" title={i.sds_file_name || i.sds_url || ''}>
                             {i.sds_file_path ? <FileText size={14} /> : <Link2 size={14} />} เปิด
-                            {status !== 'current' && <span className="ml-1 text-xs px-1 rounded bg-amber-100 text-amber-900">{status === 'missing_date' ? 'ไม่มีวันที่' : status === 'due' ? 'ถึงรอบทบทวน' : 'ไม่กำหนดรอบ'}</span>}
+                            {!i.sds_revision_date && <span className="ml-1 text-xs px-1 rounded bg-amber-100 text-amber-900">ไม่มีวันที่</span>}
                           </button>
                         ) : <span className="text-xs" style={{ color: VIZ.accent }}>ไม่มี</span>}
                       </td>
