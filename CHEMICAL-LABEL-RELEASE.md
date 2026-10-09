@@ -15,7 +15,7 @@ The browser's Thai text shaping and locally hosted OFL-licensed Noto Sans Thai r
 ## Verification
 
 - TypeScript and targeted ESLint passed.
-- Four browser/API scenarios passed: register action and real PDF downloads; unchanged source data and mobile layout; long/unknown statements and demo marking; company isolation and missing assets/font handling (the latter checks are split across two tests).
+- Four browser/API tests passed: register action, real PDF downloads, unchanged source data and mobile layout; long/unknown statements and demo marking; company isolation and missing pictograms; missing Thai font.
 - A4 sample: 210 × 297 mm, two pages with 4 + 1 labels. Individual-page sample: 150 × 130 mm landscape, two pages with one label each. Physical sizes and image placement counts were checked with pypdf.
 - Poppler-rendered PDFs were visually inspected for Thai typography, GHS symbols, wrapping and margins. Sample files use an isolated test record, not a production chemical/SDS.
 - Browser screenshots and sample PDFs are local verification artifacts under test-results, excluded from deployment.
@@ -24,4 +24,8 @@ Authenticated behavior was exercised against the isolated local API/database fix
 
 ## Release
 
-Production deployment pending final staged-build checks.
+Live on https://tools.eashe.org/chemical on 2026-10-09. Source commit 3dbd3a9; deployment dpl_FS1zWg4jvwgAMNkEZvA8YTqB6hzD (https://ppe-tools-6694ekor6-ea-she.vercel.app).
+
+Built remotely with the configured production environment and staged using --skip-domain. Compilation, TypeScript and all 53 static pages passed; the dynamic label route was included. Staged label/font requests returned 200, and an anonymous substance request returned 401 before promotion.
+
+After promotion, the custom domain served all nine GHS images and the local font successfully. Anonymous session/substance requests remained 401. A fresh isolated Chrome browser ran the deployed client with synthetic session/substance responses intercepted locally in the browser, and downloaded a valid 151,281-byte PDF with no page errors. This verifies deployed rendering and lazy PDF loading, not authenticated access to live company records. The smoke script is tests/chemical-label-deployed.cjs; it makes no production writes. No error-level Vercel runtime logs were returned during the check.
