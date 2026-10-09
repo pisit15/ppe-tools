@@ -28,4 +28,8 @@ The security advisor's [RLS enabled with no policy notice](https://supabase.com/
 - Storage transport in local tests is a fixture; no test SDS was uploaded to production.
 - The live computer-use browser is unavailable due to a Windows runtime volume authentication error. No authenticated production browser verification is claimed.
 
-Deployment results are recorded after production build and promotion.
+## Production rollout
+
+Live on https://tools.eashe.org/chemical on 2026-10-09. Source commit 0dcda22; deployment dpl_2uEsEySgSYSrc1p1AKkEB9HTr6MG (https://ppe-tools-psnehfthl-ea-she.vercel.app).
+
+Built remotely with the project's configured production environment, staged with --skip-domain, then promoted after checks. Production compilation, TypeScript and all 53 static pages passed. Staged register returned HTTP 200; anonymous register reads and SDS uploads returned HTTP 401. After promotion, the custom domain returned HTTP 200, all 10 referenced script assets loaded, and its delivered bundle contained the new importer UI. Both anonymous API checks still returned HTTP 401. No error-level runtime logs were returned during the check. Authenticated upload/save/database behavior was verified locally, not by creating a production test record.
