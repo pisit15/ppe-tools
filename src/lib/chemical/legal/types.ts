@@ -3,7 +3,13 @@ export type LegalCategory = typeof LEGAL_CATEGORIES[number];
 export const CATEGORY_LABELS: Record<LegalCategory, string> = {
   hazard: 'ชนิดวัตถุอันตราย', reporting: 'วอ./อก.7', labour: 'สอ.1', health: 'ตรวจสุขภาพ', exposure: 'ตรวจความเข้มข้น',
 };
-export type LegalSource = { id: string; title: string; url: string; note: string; checked_on: string };
+export type LibraryLaw = { id: string; code: string; title: string; status: string; file_url: string | null; external_url: string | null; gazette_url: string | null };
+export type LibraryDocument = Pick<LibraryLaw, 'id' | 'code' | 'title' | 'status'> & { library_url: string; document_url: string | null };
+export type LegalSource = {
+  id: string; title: string; url: string; note: string; checked_on: string;
+  library_documents?: LibraryDocument[];
+  library_status?: 'linked' | 'missing' | 'unavailable' | 'not_law';
+};
 export type LegalEntry = {
   id: string; release_id: string; category: LegalCategory; name: string; aliases: string[];
   cas_numbers: string[]; source_cas: string; agency: string; list_ref: string; revision: string;

@@ -1,4 +1,5 @@
 'use client';
+import LegalSourceLinks from './LegalSourceLinks';
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -78,7 +79,7 @@ function LegalWorkspace({ substanceId }: { substanceId: string | null }) {
       {data.check && <LegalResult key={`${data.check.cas}:${substanceId || 'external'}`} check={data.check} sources={data.sources} release={data.release} />}
       {!substanceId && mode === 'sources' && <div className="space-y-4">
         <section className="legal-card"><h2 className="font-bold text-lg mb-4">ความครอบคลุมของฐานข้อมูลรุ่นนี้</h2><div className="overflow-x-auto"><table className="legal-table min-w-[650px]"><thead><tr><th>เรื่อง</th><th>ยืนยันจากต้นฉบับ / ทั้งหมด</th><th>ขอบเขต</th></tr></thead><tbody>{data.stats.map(s => <tr key={s.category}><td>{CATEGORY_LABELS[s.category]}</td><td>{s.verified} / {s.total}</td><td>{data.release.coverage[s.category]}</td></tr>)}</tbody></table></div><ul className="list-disc pl-5 mt-4 text-sm text-amber-950 space-y-2">{data.release.gaps.map(gap => <li key={gap}>{gap}</li>)}</ul></section>
-        <section className="legal-card"><h2 className="font-bold text-lg mb-4">เอกสารต้นฉบับและแหล่งอ้างอิง</h2><div className="grid md:grid-cols-2 gap-3">{data.sources.map(source => <div key={source.id} className="border border-gray-200 p-4 rounded-xl"><a className="text-purple-800 underline font-medium" href={source.url} target="_blank" rel="noopener noreferrer">{source.title} ↗</a>{source.note && <p className="text-sm text-gray-600 mt-2">{source.note}</p>}</div>)}</div></section>
+        <section className="legal-card"><h2 className="font-bold text-lg mb-4">กฎหมายและเอกสารจากคลัง EA SHE</h2><div className="grid md:grid-cols-2 gap-3">{data.sources.map(source => <div key={source.id} className="border border-gray-200 p-4 rounded-xl"><h3 className="font-semibold mb-2">{source.title}</h3><LegalSourceLinks source={source} />{source.note && <p className="text-sm text-gray-600 mt-2">{source.note}</p>}</div>)}</div></section>
       </div>}
     </>}
   </div>;

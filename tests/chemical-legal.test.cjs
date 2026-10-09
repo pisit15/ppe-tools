@@ -116,3 +116,37 @@ test('database enforces tenant relation, immutable application references/snapsh
     assert.equal((await db.query('select count(*)::int as n from chem_legal_assessments')).rows[0].n, 1);
   } finally { await db.close(); }
 });
+
+test('EA SHE links use shared law identities and the entry revision without reusing PDF page anchors', () => {
+  const { attachLibrarySources, sourceDocuments, sourceReferenceUrl } = load('src/lib/chemical/legal/library-sources.ts');
+  const laws = require('./chemical-library-laws.json');
+  const sources = attachLibrarySources(catalog.sources, laws);
+  assert.equal(sources.filter(s => s.library_status === 'linked').length, 16);
+  assert.equal(sources.find(s => s.id === 'nist').library_status, 'not_law');
+  const labour = sources.find(s => s.id === 'labour');
+  assert.equal(labour.library_documents[0].id, laws.find(l => l.code === 'MOL-0261').id);
+  assert.equal(labour.library_documents[0].document_url, laws.find(l => l.code === 'MOL-0261').external_url);
+  assert.equal(labour.url, catalog.sources.find(s => s.id === 'labour').url);
+  const hz = sources.find(s => s.id === 'hz');
+  for (const [id, code] of [['hazard-5.1-367-v1','MIND-0370'], ['hazard-4.1-157-v3','MIND-0616']]) {
+    const entry = catalog.entries.find(e => e.id === id);
+    assert.deepEqual(sourceDocuments(hz, entry).map(l => l.code), [code]);
+    const url = new URL(sourceReferenceUrl(hz, entry));
+    assert.equal(url.origin, 'https://eashe.org');
+    assert.equal(url.searchParams.get('q'), code);
+    assert.equal(url.hash, '');
+  }
+});
+test('library edits, repealed documents and missing library links remain explicit and safe', () => {
+  const { attachLibrarySources, sourceReferenceUrl } = load('src/lib/chemical/legal/library-sources.ts');
+  const source = catalog.sources.find(s => s.id === 'labour');
+  const law = { ...require('./chemical-library-laws.json').find(l => l.code === 'MOL-0261'), title: 'Updated library title', status: 'repealed', file_url: 'javascript:alert(1)', external_url: 'https://eashe.org/documents/replacement.pdf' };
+  const linked = attachLibrarySources([source], [law])[0];
+  assert.equal(linked.library_documents[0].title, law.title);
+  assert.equal(linked.library_documents[0].document_url, law.external_url);
+  assert.equal(new URL(sourceReferenceUrl(linked)).searchParams.get('status'), 'repealed');
+  const missing = attachLibrarySources([source], [])[0];
+  assert.equal(missing.library_status, 'missing');
+  assert.equal(new URL(sourceReferenceUrl(missing)).origin, 'https://eashe.org');
+  assert.equal(attachLibrarySources([source], [], true)[0].library_status, 'unavailable');
+});

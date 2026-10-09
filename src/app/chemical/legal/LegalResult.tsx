@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
-import { Download, ExternalLink } from 'lucide-react';
+import { Download } from 'lucide-react';
+import LegalSourceLinks from './LegalSourceLinks';
+import { sourceReferenceUrl } from '@/lib/chemical/legal/library-sources';
 import { CATEGORY_LABELS, LEGAL_CATEGORIES, type LegalCheck, type LegalEntry, type LegalRelease, type LegalSource } from '@/lib/chemical/legal/types';
 import { inputCls } from '../components/ui';
 
@@ -8,7 +10,7 @@ const reviewLabels = { verified: '✓ ยืนยันข้อมูลต้
 const statusLabels = { active: 'มีผลตามเงื่อนไข', repealed: 'ยกเลิกเฉพาะรายการนี้', superseded: 'ข้อความเดิม — ถูกแทนที่' };
 function SourceLink({ entry, sources }: { entry: LegalEntry; sources: LegalSource[] }) {
   const source = sources.find(s => s.id === entry.source_id);
-  return source ? <a href={`${source.url}#page=${entry.source_page}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-purple-800 underline">ต้นฉบับ หน้า PDF {entry.source_page} <ExternalLink size={13} /></a> : <span className="text-red-800">ไม่พบแหล่งอ้างอิง</span>;
+  return source ? <LegalSourceLinks source={source} entry={entry} /> : <span className="text-red-800">ไม่พบแหล่งอ้างอิง</span>;
 }
 export function LegalEntryList({ entries, sources }: { entries: LegalEntry[]; sources: LegalSource[] }) {
   return <div className="space-y-3">{entries.map(entry => <details key={entry.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
@@ -23,14 +25,14 @@ export function LegalEntryList({ entries, sources }: { entries: LegalEntry[]; so
         <p className="text-gray-600 mt-2">อ่านรูปสารและเชิงอรรถในต้นฉบับประกอบ ไม่แปลง ppm กับ mg/m³ หรือเหมาระยะสั้นเป็น 15 นาที</p>
       </div>}
       <SourceLink entry={entry} sources={sources} />
-      <div className="flex flex-wrap gap-3">{entry.details.related_sources?.map(id => { const source = sources.find(s => s.id === id); return source ? <a key={id} className="text-purple-800 underline" href={source.url} target="_blank" rel="noopener noreferrer">{source.title} ↗</a> : null; })}</div>
+      <div className="flex flex-wrap gap-3">{entry.details.related_sources?.map(id => { const source = sources.find(s => s.id === id); return source ? <LegalSourceLinks key={id} source={source} /> : null; })}</div>
     </div>
   </details>)}</div>;
 }
 function exportCsv(check: LegalCheck, release: LegalRelease, sources: LegalSource[]) {
   // Prefix spreadsheet formula characters, including user-editable future source labels.
   const cell = (value: unknown) => { const str = String(value ?? ''); return '"' + (/^[\s]*[=+@-]/.test(str) ? "'" + str : str).replaceAll('"', '""') + '"'; };
-  const rows = [['CAS','ชื่อสาร','เรื่อง','ชนิดตามเงื่อนไข','หน่วยงาน','บัญชี','ฉบับ','เงื่อนไข','สถานะรายการ','สถานะตรวจทาน','แหล่งอ้างอิง','รุ่นข้อมูล','ข้อจำกัด'], ...check.entries.map(e => [check.cas,e.name,CATEGORY_LABELS[e.category],e.hazardous_type,e.agency,e.list_ref,e.revision,e.conditions,statusLabels[e.legal_status],reviewLabels[e.review_state],`${sources.find(s => s.id === e.source_id)?.url || ''}#page=${e.source_page}`,release.id,'ชุดข้อมูลยังไม่ครบ การไม่พบไม่ใช่ข้อยกเว้นกฎหมาย'])];
+  const rows = [['CAS','ชื่อสาร','เรื่อง','ชนิดตามเงื่อนไข','หน่วยงาน','บัญชี','ฉบับ','เงื่อนไข','สถานะรายการ','สถานะตรวจทาน','กฎหมายในคลัง EA SHE','หน้า PDF ที่ใช้ตรวจ','รุ่นข้อมูล','ข้อจำกัด'], ...check.entries.map(e => [check.cas,e.name,CATEGORY_LABELS[e.category],e.hazardous_type,e.agency,e.list_ref,e.revision,e.conditions,statusLabels[e.legal_status],reviewLabels[e.review_state],(() => { const source = sources.find(s => s.id === e.source_id); return source ? sourceReferenceUrl(source, e) : ''; })(),e.source_page,release.id,'ชุดข้อมูลยังไม่ครบ การไม่พบไม่ใช่ข้อยกเว้นกฎหมาย'])];
   const url = URL.createObjectURL(new Blob(['\uFEFF' + rows.map(row => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
   const anchor = document.createElement('a'); anchor.href = url; anchor.download = `chemical-legal-${check.cas}.csv`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
