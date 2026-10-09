@@ -35,4 +35,8 @@ SDS files are intentionally public through this route across active companies. T
 
 ## Rollout
 
-Awaiting staged production build and live checks.
+Live on https://tools.eashe.org/chemical on 2026-10-09. Source commit d824034; production deployment dpl_E4ujS7pofv49N35fDDroG4Uiq8go (https://ppe-tools-q1ydjq473-ea-she.vercel.app).
+
+Remote production compilation, TypeScript and 53 static pages passed. Before promotion, the label route returned 200, an existing SDS route returned 307, the record without an SDS returned 404, and an anonymous registry API request remained 401.
+
+After promotion, a fresh Chrome browser against the custom domain confirmed the public SDS redirect without a session. The deployed label client, using browser-local synthetic session/substance responses, generated a 95,745-byte PDF, decoded its preview QR to the expected stable URL, loaded all ten font/pictogram assets and reported no page errors. This synthetic client check is separate from the real anonymous SDS route check. The current production SDS records use external links; uploaded-file signing was tested using the local storage fixture, without creating production test records. No error-level runtime logs were returned during the check.

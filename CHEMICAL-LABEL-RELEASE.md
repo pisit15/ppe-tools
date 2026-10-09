@@ -1,5 +1,7 @@
 # Chemical container labels
 
+This documents the initial release. Current A4 presets, compact labels, public SDS QR behavior and deployment are documented in CHEMICAL-LABEL-PRESETS-RELEASE.md.
+
 ## Behavior
 
 The register uses standard OSHA-published GHS artwork and labeled action tiles. The new **ฉลาก** action opens `/chemical/[id]/label`, using the existing authenticated, company-scoped substance API.
