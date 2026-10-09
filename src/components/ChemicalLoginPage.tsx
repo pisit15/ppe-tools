@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { Shield, Lock, User, ArrowRight, ArrowLeft, Building2 } from 'lucide-react';
@@ -15,11 +15,11 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) {
-      setError('เธเธฃเธธเธ“เธฒเนเธชเนเธเธทเนเธญเธเธนเนเนเธเน');
+      setError('กรุณาใส่ชื่อผู้ใช้');
       return;
     }
     if (!password) {
-      setError('เธเธฃเธธเธ“เธฒเนเธชเนเธฃเธซเธฑเธชเธเนเธฒเธ');
+      setError('กรุณาใส่รหัสผ่าน');
       return;
     }
 
@@ -30,7 +30,7 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
     } else if (result.needCompanySelection && result.companies) {
       setCompanyOptions(result.companies);
     } else {
-      setError(result.error || 'เน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธเนเธกเนเธชเธณเน€เธฃเนเธ');
+      setError(result.error || 'เข้าสู่ระบบไม่สำเร็จ');
     }
   };
 
@@ -40,7 +40,7 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
     if (result.success) {
       onLoginSuccess();
     } else {
-      setError(result.error || 'เน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธเนเธกเนเธชเธณเน€เธฃเนเธ');
+      setError(result.error || 'เข้าสู่ระบบไม่สำเร็จ');
       setCompanyOptions(null);
     }
   };
@@ -67,7 +67,7 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
           {/* Back link */}
           <Link href="/" className="inline-flex items-center gap-2 text-purple-300 hover:text-white mb-6 transition-colors">
             <ArrowLeft size={16} />
-            <span className="text-sm">เธเธฅเธฑเธเธซเธเนเธฒเธซเธฅเธฑเธ</span>
+            <span className="text-sm">กลับหน้าหลัก</span>
           </Link>
 
           {/* Login Card */}
@@ -85,7 +85,7 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
               </div>
               <h2 className="text-2xl font-bold text-white">Chemical Management</h2>
               <p className="text-purple-200 text-sm mt-1">
-                เน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธเน€เธเธทเนเธญเธเธฑเธ”เธเธฒเธฃเธญเธธเธเธเธฃเธ“เน PPE
+                เข้าสู่ระบบเพื่อจัดการทะเบียนสารเคมีและ SDS
               </p>
             </div>
 
@@ -94,9 +94,9 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
               <div className="p-8 space-y-5">
                 <div className="text-center">
                   <Building2 size={28} className="mx-auto text-purple-600 mb-2" />
-                  <h3 className="text-lg font-bold text-gray-900">เน€เธฅเธทเธญเธเธเธฃเธดเธฉเธฑเธ—</h3>
+                  <h3 className="text-lg font-bold text-gray-900">เลือกบริษัท</h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    เธเธฑเธเธเธตเธเธญเธเธเธธเธ“เนเธเนเธเธฒเธเนเธ”เนเนเธ {companyOptions.length} เธเธฃเธดเธฉเธฑเธ— เธเธฃเธธเธ“เธฒเน€เธฅเธทเธญเธเธเธฃเธดเธฉเธฑเธ—เธ—เธตเนเธ•เนเธญเธเธเธฒเธฃเน€เธเนเธฒเนเธเนเธเธฒเธ
+                    บัญชีของคุณใช้งานได้ใน {companyOptions.length} บริษัท กรุณาเลือกบริษัทที่ต้องการเข้าใช้งาน
                   </p>
                 </div>
                 <div className="space-y-3">
@@ -126,7 +126,7 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
                   }}
                   className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
                 >
-                  โ เธเธฅเธฑเธเนเธเธซเธเนเธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ
+                  ← กลับไปหน้าเข้าสู่ระบบ
                 </button>
               </div>
             ) : (
@@ -135,7 +135,7 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   <User size={14} className="inline mr-1" />
-                  เธเธทเนเธญเธเธนเนเนเธเน
+                  ชื่อผู้ใช้
                 </label>
                 <input
                   type="text"
@@ -144,7 +144,7 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
                     setUsername(e.target.value);
                     setError('');
                   }}
-                  placeholder="เนเธชเนเธเธทเนเธญเธเธนเนเนเธเน (เน€เธเนเธ komsant)"
+                  placeholder="ใส่ชื่อผู้ใช้ (เช่น komsant)"
                   autoComplete="username"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                 />
@@ -154,7 +154,7 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   <Lock size={14} className="inline mr-1" />
-                  เธฃเธซเธฑเธชเธเนเธฒเธ
+                  รหัสผ่าน
                 </label>
                 <input
                   type="password"
@@ -163,7 +163,7 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
                     setPassword(e.target.value);
                     setError('');
                   }}
-                  placeholder="เนเธชเนเธฃเธซเธฑเธชเธเนเธฒเธ"
+                  placeholder="ใส่รหัสผ่าน"
                   autoComplete="current-password"
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                 />
@@ -180,13 +180,13 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-blue-400 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
                 ) : (
                   <>
-                    เน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ
+                    เข้าสู่ระบบ
                     <ArrowRight size={18} />
                   </>
                 )}
@@ -195,8 +195,8 @@ export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: 
             )}
           </div>
 
-          <p className="text-center text-blue-400 text-xs mt-6">
-            เนเธเนเธเธทเนเธญเธเธนเนเนเธเนเนเธฅเธฐเธฃเธซเธฑเธชเธเนเธฒเธเน€เธ”เธตเธขเธงเธเธฑเธเธเธฑเธ eashe.org
+          <p className="text-center text-purple-400 text-xs mt-6">
+            ใช้ชื่อผู้ใช้และรหัสผ่านเดียวกันกับ eashe.org
           </p>
         </div>
       </div>
