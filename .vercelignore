@@ -1,0 +1,21 @@
+# Deployment inputs only; keep local data and verification artifacts off Vercel.
+.verification
+.verification/**
+.env*
+.git
+.git/**
+.git-credential-helper.sh
+node_modules
+node_modules/**
+.next
+.next/**
+test-results
+test-results/**
+playwright-report
+playwright-report/**
+coverage
+coverage/**
+tsconfig.tsbuildinfo
+supabase/.temp
+supabase/.temp/**
+*.pem
