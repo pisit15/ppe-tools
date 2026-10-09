@@ -1,46 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, getSupabaseServer } from '@/lib/supabase';
-import type { CreateChemSubstanceInput } from '@/lib/types';
-import { sanitizeSubstance, SUBSTANCE_SELECT } from '@/lib/chemical/sanitize';
-
+import { getSupabaseServer } from '@/lib/supabase';
+import { requireToolsActor, assertCompany, apiError } from '@/lib/toolsSession';
+import { SUBSTANCE_SELECT } from '@/lib/chemical/sanitize';
+import { prepareSubstance } from '@/lib/chemical/access';
 export const dynamic = 'force-dynamic';
-
 export async function GET(request: NextRequest) {
   try {
+    const actor = await requireToolsActor(request);
     const sp = request.nextUrl.searchParams;
-    const companyId = sp.get('company_id') || '';
-    const includeInactive = sp.get('include_inactive') === '1';
-    if (!companyId) return NextResponse.json({ error: 'Missing company_id' }, { status: 400 });
-
-    let db;
-    try { db = getSupabaseServer(); } catch { db = supabase; }
-
-    let q = db.from('chem_substances').select(SUBSTANCE_SELECT).order('name');
-    // admin เลือก "ทุกบริษัท" ส่ง company_id=all
+    const companyId = sp.get('company_id');
+    assertCompany(actor, companyId);
+    let q = getSupabaseServer().from('chem_substances').select(SUBSTANCE_SELECT).order('name');
     if (companyId !== 'all') q = q.eq('company_id', companyId);
-    if (!includeInactive) q = q.eq('is_active', true);
+    if (sp.get('include_inactive') !== '1') q = q.eq('is_active', true);
+    q = q.eq('is_demo', sp.get('demo') === '1');
     const { data, error } = await q;
     if (error) throw error;
     return NextResponse.json({ data });
-  } catch (error) {
-    console.error('Error fetching chem_substances:', error);
-    return NextResponse.json({ error: 'Failed to fetch substances' }, { status: 500 });
-  }
+  } catch (e) { return apiError(e); }
 }
-
 export async function POST(request: NextRequest) {
   try {
-    const body = sanitizeSubstance((await request.json()) as Partial<CreateChemSubstanceInput>);
-    if (!body.company_id || !body.name?.trim()) {
-      return NextResponse.json({ error: 'กรุณาระบุบริษัทและชื่อสารเคมี' }, { status: 400 });
-    }
-    let db;
-    try { db = getSupabaseServer(); } catch { db = supabase; }
-    const { data, error } = await db.from('chem_substances').insert([body]).select(SUBSTANCE_SELECT);
+    const actor = await requireToolsActor(request);
+    const row = await prepareSubstance(await request.json(), actor);
+    const { data, error } = await getSupabaseServer().from('chem_substances').insert(row).select(SUBSTANCE_SELECT).single();
     if (error) throw error;
-    return NextResponse.json({ data: data[0] }, { status: 201 });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: 'บันทึกไม่สำเร็จ', detail: msg }, { status: 500 });
-  }
+    return NextResponse.json({ data }, { status: 201 });
+  } catch (e) { return apiError(e); }
 }

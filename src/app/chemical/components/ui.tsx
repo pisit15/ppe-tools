@@ -31,7 +31,7 @@ export const GROUP_COLORS: Record<StorageClassDef['group'], { bg: string; fg: st
 };
 
 export function GhsIcons({ codes, size = 28 }: { codes: string[]; size?: number }) {
-  if (!codes || codes.length === 0) return <span className="text-xs text-gray-400">—</span>;
+  if (!codes || codes.length === 0) return <span className="text-xs text-gray-600">—</span>;
   return (
     <span className="inline-flex gap-1 flex-wrap">
       {codes.map(c => {
@@ -46,7 +46,7 @@ export function GhsIcons({ codes, size = 28 }: { codes: string[]; size?: number 
 
 export function StorageClassChip({ code, showName = false }: { code: string | null | undefined; showName?: boolean }) {
   const def = storageClassDef(code);
-  if (!def) return <span className="text-xs text-gray-400" title="ยังไม่ระบุประเภทการจัดเก็บ">ยังไม่ระบุ</span>;
+  if (!def) return <span className="text-xs text-gray-600" title="ยังไม่ระบุประเภทการจัดเก็บ">ยังไม่ระบุ</span>;
   const col = GROUP_COLORS[def.group];
   return (
     <span title={`${def.code} ${def.nameTh}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold whitespace-nowrap"
@@ -57,7 +57,7 @@ export function StorageClassChip({ code, showName = false }: { code: string | nu
 }
 
 export function SignalWordBadge({ word }: { word: string | null | undefined }) {
-  if (!word || word === 'None') return <span className="text-xs text-gray-400">—</span>;
+  if (!word || word === 'None') return <span className="text-xs text-gray-600">—</span>;
   const danger = word === 'Danger';
   return (
     <span className="px-2 py-0.5 rounded text-[11px] font-bold" style={{ background: danger ? '#fee2e2' : '#fef3c7', color: danger ? '#b91c1c' : '#b45309' }}>
@@ -69,12 +69,12 @@ export function SignalWordBadge({ word }: { word: string | null | undefined }) {
 export function Toast({ toast }: { toast: { type: 'success' | 'error'; msg: string } | null }) {
   if (!toast) return null;
   return (
-    <div className="fixed bottom-6 right-6 z-[3000] px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white"
+    <div className="pointer-events-none fixed bottom-24 right-4 max-w-[calc(100%-2rem)] z-[3000] px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white"
       style={{ background: toast.type === 'success' ? VIZ.positive : VIZ.accent }} role="status">
       {toast.msg}
     </div>
   );
 }
 
-export const inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white';
-export const labelCls = 'block text-xs font-semibold text-gray-600 mb-1';
+export const inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white';
+export const labelCls = 'block text-sm font-semibold text-gray-700 mb-1';

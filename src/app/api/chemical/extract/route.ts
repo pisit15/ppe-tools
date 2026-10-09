@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
+import { requireToolsActor, assertCompany, apiError, type ToolsActor } from '@/lib/toolsSession';
+import { assertSdsPath } from '@/lib/chemical/access';
 import type { SdsExtraction } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +47,7 @@ Return ONLY a JSON object (no prose, no markdown fences) with these keys. Omit a
 }
 Write all free-text summaries in Thai regardless of SDS language. Keep H/P codes exactly as printed.`;
 
-async function readSource(request: NextRequest): Promise<{ base64: string; mediaType: string; label: string }> {
+async function readSource(request: NextRequest, actor: ToolsActor): Promise<{ base64: string; mediaType: string; label: string }> {
   const ct = request.headers.get('content-type') || '';
   if (ct.includes('multipart/form-data')) {
     const form = await request.formData();
@@ -57,6 +59,7 @@ async function readSource(request: NextRequest): Promise<{ base64: string; media
   }
   const body = (await request.json()) as { path?: string; url?: string };
   if (body.path) {
+    assertCompany(actor, assertSdsPath(body.path));
     const db = getSupabaseServer();
     const { data, error } = await db.storage.from('chemical-sds').download(body.path);
     if (error || !data) throw new Error('ดาวน์โหลดไฟล์จากระบบไม่สำเร็จ');
@@ -76,20 +79,22 @@ async function readSource(request: NextRequest): Promise<{ base64: string; media
 }
 
 /** GET → บอก UI ว่าเปิดใช้การสกัดอัตโนมัติได้หรือไม่ */
-export async function GET() {
-  return NextResponse.json({ available: !!process.env.ANTHROPIC_API_KEY, model: MODEL });
+export async function GET(request: NextRequest) {
+  try { await requireToolsActor(request); return NextResponse.json({ available: !!process.env.ANTHROPIC_API_KEY }); }
+  catch (e) { return apiError(e); }
 }
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  try {
+    const actor = await requireToolsActor(request);
+    const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
       { error: 'ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์ — กรอกข้อมูลด้วยตนเองไปก่อน', code: 'NO_API_KEY' },
       { status: 503 },
     );
   }
-  try {
-    const src = await readSource(request);
+    const src = await readSource(request, actor);
     const isPdf = src.mediaType.includes('pdf');
     const content: Array<Record<string, unknown>> = [
       isPdf
@@ -138,7 +143,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: parsed, source: src.label, model: MODEL });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: 'สกัดข้อมูลไม่สำเร็จ', detail: msg }, { status: 500 });
+    return apiError(error);
   }
 }

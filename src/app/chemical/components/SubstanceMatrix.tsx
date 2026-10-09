@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, Info, Search, XCircle } from 'lucide-react';
 import type { ChemStorageArea, ChemSubstance, StorageClassCode } from '@/lib/types';
@@ -28,15 +28,12 @@ const MAX_READABLE = 40;
 type Pair = { a: ChemSubstance; b: ChemSubstance };
 
 export function SubstanceMatrix({ items, areas, isAll, q }: { items: ChemSubstance[]; areas: ChemStorageArea[]; isAll: boolean; q: string }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(items.map(i => i.id)));
   const [areaFilter, setAreaFilter] = useState('');
   const [search, setSearch] = useState('');
   const [hover, setHover] = useState<Pair | null>(null);
   const [pinned, setPinned] = useState<Pair | null>(null);
   const [showLower, setShowLower] = useState(false);
-
-  // ค่าเริ่มต้น: เลือกทุกสาร (ภาพรวมคือเป้าหมายหลัก)
-  useEffect(() => { setSelected(new Set(items.map(i => i.id))); }, [items]);
 
   // รายการในกล่องเลือก = กรองตามพื้นที่ + คำค้น
   const pickList = useMemo(() => {
@@ -88,14 +85,14 @@ export function SubstanceMatrix({ items, areas, isAll, q }: { items: ChemSubstan
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-3 self-start">
         <h2 className="text-sm font-bold text-gray-800">เลือกสารที่จะแสดงในตาราง</h2>
         {areas.length > 0 && (
-          <select className={inputCls} value={areaFilter} onChange={e => setAreaFilter(e.target.value)}>
+          <select className={inputCls} aria-label="พื้นที่จัดเก็บ" value={areaFilter} onChange={e => setAreaFilter(e.target.value)}>
             <option value="">ทุกพื้นที่จัดเก็บ</option>
             {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         )}
         <div className="relative">
           <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
-          <input className={`${inputCls} pl-8`} placeholder="ค้นหาชื่อ / CAS" value={search} onChange={e => setSearch(e.target.value)} />
+          <input className={`${inputCls} pl-8`} aria-label="ค้นหาสารในตาราง" placeholder="ค้นหาชื่อ / CAS" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <div className="flex gap-3 text-xs">
           <button onClick={selectAllVisible} className="text-purple-700 font-semibold">เลือกทั้งหมด</button>
@@ -130,7 +127,7 @@ export function SubstanceMatrix({ items, areas, isAll, q }: { items: ChemSubstan
                 { label: 'ยังตรวจไม่ได้ (ไม่จำแนก)', n: stats.na, tone: 'na' as const, icon: <Info size={18} /> },
               ].map(k => (
                 <div key={k.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3" style={{ borderLeft: `4px solid ${CELL_STYLE[k.tone].bg}` }}>
-                  <div className="flex items-center justify-between text-[11px] text-gray-500"><span>{k.label}</span><span style={{ color: k.tone === 'na' ? '#9CA3AF' : CELL_STYLE[k.tone].bg }}>{k.icon}</span></div>
+                  <div className="flex items-center justify-between text-sm text-gray-500"><span>{k.label}</span><span style={{ color: k.tone === 'na' ? '#9CA3AF' : CELL_STYLE[k.tone].bg }}>{k.icon}</span></div>
                   <div className="text-xl font-bold mt-0.5" style={{ color: k.tone === 'cond' ? '#b45309' : k.tone === 'na' ? '#6b7280' : CELL_STYLE[k.tone].bg }}>{k.n} <span className="text-xs font-normal text-gray-500">คู่</span></div>
                 </div>
               ))}
@@ -163,15 +160,15 @@ export function SubstanceMatrix({ items, areas, isAll, q }: { items: ChemSubstan
 
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
               <div className="flex flex-wrap items-center gap-4 text-xs mb-3">
-                <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.ok.bg }} /> เก็บร่วมกันได้</span>
+                <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.ok.bg }} /> ✓ เก็บร่วมกันได้</span>
                 <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.cond.bg }} /> ตัวเลข = มีเงื่อนไข (คลิกช่องเพื่อดู)</span>
-                <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.no.bg }} /> ต้องแยกบริเวณ</span>
-                <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.na.bg }} /> ยังไม่จำแนก</span>
+                <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.no.bg }} /> × ต้องแยกบริเวณ</span>
+                <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.na.bg }} /> ? ยังไม่จำแนก</span>
                 <label className="ml-auto inline-flex items-center gap-1 text-gray-500 cursor-pointer"><input type="checkbox" checked={showLower} onChange={e => setShowLower(e.target.checked)} /> แสดงครึ่งล่าง (ซ้ำ)</label>
               </div>
               {areaFilterName && <p className="text-xs text-gray-600 mb-2">พื้นที่จัดเก็บ: <b>{areaFilterName}</b></p>}
-              <div className="overflow-auto" style={{ maxHeight: 640 }}>
-                <table className="border-collapse text-[11px]">
+              <div className="overflow-auto chemical-matrix" style={{ maxHeight: 640 }}>
+                <table className="border-collapse text-sm">
                   <thead>
                     <tr>
                       <th className="sticky left-0 top-0 z-20 bg-white px-2 py-1 text-left text-gray-600 font-semibold border border-gray-200" style={{ minWidth: 180 }}>สารเคมี</th>
@@ -204,8 +201,8 @@ export function SubstanceMatrix({ items, areas, isAll, q }: { items: ChemSubstan
                               onClick={() => setPinned(pinned && pinned.a.id === r.id && pinned.b.id === c.id ? null : { a: r, b: c })}
                               className="border border-gray-200 text-center font-bold cursor-pointer"
                               title={`${r.name} × ${c.name}`}
-                              style={{ background: st.bg, color: st.fg, height: 26, opacity: lower ? 0.55 : 1, outline: isActive ? '2px solid #111' : undefined, outlineOffset: -2 }}>
-                              {cell === null ? '?' : cell === '+' ? '' : cell}
+                              style={{ background: st.bg, color: st.fg, height: 26, opacity: lower ? 0.55 : 1, outline: isActive ? '3px solid #111' : active?.a.id === r.id || active?.b.id === c.id ? '1px solid #333' : undefined, outlineOffset: -2 }}>
+                              <button type="button" className="w-full min-w-8 min-h-8 focus-visible:ring-2 focus-visible:ring-black" aria-label={`${r.name} กับ ${c.name}: ${cell === null ? 'ยังไม่ระบุประเภท' : describeCompat(cell).label}`} onFocus={() => setHover({a:r,b:c})} onBlur={() => setHover(null)}>{cell === null ? '?' : cell === '+' ? '✓' : cell === '-' ? '×' : cell}</button>
                             </td>
                           );
                         })}

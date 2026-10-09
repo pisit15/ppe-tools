@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
+import { issueToolsSession, assertSameOrigin, apiError, AccessError, TOOLS_COOKIE, TOOLS_COOKIE_OPTIONS, type AccountTable } from '@/lib/toolsSession';
+function signedResponse(payload: unknown, row: Record<string, unknown>, table: AccountTable) { const r = NextResponse.json(payload); r.cookies.set(TOOLS_COOKIE, issueToolsSession(row, table), TOOLS_COOKIE_OPTIONS); return r; }
 import { issueAdminToken } from '@/lib/adminToken';
 
 // Login uses the service-role key — user tables are locked down by RLS and
@@ -31,6 +33,7 @@ function passwordMatches(supplied: string, stored: unknown): boolean {
 
 export async function POST(request: NextRequest) {
   try {
+    assertSameOrigin(request);
     const { username, password, company_id: requestedCompanyId } = await request.json();
 
     if (!username || !password) {
@@ -54,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     const adminData = (adminRows || []).find(a => passwordMatches(password, a.password));
     if (adminData) {
-      return NextResponse.json({
+      return signedResponse({
         success: true,
         user: {
           id: adminData.id,
@@ -67,13 +70,14 @@ export async function POST(request: NextRequest) {
           role: 'admin',
           token: issueAdminToken(String(adminData.username)) || undefined,
         },
-      });
+      }, adminData, 'admin_accounts');
     }
 
     // 2) Check company_users first, then tools_users as fallback.
     // A user may exist in multiple companies with the same username — collect
     // every row whose password matches, then disambiguate by company.
     let matches: UserRow[] = [];
+    let accountTable: AccountTable = 'company_users';
 
     const { data: cuRows } = await supabase
       .from('company_users')
@@ -85,6 +89,7 @@ export async function POST(request: NextRequest) {
     matches = (cuRows || []).filter(r => passwordMatches(password, r.password));
 
     if (matches.length === 0) {
+      accountTable = 'tools_users';
       const { data: tuRows } = await supabase
         .from('tools_users')
         .select('*')
@@ -155,7 +160,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Return user info (never return password)
-    return NextResponse.json({
+    return signedResponse({
       success: true,
       user: {
         id: userData.id,
@@ -165,10 +170,11 @@ export async function POST(request: NextRequest) {
         displayName: (userData.display_name as string) || (userData.username as string),
         nickname: (userData.nickname as string) || '',
         position: (userData.position as string) || '',
-        role: (userData.role as string) || 'user',
+        role: 'user',
       },
-    });
+    }, userData, accountTable);
   } catch (err) {
+    if (err instanceof AccessError) return apiError(err);
     console.error('Auth error:', err);
     return NextResponse.json(
       { success: false, error: 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ' },

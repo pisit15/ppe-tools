@@ -1,5 +1,7 @@
 'use client';
 
+import './chemical.css';
+import { usePathname } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import { useAuth } from '@/components/AuthProvider';
@@ -7,6 +9,8 @@ import ChemicalLoginPage from '@/components/ChemicalLoginPage';
 
 export default function ChemicalLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const pathname = usePathname();
+  const editing = pathname === '/chemical/new' || pathname.endsWith('/edit');
   const [loginDone, setLoginDone] = useState(false);
 
   if (!user && !loginDone) {
@@ -21,13 +25,13 @@ export default function ChemicalLayout({ children }: { children: React.ReactNode
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="chemical-shell flex flex-col md:flex-row min-h-screen bg-gray-50">
       {/* Sidebar อ่าน useSearchParams → ต้องครอบ Suspense ตามข้อกำหนด Next */}
-      <Suspense fallback={<aside className="w-64 bg-purple-950 min-h-screen" />}>
+      {!editing && <Suspense fallback={<aside className="w-64 bg-purple-950 min-h-screen" />}>
         <Sidebar mode="chemical" />
-      </Suspense>
+      </Suspense>}
       <main className="flex-1 min-w-0">
-        <div className="p-6">
+        <div className="p-3 md:p-6">
           <Suspense fallback={<div className="text-sm text-gray-500">กำลังโหลด…</div>}>{children}</Suspense>
         </div>
       </main>

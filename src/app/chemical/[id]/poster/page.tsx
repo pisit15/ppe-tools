@@ -41,7 +41,7 @@ export default function SdsPosterPage() {
   const ps = s.p_codes.slice(0, 10).map(c => ({ code: c, text: pText(c) }));
   const printed = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   const revision = s.sds_revision_date ? new Date(s.sds_revision_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
-  // บรรทัดฉุกเฉิน: เบอร์ของบริษัท (ตั้งค่าเอง) → ถ้าไม่มี ใช้เบอร์ผู้ผลิตจาก SDS → ถ้าไม่มีอีก "ตามแผนฉุกเฉินของบริษัท"; ซ่อนทั้งบรรทัดได้จากการตั้งค่า
+  // บรรทัดฉุกเฉิน: เบอร์ของบริษัท (ตั้งค่าเอง) → ถ้าไม่มี ใช้เบอร์ผู้ผลิตจาก SDS → ถ้าไม่มีอีก “ตามแผนฉุกเฉินของบริษัท”; ซ่อนทั้งบรรทัดได้จากการตั้งค่า
   const showEmergency = cfg ? cfg.show_emergency : true;
   const companyContacts = (cfg?.emergency_contacts || []).filter(c => c.label || c.phone);
   const emergencyLine = companyContacts.length
@@ -68,12 +68,13 @@ export default function SdsPosterPage() {
       <div className="no-print flex items-center justify-between mb-4">
         <button onClick={() => router.back()} className="inline-flex items-center gap-2 text-sm text-gray-700 hover:text-purple-700"><ArrowLeft size={16} /> กลับ</button>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">พิมพ์แล้วเลือก "Save as PDF" เพื่อบันทึกเป็นไฟล์ · ตั้งค่า A4 แนวตั้ง</span>
+          <span className="text-xs text-gray-500">พิมพ์แล้วเลือก “Save as PDF” เพื่อบันทึกเป็นไฟล์ · ตั้งค่า A4 แนวตั้ง</span>
           <button onClick={() => window.print()} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700"><Printer size={16} /> พิมพ์ / บันทึก PDF</button>
         </div>
       </div>
 
       <article className="poster">
+        {(s.is_demo || s.review_status !== 'reviewed') && <p style={{padding: '8px 16px', border: '2px solid #92400e', fontWeight: 700, color: '#78350f'}}>{s.is_demo ? 'ข้อมูลสาธิต — ไม่ใช่ทะเบียนใช้งานจริง' : 'ยังไม่ตรวจทานข้อมูลกับ SDS ต้นฉบับ'}</p>}
         {/* Header */}
         <header style={{ background: headerBg, color: '#fff', padding: '14px 18px', borderRadius: '12px 12px 0 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>

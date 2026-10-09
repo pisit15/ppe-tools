@@ -18,9 +18,10 @@ export function useCompanyScope() {
     user,
     isAdmin,
     companyId,
+    companyName: companyId === user?.companyId ? user.companyName : companyId.toUpperCase(),
     isAll: companyId === 'all',
     canWrite: !!user && companyId !== 'all',
     /** query string สำหรับลิงก์ภายในโมดูล */
-    q: `?company_id=${companyId}`,
+    q: `?company_id=${encodeURIComponent(companyId)}`,
   };
 }

@@ -16,7 +16,7 @@ type AuthContextType = {
   user: AuthUser | null;
   isLoading: boolean;
   login: (username: string, password: string, companyId?: string) => Promise<LoginResult>;
-  logout: () => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -28,17 +28,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load auth state from sessionStorage on mount
+  // Server session is authoritative; older sessionStorage-only logins must sign in again.
   useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setUser(JSON.parse(stored));
-      }
-    } catch {
-      // ignore
-    }
-    setLoaded(true);
+    let cancelled = false;
+    fetch('/api/auth/session', { cache: 'no-store' }).then(async r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) setUser(d?.user || null); })
+      .catch(() => { if (!cancelled) setUser(null); })
+      .finally(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
   }, []);
 
   // Save to sessionStorage on change
@@ -91,7 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    await fetch('/api/auth/session', { method: 'DELETE' });
     setUser(null);
     try {
       sessionStorage.removeItem(STORAGE_KEY);

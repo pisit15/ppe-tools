@@ -40,6 +40,7 @@ type SidebarProps = {
 
 export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -75,7 +76,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
   })();
 
   // Nav query: keep company_id in URL so pages can read it
-  const q = `?company_id=${activeCompanyId}`;
+  const q = `?company_id=${encodeURIComponent(activeCompanyId)}`;
 
   const ppeItems: NavItem[] = [
     { label: 'แดชบอร์ด', href: `/ppe${q}`, icon: <Home size={20} /> },
@@ -114,8 +115,8 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
 
   const isActive = (href: string) => pathname === href.split('?')[0];
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     window.location.href = '/';
   };
 
@@ -128,8 +129,8 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
   return (
     <aside
       className={`${
-        isOpen ? 'w-64' : 'w-20'
-      } ${bgColor} text-white transition-all duration-300 min-h-screen flex flex-col`}
+        mode === 'chemical' ? (isOpen ? 'w-full md:w-64' : 'w-full md:w-20') : (isOpen ? 'w-64' : 'w-20')
+      } ${bgColor} text-white transition-colors duration-300 shrink-0 ${mode === 'chemical' ? 'md:min-h-screen' : 'min-h-screen'} flex flex-col`}
     >
       {/* Header */}
       <div className={`flex items-center justify-between p-4 border-b ${borderColor}`}>
@@ -148,13 +149,16 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
           </div>
         )}
         <button
+          aria-label={isOpen ? 'ย่อเมนู' : 'ขยายเมนู'}
+          aria-expanded={isOpen}
           onClick={() => setIsOpen(!isOpen)}
-          className={`p-2 ${hoverBg} rounded-lg transition-colors shrink-0`}
+          className={`${isPurple ? 'hidden md:block' : ''} p-2 ${hoverBg} rounded-lg transition-colors shrink-0`}
         >
           {isOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
+        {isPurple && <button className="md:hidden p-2 rounded-lg" aria-label={mobileOpen ? 'ปิดเมนู Chemical' : 'เปิดเมนู Chemical'} aria-expanded={mobileOpen} onClick={() => setMobileOpen(v => !v)}>{mobileOpen ? <X size={20} /> : <Menu size={20} />}</button>}
       </div>
-
+      <div className={isPurple ? (mobileOpen ? 'flex' : 'hidden') + ' md:flex flex-col flex-1' : 'contents'}>
       {/* Company Selector / Display */}
       {isOpen && user && (
         <div className={`p-4 border-b ${borderColor}`}>
@@ -165,6 +169,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
           {isAdmin ? (
             <div className="relative">
               <select
+                aria-label="เลือกบริษัท"
                 value={activeCompanyId}
                 onChange={(e) => handleCompanyChange(e.target.value)}
                 className={`w-full ${selectBg} border text-white text-sm rounded-lg pl-8 pr-8 py-2 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/30`}
@@ -209,6 +214,8 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
           <Link
             key={item.href}
             href={item.href}
+            aria-label={item.label}
+            onClick={() => setMobileOpen(false)}
             className={`flex items-center gap-4 px-4 py-3 rounded-lg transition-colors ${
               isActive(item.href)
                 ? `${activeBg} text-white`
@@ -225,6 +232,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
       {user && (
         <div className={`px-4 pb-2`}>
           <button
+            aria-label="ออกจากระบบ"
             onClick={handleLogout}
             className={`w-full flex items-center gap-3 px-4 py-2 ${mutedText} hover:text-white ${hoverBg} rounded-lg transition-colors`}
           >
@@ -238,6 +246,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
       <div className={`px-4 pb-4 border-t ${borderColor} pt-3`}>
         <Link
           href="/"
+          aria-label="กลับหน้าหลัก"
           className={`flex items-center gap-3 px-4 py-2 ${mutedText} hover:text-white ${hoverBg} rounded-lg transition-colors`}
         >
           <ArrowLeft size={18} />
@@ -252,6 +261,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
           <p>tools.eashe.org</p>
         </div>
       )}
+      </div>
     </aside>
   );
 }

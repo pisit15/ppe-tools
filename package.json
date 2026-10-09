@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:chemical": "node --test tests/chemical-integrity.test.cjs",
+    "test:chemical:e2e": "playwright test --config playwright.chemical.config.cjs",
+    "preview:chemical": "node tests/chemical-preview.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",
@@ -21,6 +24,8 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@playwright/test": "1.64.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

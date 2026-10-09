@@ -3,6 +3,7 @@
 /.pnp
 .pnp.js
 *-lock.json
+!package-lock.json
 
 # testing
 /coverage
@@ -48,3 +49,9 @@ supabase/.temp
 
 # Claude Cowork session-local credential helper
 .git-credential-helper.sh
+
+/test-results/
+/playwright-report/
+
+# Local verification output
+.verification/

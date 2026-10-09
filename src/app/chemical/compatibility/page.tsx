@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { Grid3x3, CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react';
 import type { ChemStorageArea, ChemSubstance, StorageClassCode } from '@/lib/types';
@@ -9,6 +9,7 @@ import { STORAGE_CLASS_ORDER, STORAGE_CLASSES, STORAGE_CONDITIONS, SEPARATION_RU
 import type { CompatCell } from '@/lib/chemical/storage-classes';
 import { useCompanyScope } from '@/lib/chemical/useCompanyScope';
 import { StorageClassChip, VIZ, inputCls } from '../components/ui';
+import { useChemicalData } from '@/lib/chemical/useChemicalData';
 import { SubstanceMatrix } from '../components/SubstanceMatrix';
 
 const CELL_STYLE: Record<'ok' | 'cond' | 'no', { bg: string; fg: string }> = {
@@ -19,31 +20,27 @@ const CELL_STYLE: Record<'ok' | 'cond' | 'no', { bg: string; fg: string }> = {
 const toneOf = (c: CompatCell): 'ok' | 'cond' | 'no' => c === '+' ? 'ok' : c === '-' ? 'no' : 'cond';
 
 export default function CompatibilityPage() {
-  const { companyId, isAll, q } = useCompanyScope();
-  const [items, setItems] = useState<ChemSubstance[]>([]);
-  const [areas, setAreas] = useState<ChemStorageArea[]>([]);
+  const { q } = useCompanyScope();
+  return <ScopedCompatibility key={q} />;
+}
+function ScopedCompatibility() {
+  const { isAll, q } = useCompanyScope();
+  const [retry, setRetry] = useState(0);
+  const substances = useChemicalData<{data: ChemSubstance[]}>('/api/chemical/substances' + q, retry);
+  const storage = useChemicalData<{data: ChemStorageArea[]}>('/api/chemical/storage-areas' + q, retry);
+  const items = substances.data?.data || [];
+  const areas = storage.data?.data || [];
+  const loading = substances.loading || storage.loading;
+  const error = substances.error || storage.error;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [areaPick, setAreaPick] = useState('');
   const [hover, setHover] = useState<{ a: StorageClassCode; b: StorageClassCode } | null>(null);
   const [pinned, setPinned] = useState<{ a: StorageClassCode; b: StorageClassCode } | null>(null);
   const [tab, setTab] = useState<'check' | 'substances' | 'matrix'>('check');
 
-  useEffect(() => {
-    Promise.all([
-      fetch(`/api/chemical/substances?company_id=${companyId}`).then(r => r.json()),
-      fetch(`/api/chemical/storage-areas?company_id=${companyId}`).then(r => r.json()),
-    ]).then(([s, a]) => { setItems(s.data || []); setAreas(a.data || []); }).catch(() => {});
-  }, [companyId]);
-
-  // เลือกตามพื้นที่เก็บ → ติ๊กสารทั้งหมดในพื้นที่นั้น
-  useEffect(() => {
-    if (!areaPick) return;
-    setSelected(new Set(items.filter(i => i.storage_area_id === areaPick).map(i => i.id)));
-  }, [areaPick, items]);
-
   const chosen = items.filter(i => selected.has(i.id));
   const unclassified = chosen.filter(i => !i.storage_class);
-  const pairs = useMemo(() => {
+  const pairs = (() => {
     const out: { a: ChemSubstance; b: ChemSubstance; cell: CompatCell }[] = [];
     const cls = chosen.filter(i => i.storage_class);
     for (let i = 0; i < cls.length; i++) for (let j = i + 1; j < cls.length; j++) {
@@ -51,7 +48,7 @@ export default function CompatibilityPage() {
     }
     const rank = (c: CompatCell) => c === '-' ? 0 : c === '+' ? 2 : 1;
     return out.sort((x, y) => rank(x.cell) - rank(y.cell));
-  }, [chosen]);
+  })();
   const summary = {
     no: pairs.filter(p => p.cell === '-').length,
     cond: pairs.filter(p => typeof p.cell === 'number').length,
@@ -72,21 +69,23 @@ export default function CompatibilityPage() {
         <Link href={`/chemical${q}`} className="text-sm text-purple-700 font-semibold">← ทะเบียนสารเคมี</Link>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {([['check', 'ตรวจสอบสารที่เก็บด้วยกัน'], ['substances', 'ตารางสารเคมีจริง'], ['matrix', 'ตารางอ้างอิง 23 × 23']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 rounded-lg text-sm font-semibold ${tab === k ? 'bg-purple-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}>{l}</button>
         ))}
       </div>
 
-      {tab === 'substances' && <SubstanceMatrix items={items} areas={areas} isAll={isAll} q={q} />}
+      {loading && <p role="status" className="p-6 bg-white rounded-xl">กำลังโหลดรายการสารเคมี…</p>}
+      {error && <p role="alert" className="p-6 bg-red-50 text-red-800 rounded-xl">{error} <button onClick={() => setRetry(v => v + 1)} className="underline">ลองใหม่</button></p>}
+      {!loading && !error && tab === 'substances' && <SubstanceMatrix key={q} items={items} areas={areas} isAll={isAll} q={q} />}
 
-      {tab === 'check' && (
+      {!loading && !error && tab === 'check' && (
         <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4">
           {/* picker */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-3">
             <h2 className="text-sm font-bold text-gray-800">เลือกสารเคมีที่จะเก็บในบริเวณเดียวกัน</h2>
             {areas.length > 0 && (
-              <select className={inputCls} value={areaPick} onChange={e => setAreaPick(e.target.value)}>
+              <select className={inputCls} aria-label="เลือกตามพื้นที่จัดเก็บ" value={areaPick} onChange={e => { const id = e.target.value; setAreaPick(id); if (id) setSelected(new Set(items.filter(i => i.storage_area_id === id).map(i => i.id))); }}>
                 <option value="">— เลือกตามพื้นที่เก็บ (ไม่บังคับ) —</option>
                 {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
@@ -178,22 +177,22 @@ export default function CompatibilityPage() {
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
             <div className="flex flex-wrap gap-4 text-xs mb-3">
-              <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.ok.bg }} /> เก็บคละกันได้</span>
+              <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.ok.bg }} /> ✓ เก็บคละกันได้</span>
               <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.cond.bg }} /> ตัวเลข = เก็บคละได้โดยมีเงื่อนไข (คลิกช่องเพื่อดู)</span>
-              <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.no.bg }} /> ต้องจัดเก็บแยกบริเวณ</span>
+              <span className="inline-flex items-center gap-1"><span className="w-4 h-4 rounded" style={{ background: CELL_STYLE.no.bg }} /> × ต้องจัดเก็บแยกบริเวณ</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="border-collapse text-[11px]" style={{ minWidth: 900 }}>
-                <thead>
+            <div className="overflow-auto max-h-[65vh] chemical-matrix">
+              <table className="border-collapse text-sm" style={{ minWidth: 900 }}>
+                <thead className="sticky top-0 z-20">
                   <tr>
                     <th className="sticky left-0 bg-white px-2 py-1 text-left text-gray-600 font-semibold border border-gray-200" style={{ minWidth: 200 }}>ประเภทการจัดเก็บ</th>
-                    {STORAGE_CLASS_ORDER.map(c => <th key={c} className="px-1 py-1 border border-gray-200 bg-gray-50 font-bold text-gray-700" style={{ width: 30 }}>{c}</th>)}
+                    {STORAGE_CLASS_ORDER.map(c => <th key={c} style={{ boxShadow: active?.b === c ? 'inset 0 -4px #111' : undefined }} className="px-1 py-1 border border-gray-200 bg-gray-50 font-bold text-gray-700">{c}</th>)}
                   </tr>
                 </thead>
                 <tbody>
                   {STORAGE_CLASS_ORDER.map(r => (
                     <tr key={r}>
-                      <th className="sticky left-0 bg-white px-2 py-1 text-left font-normal border border-gray-200 whitespace-nowrap">
+                      <th style={{ boxShadow: active?.a === r ? 'inset 4px 0 #111' : undefined }} className="sticky left-0 bg-white px-2 py-1 text-left font-normal border border-gray-200 whitespace-nowrap">
                         <b className="mr-1">{r}</b><span className="text-gray-600">{storageClassDef(r)?.nameTh}</span>
                       </th>
                       {STORAGE_CLASS_ORDER.map(c => {
@@ -204,8 +203,8 @@ export default function CompatibilityPage() {
                           <td key={c} onMouseEnter={() => setHover({ a: r, b: c })} onMouseLeave={() => setHover(null)}
                             onClick={() => setPinned(pinned && pinned.a === r && pinned.b === c ? null : { a: r, b: c })}
                             className="border border-gray-200 text-center font-bold cursor-pointer"
-                            style={{ background: st.bg, color: st.fg, height: 26, outline: isActive ? '2px solid #111' : undefined, outlineOffset: -2 }}>
-                            {cell === '+' ? '' : cell}
+                            style={{ background: st.bg, color: st.fg, height: 26, outline: isActive ? '3px solid #111' : active?.a === r || active?.b === c ? '1px solid #333' : undefined, outlineOffset: -2 }}>
+                            <button type="button" className="w-full min-w-8 min-h-8 focus-visible:ring-2 focus-visible:ring-black" aria-label={`ประเภท ${r} กับ ${c}: ${describeCompat(cell).label}`} onFocus={() => setHover({a:r,b:c})} onBlur={() => setHover(null)}>{cell === '+' ? '✓' : cell === '-' ? '×' : cell}</button>
                           </td>
                         );
                       })}
@@ -221,7 +220,7 @@ export default function CompatibilityPage() {
               return (
                 <div className="text-sm">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <StorageClassChip code={active.a} showName /> <span className="text-gray-400">×</span> <StorageClassChip code={active.b} showName />
+                    <StorageClassChip code={active.a} showName /> <span className="text-gray-600">×</span> <StorageClassChip code={active.b} showName />
                     <span className="px-2 py-0.5 rounded-md text-xs font-bold" style={{ background: CELL_STYLE[d.tone].bg, color: CELL_STYLE[d.tone].fg }}>{d.label}</span>
                     {pinned && <button onClick={() => setPinned(null)} className="text-xs text-gray-500 ml-auto">ยกเลิกปักหมุด</button>}
                   </div>
@@ -238,8 +237,8 @@ export default function CompatibilityPage() {
             <h3 className="text-sm font-bold text-gray-800 pt-2">เงื่อนไขทั้ง 18 ข้อ</h3>
             <ol className="space-y-1.5 text-xs text-gray-700">{Object.entries(STORAGE_CONDITIONS).map(([n, t]) => <li key={n}><b className="text-amber-700">ข้อ {n}</b> — {t}</li>)}</ol>
             <h3 className="text-sm font-bold text-gray-800 pt-2">ประเภทการจัดเก็บ 23 รหัส</h3>
-            <ul className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-gray-700">{STORAGE_CLASSES.map(c => <li key={c.code}><StorageClassChip code={c.code} /> <span className="ml-1">{c.nameTh}</span> <span className="text-gray-400">— {c.hint}</span></li>)}</ul>
-            <p className="text-[11px] text-gray-400 pt-2">สี: เขียว {VIZ.positive} / เหลือง / แดง {VIZ.accent} ตามตารางต้นฉบับหน้า 24 ของคู่มือ กรอ.</p>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-gray-700">{STORAGE_CLASSES.map(c => <li key={c.code}><StorageClassChip code={c.code} /> <span className="ml-1">{c.nameTh}</span> <span className="text-gray-600">— {c.hint}</span></li>)}</ul>
+            <p className="text-sm text-gray-600 pt-2">สี: เขียว {VIZ.positive} / เหลือง / แดง {VIZ.accent} ตามตารางต้นฉบับหน้า 24 ของคู่มือ กรอ.</p>
           </div>
         </div>
       )}

@@ -154,6 +154,11 @@ export type ChemStorageArea = {
 };
 
 export type ChemSubstance = {
+  is_demo?: boolean;
+  ai_filled_fields?: string[];
+  review_status?: 'unreviewed' | 'reviewed';
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
   id: string;
   company_id: string;
   name: string;
@@ -201,6 +206,8 @@ export type ChemSubstance = {
 export type ChemEmergencyContact = { label: string; phone: string };
 
 export type ChemCompanySettings = {
+  sds_review_years?: number | null;
+  sds_review_policy?: string | null;
   company_id: string;
   emergency_contacts: ChemEmergencyContact[];
   show_emergency: boolean;
