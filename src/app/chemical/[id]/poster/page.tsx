@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Printer, ArrowLeft, FileText } from 'lucide-react';
-import type { ChemSubstance } from '@/lib/types';
+import type { ChemCompanySettings, ChemSubstance } from '@/lib/types';
 import { ghsPictogram, hText, pText } from '@/lib/chemical/ghs';
 import { storageClassDef } from '@/lib/chemical/storage-classes';
 import { GROUP_COLORS } from '../../components/ui';
@@ -18,11 +18,17 @@ export default function SdsPosterPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [s, setS] = useState<ChemSubstance | null>(null);
+  const [cfg, setCfg] = useState<ChemCompanySettings | null>(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     fetch(`/api/chemical/substances/${id}`).then(r => r.json()).then(d => { if (d.error) setErr(d.error); else setS(d.data); }).catch(() => setErr('โหลดข้อมูลไม่สำเร็จ'));
   }, [id]);
+  // เบอร์ฉุกเฉินรายบริษัท (ตั้งค่าที่ /chemical/settings)
+  useEffect(() => {
+    if (!s?.company_id) return;
+    fetch(`/api/chemical/settings?company_id=${s.company_id}`).then(r => r.json()).then(d => setCfg(d.data || null)).catch(() => setCfg(null));
+  }, [s?.company_id]);
 
   if (err) return <p className="text-sm text-red-600">{err}</p>;
   if (!s) return <p className="text-sm text-gray-500">กำลังโหลด…</p>;
@@ -35,6 +41,13 @@ export default function SdsPosterPage() {
   const ps = s.p_codes.slice(0, 10).map(c => ({ code: c, text: pText(c) }));
   const printed = new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
   const revision = s.sds_revision_date ? new Date(s.sds_revision_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+  // บรรทัดฉุกเฉิน: เบอร์ของบริษัท (ตั้งค่าเอง) → ถ้าไม่มี ใช้เบอร์ผู้ผลิตจาก SDS → ถ้าไม่มีอีก "ตามแผนฉุกเฉินของบริษัท"; ซ่อนทั้งบรรทัดได้จากการตั้งค่า
+  const showEmergency = cfg ? cfg.show_emergency : true;
+  const companyContacts = (cfg?.emergency_contacts || []).filter(c => c.label || c.phone);
+  const emergencyLine = companyContacts.length
+    ? companyContacts.map(c => [c.label, c.phone].filter(Boolean).join(' ')).join(' · ')
+    : (s.emergency_contact || 'ตามแผนฉุกเฉินของบริษัท');
+  const supplierLine = companyContacts.length && s.emergency_contact ? `ผู้ผลิต: ${s.emergency_contact}` : '';
 
   return (
     <div className="poster-root">
@@ -172,8 +185,8 @@ export default function SdsPosterPage() {
         {/* Footer */}
         <footer style={{ borderTop: '2px solid #111', margin: '0 16px', padding: '8px 0 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 10.5 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 900, color: '#b91c1c' }}>☎ ฉุกเฉิน: {s.emergency_contact || 'ตามแผนฉุกเฉินของบริษัท'}</div>
-            <div style={{ color: '#6b7280' }}>อ้างอิง SDS ปรับปรุงล่าสุด {revision}{s.sds_url ? ` · ${s.sds_url}` : s.sds_file_name ? ` · ไฟล์ ${s.sds_file_name}` : ''}</div>
+            {showEmergency && <div style={{ fontSize: 13, fontWeight: 900, color: '#b91c1c' }}>☎ ฉุกเฉิน: {emergencyLine}</div>}
+            <div style={{ color: '#6b7280' }}>{supplierLine && showEmergency ? `${supplierLine} · ` : ''}อ้างอิง SDS ปรับปรุงล่าสุด {revision}{s.sds_url ? ` · ${s.sds_url}` : s.sds_file_name ? ` · ไฟล์ ${s.sds_file_name}` : ''}</div>
           </div>
           <div style={{ textAlign: 'right', color: '#6b7280' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileText size={11} /> EA SHE Tools · tools.eashe.org/chemical</div>

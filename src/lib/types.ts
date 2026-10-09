@@ -197,6 +197,16 @@ export type ChemSubstance = {
   chem_storage_areas?: Pick<ChemStorageArea, 'id' | 'name'> | null;
 };
 
+/** เบอร์ฉุกเฉินที่แต่ละบริษัทกำหนดเอง — แสดงท้ายโปสเตอร์ SDS ทุกใบของบริษัทนั้น */
+export type ChemEmergencyContact = { label: string; phone: string };
+
+export type ChemCompanySettings = {
+  company_id: string;
+  emergency_contacts: ChemEmergencyContact[];
+  show_emergency: boolean;
+  updated_at?: string;
+};
+
 export type CreateChemSubstanceInput = Omit<ChemSubstance, 'id' | 'created_at' | 'updated_at' | 'chem_storage_areas'>;
 export type UpdateChemSubstanceInput = Partial<CreateChemSubstanceInput>;
 

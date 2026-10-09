@@ -330,7 +330,7 @@ export default function SubstanceForm({ companyId, areas, initial, createdBy, on
               ))}
               <div><label className={labelCls}>การดับเพลิง (สารดับเพลิงที่เหมาะสม / ข้อควรระวัง)</label><textarea className={inputCls} rows={2} value={f.fire_fighting || ''} onChange={e => set('fire_fighting', e.target.value || null)} /></div>
               <div><label className={labelCls}>กรณีหกรั่วไหล</label><textarea className={inputCls} rows={2} value={f.spill_response || ''} onChange={e => set('spill_response', e.target.value || null)} /></div>
-              <div><label className={labelCls}>เบอร์ฉุกเฉิน (ผู้ผลิต / ภายใน)</label><input className={inputCls} value={f.emergency_contact || ''} onChange={e => set('emergency_contact', e.target.value || null)} /></div>
+              <div><label className={labelCls}>เบอร์ฉุกเฉินผู้ผลิต (จาก SDS) <span className="font-normal text-gray-400">— เบอร์ของบริษัทตั้งที่เมนู &quot;ตั้งค่า&quot;</span></label><input className={inputCls} value={f.emergency_contact || ''} onChange={e => set('emergency_contact', e.target.value || null)} /></div>
               <div><label className={labelCls}>หมายเหตุ</label><input className={inputCls} value={f.notes || ''} onChange={e => set('notes', e.target.value || null)} /></div>
             </div>
           </Section>

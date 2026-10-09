@@ -24,6 +24,7 @@ import {
   FlaskConical,
   Grid3x3,
   Warehouse,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -97,6 +98,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     { label: 'ทะเบียนสารเคมี', href: `/chemical${q}`, icon: <FlaskConical size={20} /> },
     { label: 'ตารางเก็บร่วม/แยก', href: `/chemical/compatibility${q}`, icon: <Grid3x3 size={20} /> },
     { label: 'พื้นที่จัดเก็บ', href: `/chemical/storage-areas${q}`, icon: <Warehouse size={20} /> },
+    { label: 'ตั้งค่า / เบอร์ฉุกเฉิน', href: `/chemical/settings${q}`, icon: <Settings size={20} /> },
   ];
 
   const navItems = mode === 'she' ? sheItems : mode === 'chemical' ? chemItems : ppeItems;
