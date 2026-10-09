@@ -1,6 +1,6 @@
 # Chemical legal screening — production release
 
-Status: v2 live on https://tools.eashe.org/chemical/legal on 2026-10-09. Current deployment: dpl_BawVGyePB8z2VZZfQCnxTjX9cPSU (https://ppe-tools-bk7ee29bi-ea-she.vercel.app), source commit bedce97, catalog migration 20261009084432.
+Status: v2 live on https://tools.eashe.org/chemical/legal on 2026-10-09. Current deployment: dpl_GZoRax2JWPUP1Cw4vD8SB7pnAuyZ (https://ppe-tools-aud6qza1s-ea-she.vercel.app), source commit 874e5f2, catalog migration unchanged at 20261009084432.
 
 ## Initial release (historical)
 
@@ -45,3 +45,11 @@ Live: catalog applied in hosted migration 20261009084432; UI built remotely, smo
 Validation for the follow-up: 15 unit/PostgreSQL tests and 11 browser scenarios passed; targeted ESLint passed. Production SQL confirms v2 is current, both immutable reference versions remain, and existing company substances (3) and assessments (0) are unchanged.
 
 Production follow-up verification: remote Next.js build, TypeScript and 53 static pages passed. Staged page returned HTTP 200 and unauthenticated API returned HTTP 401. Authenticated browser checks on tools.eashe.org confirmed four register cards with no review policy/status, emergency-only settings, and verified Labour/exposure references for Hydrogen peroxide and Sodium hydroxide. No error-level runtime logs were returned during the smoke check. Screenshots are saved in ../outputs/chemical-legal-system/production-register-v2.png and production-settings-v2.png.
+
+## Follow-up: use the EA SHE legal library
+
+Source commit: 874e5f2. Reads the existing shared law_documents table to resolve 16 legal source groups to 22 library laws. Source, related-law and CSV links open the EA SHE library; document buttons use URLs maintained by that library. Hazardous-list entries link to their actual revision. Audited government URLs and original PDF page evidence remain immutable, with no new page anchor assumed for a library copy. NIST is explicitly a non-law identity reference. No database mutation or migration.
+
+Validation: 17 unit/PostgreSQL tests, 6 legal browser scenarios and targeted ESLint passed. Tests cover the screenshot’s four Labour links, CSV, revision-specific mappings, safe URLs, missing links and edited library metadata. Read-only hosted SQL confirmed all mapped codes and existing service-role read permission. Production rollout verification is recorded below.
+
+Live on tools.eashe.org: dpl_GZoRax2JWPUP1Cw4vD8SB7pnAuyZ (https://ppe-tools-aud6qza1s-ea-she.vercel.app). Remote production build, TypeScript and all 53 static pages passed. Staged page HTTP 200 and anonymous API HTTP 401 checked before promotion. Authenticated production Acetone Labour detail displays MOL-0261, MOL-0260, MOL-0262 and MOL-1117 links to eashe.org and document URLs identical to the shared library. Opening the MOL-0261 library URL returned its single matching law. No error-level deployment logs returned during verification. Screenshot: ../outputs/chemical-legal-system/production-library-links.png.
