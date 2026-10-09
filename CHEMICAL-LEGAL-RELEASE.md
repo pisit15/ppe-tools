@@ -1,6 +1,6 @@
 # Chemical legal screening — production release
 
-Status: v2 live on https://tools.eashe.org/chemical/legal on 2026-10-09. Current deployment: dpl_GZoRax2JWPUP1Cw4vD8SB7pnAuyZ (https://ppe-tools-aud6qza1s-ea-she.vercel.app), source commit 874e5f2, catalog migration unchanged at 20261009084432.
+Status: v2 live on https://tools.eashe.org/chemical/legal on 2026-10-09. Current deployment: dpl_8j7hBwd7AnhG6rjY3wgEdEKQAqrV (https://ppe-tools-fkm9p52wu-ea-she.vercel.app), source commit 7ecaf96, catalog migration unchanged at 20261009084432.
 
 ## Initial release (historical)
 
@@ -53,3 +53,9 @@ Source commit: 874e5f2. Reads the existing shared law_documents table to resolve
 Validation: 17 unit/PostgreSQL tests, 6 legal browser scenarios and targeted ESLint passed. Tests cover the screenshot’s four Labour links, CSV, revision-specific mappings, safe URLs, missing links and edited library metadata. Read-only hosted SQL confirmed all mapped codes and existing service-role read permission. Production rollout verification is recorded below.
 
 Live on tools.eashe.org: dpl_GZoRax2JWPUP1Cw4vD8SB7pnAuyZ (https://ppe-tools-aud6qza1s-ea-she.vercel.app). Remote production build, TypeScript and all 53 static pages passed. Staged page HTTP 200 and anonymous API HTTP 401 checked before promotion. Authenticated production Acetone Labour detail displays MOL-0261, MOL-0260, MOL-0262 and MOL-1117 links to eashe.org and document URLs identical to the shared library. Opening the MOL-0261 library URL returned its single matching law. No error-level deployment logs returned during verification. Screenshot: ../outputs/chemical-legal-system/production-library-links.png.
+
+## Follow-up: direct Google Drive links
+
+Live deployment dpl_8j7hBwd7AnhG6rjY3wgEdEKQAqrV, source 7ecaf96. Each law title now directly opens the Google Drive URL maintained in the shared EA SHE library. Removed duplicate document buttons and intermediate library links. CSV uses the same Drive destination. Missing Drive URLs remain plain text instead of a different destination. Audited catalog and company data unchanged.
+
+Validation: 12 legal unit/PostgreSQL tests, the affected register-to-source-to-CSV browser scenario, and targeted ESLint passed. Remote production build, TypeScript and 53 static pages passed. Staged page HTTP 200 and anonymous API HTTP 401 checked before promotion. The computer-use browser could not launch due to a Windows runtime volume error; no new authenticated production UI verification is claimed. Local browser screenshot: tests output test-results/chemical-legal-desktop.png.
