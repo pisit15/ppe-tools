@@ -121,3 +121,92 @@ export type LineLinkCode = {
   used_at: string | null;
   created_at: string;
 };
+
+// ═══════════════════════════════════════════════════════════
+// Chemical Management (tables: chem_substances, chem_storage_areas)
+// ═══════════════════════════════════════════════════════════
+
+export type GhsPictogramCode = 'GHS01' | 'GHS02' | 'GHS03' | 'GHS04' | 'GHS05' | 'GHS06' | 'GHS07' | 'GHS08' | 'GHS09';
+export type SignalWord = 'Danger' | 'Warning' | 'None';
+export type PhysicalState = 'solid' | 'liquid' | 'gas' | 'aerosol';
+
+/** ประเภทการจัดเก็บตามคู่มือการเก็บรักษาวัตถุอันตราย กรมโรงงานอุตสาหกรรม (23 รหัส) */
+export type StorageClassCode =
+  | '1' | '2A' | '2B' | '3A' | '3B' | '4.1A' | '4.1B' | '4.2' | '4.3'
+  | '5.1A' | '5.1B' | '5.1C' | '5.2' | '6.1A' | '6.1B' | '6.2' | '7'
+  | '8A' | '8B' | '10' | '11' | '12' | '13';
+
+export type FirstAid = {
+  inhalation?: string;
+  skin?: string;
+  eye?: string;
+  ingestion?: string;
+};
+
+export type ChemStorageArea = {
+  id: string;
+  company_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChemSubstance = {
+  id: string;
+  company_id: string;
+  name: string;
+  chemical_name: string | null;
+  cas_no: string | null;
+  un_no: string | null;
+  supplier: string | null;
+  physical_state: PhysicalState | null;
+  ghs_pictograms: GhsPictogramCode[];
+  signal_word: SignalWord | null;
+  hazard_classes: string[];
+  h_codes: string[];
+  p_codes: string[];
+  flash_point_c: number | null;
+  boiling_point_c: number | null;
+  storage_class: StorageClassCode | null;
+  storage_class_suggested: StorageClassCode | null;
+  storage_area_id: string | null;
+  storage_location: string | null;
+  storage_conditions: string | null;
+  quantity: number | null;
+  unit: string | null;
+  container: string | null;
+  ppe_required: string[];
+  first_aid: FirstAid;
+  fire_fighting: string | null;
+  spill_response: string | null;
+  emergency_contact: string | null;
+  sds_url: string | null;
+  sds_file_path: string | null;
+  sds_file_name: string | null;
+  sds_revision_date: string | null;
+  sds_language: string | null;
+  usage_purpose: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  /** joined */
+  chem_storage_areas?: Pick<ChemStorageArea, 'id' | 'name'> | null;
+};
+
+export type CreateChemSubstanceInput = Omit<ChemSubstance, 'id' | 'created_at' | 'updated_at' | 'chem_storage_areas'>;
+export type UpdateChemSubstanceInput = Partial<CreateChemSubstanceInput>;
+
+/** ผลสกัดจาก SDS ด้วย AI — ทุกช่องเป็น optional เพราะ SDS แต่ละฉบับไม่ครบเท่ากัน */
+export type SdsExtraction = Partial<Pick<ChemSubstance,
+  'name' | 'chemical_name' | 'cas_no' | 'un_no' | 'supplier' | 'physical_state'
+  | 'ghs_pictograms' | 'signal_word' | 'hazard_classes' | 'h_codes' | 'p_codes'
+  | 'flash_point_c' | 'boiling_point_c' | 'storage_conditions' | 'ppe_required'
+  | 'first_aid' | 'fire_fighting' | 'spill_response' | 'emergency_contact'
+  | 'sds_revision_date' | 'sds_language'>> & {
+  /** ข้อสังเกตจาก AI เช่น หน้าที่อ่านไม่ออก หรือค่าที่ไม่แน่ใจ */
+  extraction_notes?: string;
+};

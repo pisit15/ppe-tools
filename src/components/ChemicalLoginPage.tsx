@@ -1,0 +1,205 @@
+﻿'use client';
+
+import { useState } from 'react';
+import { Shield, Lock, User, ArrowRight, ArrowLeft, Building2 } from 'lucide-react';
+import { useAuth, LoginCompanyOption } from '@/components/AuthProvider';
+import Link from 'next/link';
+
+export default function ChemicalLoginPage({ onLoginSuccess }: { onLoginSuccess: () => void }) {
+  const { login, isLoading } = useAuth();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [companyOptions, setCompanyOptions] = useState<LoginCompanyOption[] | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim()) {
+      setError('เธเธฃเธธเธ“เธฒเนเธชเนเธเธทเนเธญเธเธนเนเนเธเน');
+      return;
+    }
+    if (!password) {
+      setError('เธเธฃเธธเธ“เธฒเนเธชเนเธฃเธซเธฑเธชเธเนเธฒเธ');
+      return;
+    }
+
+    setError('');
+    const result = await login(username, password);
+    if (result.success) {
+      onLoginSuccess();
+    } else if (result.needCompanySelection && result.companies) {
+      setCompanyOptions(result.companies);
+    } else {
+      setError(result.error || 'เน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธเนเธกเนเธชเธณเน€เธฃเนเธ');
+    }
+  };
+
+  const handleSelectCompany = async (companyId: string) => {
+    setError('');
+    const result = await login(username, password, companyId);
+    if (result.success) {
+      onLoginSuccess();
+    } else {
+      setError(result.error || 'เน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธเนเธกเนเธชเธณเน€เธฃเนเธ');
+      setCompanyOptions(null);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col">
+      {/* Nav */}
+      <nav className="p-6">
+        <div className="max-w-7xl mx-auto flex items-center gap-3">
+          <div className="bg-white rounded-lg p-2 flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/ea-logo.svg" alt="EA SHE" width={52} height={40} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white">EA SHE Tools</h1>
+            <p className="text-purple-300 text-xs">tools.eashe.org</p>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main */}
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          {/* Back link */}
+          <Link href="/" className="inline-flex items-center gap-2 text-purple-300 hover:text-white mb-6 transition-colors">
+            <ArrowLeft size={16} />
+            <span className="text-sm">เธเธฅเธฑเธเธซเธเนเธฒเธซเธฅเธฑเธ</span>
+          </Link>
+
+          {/* Login Card */}
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div
+              className="px-8 py-6 text-center"
+              style={{
+                background: 'linear-gradient(135deg, #3b0764 0%, #7c3aed 50%, #5b21b6 100%)',
+              }}
+            >
+              <div className="w-20 h-16 bg-white rounded-xl flex items-center justify-center mx-auto mb-3 px-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/ea-logo.svg" alt="EA SHE" width={66} height={50} />
+              </div>
+              <h2 className="text-2xl font-bold text-white">Chemical Management</h2>
+              <p className="text-purple-200 text-sm mt-1">
+                เน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธเน€เธเธทเนเธญเธเธฑเธ”เธเธฒเธฃเธญเธธเธเธเธฃเธ“เน PPE
+              </p>
+            </div>
+
+            {/* Company selection (only when the same login exists in multiple companies) */}
+            {companyOptions ? (
+              <div className="p-8 space-y-5">
+                <div className="text-center">
+                  <Building2 size={28} className="mx-auto text-purple-600 mb-2" />
+                  <h3 className="text-lg font-bold text-gray-900">เน€เธฅเธทเธญเธเธเธฃเธดเธฉเธฑเธ—</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    เธเธฑเธเธเธตเธเธญเธเธเธธเธ“เนเธเนเธเธฒเธเนเธ”เนเนเธ {companyOptions.length} เธเธฃเธดเธฉเธฑเธ— เธเธฃเธธเธ“เธฒเน€เธฅเธทเธญเธเธเธฃเธดเธฉเธฑเธ—เธ—เธตเนเธ•เนเธญเธเธเธฒเธฃเน€เธเนเธฒเนเธเนเธเธฒเธ
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  {companyOptions.map((c) => (
+                    <button
+                      key={c.companyId}
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleSelectCompany(c.companyId)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-left text-gray-900 bg-gray-50 hover:bg-purple-50 hover:border-purple-400 disabled:opacity-50 transition-all flex items-center justify-between"
+                    >
+                      <span className="font-semibold">{c.companyName}</span>
+                      <ArrowRight size={16} className="text-purple-600" />
+                    </button>
+                  ))}
+                </div>
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                    {error}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCompanyOptions(null);
+                    setError('');
+                  }}
+                  className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  โ เธเธฅเธฑเธเนเธเธซเธเนเธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ
+                </button>
+              </div>
+            ) : (
+            <form onSubmit={handleSubmit} className="p-8 space-y-5">
+              {/* Username */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <User size={14} className="inline mr-1" />
+                  เธเธทเนเธญเธเธนเนเนเธเน
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="เนเธชเนเธเธทเนเธญเธเธนเนเนเธเน (เน€เธเนเธ komsant)"
+                  autoComplete="username"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                />
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <Lock size={14} className="inline mr-1" />
+                  เธฃเธซเธฑเธชเธเนเธฒเธ
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="เนเธชเนเธฃเธซเธฑเธชเธเนเธฒเธ"
+                  autoComplete="current-password"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                />
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                  {error}
+                </div>
+              )}
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-blue-400 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                ) : (
+                  <>
+                    เน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </button>
+            </form>
+            )}
+          </div>
+
+          <p className="text-center text-blue-400 text-xs mt-6">
+            เนเธเนเธเธทเนเธญเธเธนเนเนเธเนเนเธฅเธฐเธฃเธซเธฑเธชเธเนเธฒเธเน€เธ”เธตเธขเธงเธเธฑเธเธเธฑเธ eashe.org
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

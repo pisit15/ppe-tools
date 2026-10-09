@@ -21,6 +21,9 @@ import {
   ChevronDown,
   Network,
   ShoppingCart,
+  FlaskConical,
+  Grid3x3,
+  Warehouse,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -31,7 +34,7 @@ type NavItem = {
 };
 
 type SidebarProps = {
-  mode?: 'ppe' | 'she';
+  mode?: 'ppe' | 'she' | 'chemical';
 };
 
 export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
@@ -90,14 +93,22 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     { label: 'ผังองค์กร', href: `/she-workforce/organization${q}`, icon: <Network size={20} /> },
   ];
 
-  const navItems = mode === 'she' ? sheItems : ppeItems;
-  const sectionTitle = mode === 'she' ? 'SHE Workforce' : 'PPE Inventory';
+  const chemItems: NavItem[] = [
+    { label: 'ทะเบียนสารเคมี', href: `/chemical${q}`, icon: <FlaskConical size={20} /> },
+    { label: 'ตารางเก็บร่วม/แยก', href: `/chemical/compatibility${q}`, icon: <Grid3x3 size={20} /> },
+    { label: 'พื้นที่จัดเก็บ', href: `/chemical/storage-areas${q}`, icon: <Warehouse size={20} /> },
+  ];
+
+  const navItems = mode === 'she' ? sheItems : mode === 'chemical' ? chemItems : ppeItems;
+  const sectionTitle = mode === 'she' ? 'SHE Workforce' : mode === 'chemical' ? 'Chemical Management' : 'PPE Inventory';
   const isTeal = mode === 'she';
-  const bgColor = isTeal ? 'bg-teal-900' : 'bg-blue-900';
-  const borderColor = isTeal ? 'border-teal-800' : 'border-blue-800';
-  const hoverBg = isTeal ? 'hover:bg-teal-800' : 'hover:bg-blue-800';
-  const activeBg = isTeal ? 'bg-teal-700' : 'bg-blue-700';
-  const mutedText = isTeal ? 'text-teal-300' : 'text-blue-300';
+  const isPurple = mode === 'chemical';
+  const bgColor = isTeal ? 'bg-teal-900' : isPurple ? 'bg-purple-950' : 'bg-blue-900';
+  const borderColor = isTeal ? 'border-teal-800' : isPurple ? 'border-purple-900' : 'border-blue-800';
+  const hoverBg = isTeal ? 'hover:bg-teal-800' : isPurple ? 'hover:bg-purple-900' : 'hover:bg-blue-800';
+  const activeBg = isTeal ? 'bg-teal-700' : isPurple ? 'bg-purple-700' : 'bg-blue-700';
+  const mutedText = isTeal ? 'text-teal-300' : isPurple ? 'text-purple-300' : 'text-blue-300';
+  const selectBg = isTeal ? 'bg-teal-800 border-teal-700' : isPurple ? 'bg-purple-900 border-purple-800' : 'bg-blue-800 border-blue-700';
 
   const isActive = (href: string) => pathname === href.split('?')[0];
 
@@ -154,7 +165,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
               <select
                 value={activeCompanyId}
                 onChange={(e) => handleCompanyChange(e.target.value)}
-                className={`w-full ${isTeal ? 'bg-teal-800 border-teal-700' : 'bg-blue-800 border-blue-700'} border text-white text-sm rounded-lg pl-8 pr-8 py-2 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/30`}
+                className={`w-full ${selectBg} border text-white text-sm rounded-lg pl-8 pr-8 py-2 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/30`}
               >
                 <option value="all">ทุกบริษัท (ภาพรวม)</option>
                 {companies.map((c) => (

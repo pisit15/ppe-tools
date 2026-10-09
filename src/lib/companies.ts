@@ -23,11 +23,11 @@ export const PROJECTS: Project[] = [
   {
     id: 'chemical',
     name: 'Chemical Management',
-    description: 'จัดการสารเคมี SDS/MSDS ติดตามการใช้งานและการจัดเก็บ',
+    description: 'ทะเบียนสารเคมี แนบ SDS โปสเตอร์สรุปความปลอดภัย และตารางเก็บร่วม/แยกตามคู่มือ กรอ.',
     icon: 'flask',
     color: 'from-purple-600 to-purple-800',
     href: '/chemical',
-    ready: false,
+    ready: true,
   },
   {
     id: 'permit',
