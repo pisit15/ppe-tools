@@ -14,4 +14,10 @@ GET/PATCH /api/admin/home-cards verifies the signed Tools session and active adm
 - Hosted SQL confirms all five original cards visible at revision 1, RLS enabled, no anon/authenticated privileges and the intended service-role column grants.
 - Security advisor reports [RLS enabled with no policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), intentional for server-only access. No performance finding names the new table. Other advisor findings relate to pre-existing objects.
 
-Production rollout verification is recorded after the build and promotion. No production card has been hidden or renamed for testing.
+## Production rollout
+
+Live on https://tools.eashe.org/ on 2026-10-09. Source commit 8bd090a; deployment dpl_J4emd2shUDTVjD4ZpSnLp478n1XD (https://ppe-tools-804r5n1rb-ea-she.vercel.app). Built remotely with production configuration, staged with --skip-domain, checked, and promoted.
+
+Remote production compilation, TypeScript and 53 static pages passed. The staged public API returned the five original cards with HTTP 200; anonymous PATCH to the admin API returned HTTP 401. A fresh, signed-out Chrome browser on the custom domain then displayed all five cards, showed the admin login link with no management controls, and passed a 390px mobile overflow check with no JavaScript page errors. Admin GET and PATCH both returned HTTP 401. Screenshots: ../outputs/home-cards/production-homepage.png and production-homepage-mobile.png. No error-level runtime logs were returned during the check.
+
+Admin editing/hiding/restoring was verified against the isolated local test database, not by modifying a production card. Hosted SQL after rollout confirms all five original cards remain visible at revision 1. Existing project_portal_settings remains at revision 4.
