@@ -132,21 +132,23 @@ test('EA SHE links use shared law identities and the entry revision without reus
     const entry = catalog.entries.find(e => e.id === id);
     assert.deepEqual(sourceDocuments(hz, entry).map(l => l.code), [code]);
     const url = new URL(sourceReferenceUrl(hz, entry));
-    assert.equal(url.origin, 'https://eashe.org');
-    assert.equal(url.searchParams.get('q'), code);
+    assert.equal(url.origin, 'https://drive.google.com');
+    assert.equal(url.href, laws.find(l => l.code === code).external_url);
     assert.equal(url.hash, '');
   }
 });
 test('library edits, repealed documents and missing library links remain explicit and safe', () => {
   const { attachLibrarySources, sourceReferenceUrl } = load('src/lib/chemical/legal/library-sources.ts');
   const source = catalog.sources.find(s => s.id === 'labour');
-  const law = { ...require('./chemical-library-laws.json').find(l => l.code === 'MOL-0261'), title: 'Updated library title', status: 'repealed', file_url: 'javascript:alert(1)', external_url: 'https://eashe.org/documents/replacement.pdf' };
+  const law = { ...require('./chemical-library-laws.json').find(l => l.code === 'MOL-0261'), title: 'Updated library title', status: 'repealed', file_url: 'javascript:alert(1)', external_url: 'https://drive.google.com/file/d/updated-library-file/view' };
   const linked = attachLibrarySources([source], [law])[0];
   assert.equal(linked.library_documents[0].title, law.title);
   assert.equal(linked.library_documents[0].document_url, law.external_url);
-  assert.equal(new URL(sourceReferenceUrl(linked)).searchParams.get('status'), 'repealed');
+  assert.equal(sourceReferenceUrl(linked), law.external_url);
+  const noDrive = attachLibrarySources([source], [{ ...law, external_url: 'https://eashe.org/documents/example.pdf', gazette_url: 'https://ratchakitcha.soc.go.th/example.pdf' }])[0];
+  assert.equal(sourceReferenceUrl(noDrive), '');
   const missing = attachLibrarySources([source], [])[0];
   assert.equal(missing.library_status, 'missing');
-  assert.equal(new URL(sourceReferenceUrl(missing)).origin, 'https://eashe.org');
+  assert.equal(sourceReferenceUrl(missing), '');
   assert.equal(attachLibrarySources([source], [], true)[0].library_status, 'unavailable');
 });

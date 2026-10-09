@@ -11,14 +11,9 @@ export const SOURCE_LIBRARY_CODES: Record<string, string[]> = {
 };
 export const LIBRARY_CODES = [...new Set(Object.values(SOURCE_LIBRARY_CODES).flat())];
 
-export function libraryUrl(query: string, status?: string): string {
-  const params = new URLSearchParams({ view: 'all', q: query });
-  if (status === 'repealed') params.set('status', status);
-  return 'https://eashe.org/projects/legal/library?' + params.toString();
-}
 function safeDocumentUrl(value: string | null): string | null {
   if (!value) return null;
-  try { const url = new URL(value); return url.protocol === 'https:' || url.protocol === 'http:' ? value : null; }
+  try { const url = new URL(value); return url.protocol === 'https:' && ['drive.google.com', 'docs.google.com'].includes(url.hostname) ? value : null; }
   catch { return null; }
 }
 export function attachLibrarySources(sources: LegalSource[], laws: LibraryLaw[], unavailable = false): LegalSource[] {
@@ -29,7 +24,6 @@ export function attachLibrarySources(sources: LegalSource[], laws: LibraryLaw[],
       const law = byCode.get(code);
       return law ? [{
         id: law.id, code: law.code, title: law.title, status: law.status,
-        library_url: libraryUrl(law.code, law.status),
         document_url: safeDocumentUrl(law.file_url) || safeDocumentUrl(law.external_url) || safeDocumentUrl(law.gazette_url),
       }] : [];
     });
@@ -48,5 +42,5 @@ export function sourceDocuments(source: LegalSource, entry?: LegalEntry): Librar
 export function sourceReferenceUrl(source: LegalSource, entry?: LegalEntry): string {
   if (source.id === 'nist') return source.url;
   const documents = sourceDocuments(source, entry);
-  return documents.length === 1 ? documents[0].library_url : libraryUrl(source.id === 'hz' ? 'บัญชีรายชื่อวัตถุอันตราย' : source.title);
+  return documents.length === 1 ? documents[0].document_url || '' : '';
 }

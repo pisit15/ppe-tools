@@ -4,7 +4,7 @@ export const CATEGORY_LABELS: Record<LegalCategory, string> = {
   hazard: 'ชนิดวัตถุอันตราย', reporting: 'วอ./อก.7', labour: 'สอ.1', health: 'ตรวจสุขภาพ', exposure: 'ตรวจความเข้มข้น',
 };
 export type LibraryLaw = { id: string; code: string; title: string; status: string; file_url: string | null; external_url: string | null; gazette_url: string | null };
-export type LibraryDocument = Pick<LibraryLaw, 'id' | 'code' | 'title' | 'status'> & { library_url: string; document_url: string | null };
+export type LibraryDocument = Pick<LibraryLaw, 'id' | 'code' | 'title' | 'status'> & { document_url: string | null };
 export type LegalSource = {
   id: string; title: string; url: string; note: string; checked_on: string;
   library_documents?: LibraryDocument[];

@@ -33,19 +33,21 @@ test('register → verified legal reference → source and CSV, without assessme
   await page.locator('summary').filter({ hasText: 'ชนิดวัตถุอันตราย' }).filter({ hasText: 'บัญชี 5.1 ลำดับ 367' }).click();
   await expect(page.getByText('ชนิดที่ 3 ตามเงื่อนไขรายการ')).toBeVisible();
   await expect(page.getByText('ความเข้มข้นมากกว่าร้อยละ 75', { exact: false })).toBeVisible();
-  await expect(page.getByRole('link', { name: /· MIND-0370/ })).toHaveAttribute('href', 'https://eashe.org/projects/legal/library?view=all&q=MIND-0370');
-  await expect(page.getByRole('link', { name: 'เปิดเอกสารจากคลัง EA SHE (MIND-0370)' })).toHaveAttribute('href', require('./chemical-library-laws.json').find(l => l.code === 'MIND-0370').external_url);
+  await expect(page.getByRole('link', { name: /· MIND-0370/ })).toHaveAttribute('href', require('./chemical-library-laws.json').find(l => l.code === 'MIND-0370').external_url);
+  await expect(page.getByRole('link', { name: /เปิดเอกสารจากคลัง EA SHE/ })).toHaveCount(0);
   await page.locator('summary').filter({ hasText: 'บัญชี กสร. ลำดับ 7' }).click();
   for (const code of ['MOL-0261','MOL-0260','MOL-0262','MOL-1117']) {
-    await expect(page.getByRole('link', { name: new RegExp('· ' + code) })).toHaveAttribute('href', 'https://eashe.org/projects/legal/library?view=all&q=' + code);
+    await expect(page.getByRole('link', { name: new RegExp('· ' + code) })).toHaveAttribute('href', require('./chemical-library-laws.json').find(l => l.code === code).external_url);
   }
+  await expect(page.locator('a[href*="eashe.org/projects/legal/library"]')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'บันทึกบริบทและผลคัดกรอง' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'บันทึกผลคัดกรอง', exact: true })).toHaveCount(0);
   const downloaded = page.waitForEvent('download'); await page.getByRole('button', { name: 'ส่งออกผล CSV' }).click();
   const download = await downloaded;
   expect(download.suggestedFilename()).toBe('chemical-legal-67-64-1.csv');
   const csv = require('node:fs').readFileSync(await download.path(), 'utf8');
-  expect(csv).toContain('https://eashe.org/projects/legal/library?view=all&q=MOL-0261');
+  expect(csv).toContain(require('./chemical-library-laws.json').find(l => l.code === 'MOL-0261').external_url);
+  expect(csv).not.toContain('eashe.org/projects/legal/library');
   expect(csv).not.toContain('osh.labour.go.th');
   expect(csv).not.toContain('#page=');
   await page.screenshot({ path: 'test-results/chemical-legal-desktop.png', fullPage: true });
