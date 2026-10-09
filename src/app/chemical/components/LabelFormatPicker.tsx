@@ -26,7 +26,7 @@ export function LabelFormatPicker({ options, onChange }: { options: LabelOptions
         <label className="flex gap-2 items-center"><input name="label-content" type="radio" value="full" checked={options.content === 'full'} onChange={() => set('content', 'full')} className="accent-purple-700" /> รายละเอียดครบ</label>
         <label className="flex gap-2 items-center"><input name="label-content" type="radio" value="compact" checked={options.content === 'compact'} onChange={() => onChange({ ...options, content: 'compact', fontSize: 8 })} className="accent-purple-700" /> ฉลากย่อสำหรับภาชนะเล็ก</label>
       </div>
-      {options.content === 'compact' && <p className="text-xs text-gray-600 mt-2">พิมพ์ชื่อ GHS คำสัญญาณ ข้อความอันตราย ปริมาณ เบอร์ฉุกเฉิน และ QR SDS · ไม่พิมพ์ข้อควรระวัง P ผู้จำหน่าย และข้อมูลเพิ่มเติม</p>}
+      {options.content === 'compact' && <p className="text-xs text-gray-600 mt-2">พิมพ์ชื่อ GHS คำสัญญาณ ข้อความอันตราย ปริมาณ เบอร์ฉุกเฉิน รูป PPE ที่เลือก และ QR SDS · ไม่พิมพ์ข้อควรระวัง P ผู้จำหน่าย และข้อมูลเพิ่มเติม</p>}
     </fieldset>
     <details className="text-sm" open={selected ? undefined : true}>
       <summary className="cursor-pointer text-purple-700 font-semibold">กำหนดขนาดเอง / รูปแบบไฟล์</summary>

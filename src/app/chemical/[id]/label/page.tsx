@@ -8,6 +8,7 @@ import { ArrowLeft, Download, FileDown, LoaderCircle, Ruler } from 'lucide-react
 import type { ChemSubstance } from '@/lib/types';
 import { useChemicalData } from '@/lib/chemical/useChemicalData';
 import { GHS_PICTOGRAMS, SIGNAL_WORDS } from '@/lib/chemical/ghs';
+import { LABEL_PPE, ppeFile } from '@/lib/chemical/ppe';
 import { labelLayout, labelProblems, type LabelDraft, type LabelOptions } from '@/lib/chemical/label';
 import type { LabelHistory } from '@/lib/chemical/label-versions';
 import { useLabelVersions } from '@/lib/chemical/useLabelVersions';
@@ -88,6 +89,7 @@ function LabelEditor({ substance, history }: { substance: ChemSubstance; history
           <LabelFormatPicker options={options} onChange={next => { setOptions(next); setDownloaded(false); setDownloadError(''); }} />
           <div className="border-t border-gray-100 pt-3 text-sm">
             <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={options.includeQr && !!draft.sdsUrl} disabled={!draft.sdsUrl} onChange={e => configure('includeQr', e.target.checked)} className="accent-purple-700" /> ใส่ QR Code ไปยัง SDS ฉบับจริง</label>
+            {draft.sdsUrl && <div className="mt-3 flex flex-wrap items-center gap-2"><label htmlFor="label-qr-size" className="text-sm">ขนาด QR Code</label><select id="label-qr-size" disabled={!options.includeQr} value={options.qrSize ?? 16} onChange={e => configure('qrSize', Number(e.target.value) as LabelOptions['qrSize'])} className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"><option value={16}>เล็ก · 16 มม.</option><option value={20}>กลาง · 20 มม.</option><option value={24}>ใหญ่ · 24 มม.</option></select></div>}
             {draft.sdsUrl ? <><p className="text-xs text-gray-600 mt-2">สแกนเพื่อเปิด SDS ที่แนบอยู่ล่าสุดได้โดยไม่ต้องเข้าสู่ระบบ · ลิงก์ภายนอกใช้สิทธิ์ของเจ้าของไฟล์</p><a href={draft.sdsUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-purple-700 underline mt-1">ทดสอบเปิด SDS</a></> : <p className="text-xs text-amber-800 mt-2">สารนี้ยังไม่มี SDS แนบ จึงยังสร้าง QR ไม่ได้ เพิ่มไฟล์หรือลิงก์ SDS ในทะเบียนก่อน</p>}
           </div>
         </section>
@@ -103,6 +105,19 @@ function LabelEditor({ substance, history }: { substance: ChemSubstance; history
               <span className="text-xs">{p.code}</span><input type="checkbox" aria-label={`${p.code} ${p.nameTh}`} checked={draft.pictograms.includes(p.code)} onChange={e => change('pictograms', e.target.checked ? [...draft.pictograms, p.code] : draft.pictograms.filter(c => c !== p.code))} className="accent-purple-700" />
             </label>)}
           </div></fieldset>
+          <fieldset className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+            <legend className="px-1 font-semibold text-sm text-gray-800">รูปอุปกรณ์ป้องกันส่วนบุคคล (PPE)</legend>
+            <p className="text-xs text-gray-600 mb-3">เลือกตาม SDS ของผลิตภัณฑ์ เลือกได้หลายรูปหรือไม่เลือกเลย · พิมพ์รูปขนาด 10 มม.</p>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {LABEL_PPE.map(p => <label key={p.code} className={`flex flex-col items-center justify-between gap-1 cursor-pointer rounded-xl border p-2 text-center ${draft.ppe.includes(p.code) ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={ppeFile(p.code)} alt="" width={36} height={36} />
+                <span className="text-xs leading-5">{p.name}</span>
+                <input type="checkbox" aria-label={`PPE ${p.name}`} checked={draft.ppe.includes(p.code)} onChange={e => change('ppe', e.target.checked ? [...draft.ppe, p.code] : draft.ppe.filter(code => code !== p.code))} className="accent-blue-700" />
+              </label>)}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-gray-600">{draft.ppe.length ? `เลือก ${draft.ppe.length} รูป` : 'ไม่แสดง PPE บนฉลาก'}</span><button type="button" disabled={!draft.ppe.length} onClick={() => change('ppe', [])} className="text-blue-700 underline disabled:text-gray-400 disabled:no-underline">ล้างการเลือก PPE</button></div>
+          </fieldset>
           <div><label htmlFor="label-signal" className={labelCls}>คำสัญญาณ</label><select id="label-signal" className={inputCls} value={draft.signal} onChange={e => change('signal', e.target.value as LabelDraft['signal'])}><option value="">ยังไม่ระบุ</option>{SIGNAL_WORDS.map(s => <option value={s.value} key={s.value}>{s.labelTh}</option>)}</select></div>
           <p className="text-xs text-gray-600">ข้อความ H/P ที่เติมให้อัตโนมัติเป็นคำแปลย่อในระบบ สามารถแทนที่ด้วยข้อความบนฉลากจาก SDS ของผลิตภัณฑ์ได้โดยตรง</p>
           {field('hazards', 'ข้อความแสดงความเป็นอันตราย (H)', 5)}

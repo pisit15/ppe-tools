@@ -21,10 +21,11 @@ const publicSubstanceId = process.argv[3];
       expect(sds.headers().location).toMatch(/^https?:\/\//);
       expect(sds.headers()['cache-control']).toContain('no-store');
     }
-    for (const path of ['/fonts/NotoSansThai.ttf', ...Array.from({ length: 9 }, (_, i) => `/ghs/GHS0${i+1}.png`)]) {
+    const equipment = ['goggles','face-shield','gloves','respirator','dust-mask','coverall','apron','boots','scba'];
+    for (const path of ['/fonts/NotoSansThai.ttf', ...Array.from({ length: 9 }, (_, i) => `/ghs/GHS0${i+1}.png`), ...equipment.map(code=>`/ppe-label/${code}.svg`)]) {
       const response = await page.request.get(base + path);
       expect(response.status(), path).toBe(200);
-      expect((await response.body()).length).toBeGreaterThan(1000);
+      expect((await response.body()).length).toBeGreaterThan(path.endsWith('.svg') ? 250 : 1000);
     }
     const intercepted = [];
     await page.route('**/api/**', async route => {
@@ -53,6 +54,10 @@ const publicSubstanceId = process.argv[3];
     await expect(page.getByLabel('เลือกเวอร์ชันฉลาก')).toHaveValue('2');
     await expect(page.getByLabel('ชื่อสารเคมี / ผลิตภัณฑ์',{exact:true})).toHaveValue('Saved label version test');
     await expect(page.getByText('บันทึกโดย ผู้บันทึกสมมติ',{exact:false})).toBeVisible();
+    await expect(page.getByLabel('ขนาด QR Code',{exact:true})).toHaveValue('16');
+    await expect(page.getByRole('checkbox',{name:/^PPE /})).toHaveCount(9);
+    await page.getByRole('checkbox',{name:'PPE แว่นตานิรภัย',exact:true}).check();
+    await page.getByRole('checkbox',{name:'PPE ถุงมือป้องกันสารเคมี',exact:true}).check();
     await expect(page.getByTestId('label-preview')).toBeVisible();
     await page.getByLabel('ฉลากย่อสำหรับภาชนะเล็ก', {exact:true}).check();
     await page.getByRole('button',{name:'ฉลากแนวนอน 4 ดวงต่อ A4',exact:true}).click();
@@ -78,6 +83,6 @@ const publicSubstanceId = process.argv[3];
     expect(errors).toEqual([]);
     expect(intercepted).toContain(`/api/chemical/substances/${id}`);
     await page.screenshot({ path: 'test-results/chemical-label-deployed-synthetic.png', fullPage: true });
-    console.log(JSON.stringify({ base, anonymousApiStatus: 401, anonymousLabelHistoryStatus: 401, restoredSyntheticVersion: 2, publicSdsStatus, assets: 10, decodedQr: decoded, syntheticClientPdfBytes: pdf.length, filename: download.suggestedFilename(), pageErrors: errors, note: 'No authenticated live API calls or production writes; session/substance/history mocked only in isolated browser.' }));
+    console.log(JSON.stringify({ base, anonymousApiStatus: 401, anonymousLabelHistoryStatus: 401, restoredSyntheticVersion: 2, publicSdsStatus, assets: 19, selectedPpe: 2, qrSizeMm: 16, decodedQr: decoded, syntheticClientPdfBytes: pdf.length, filename: download.suggestedFilename(), pageErrors: errors, note: 'No authenticated live API calls or production writes; session/substance/history mocked only in isolated browser.' }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

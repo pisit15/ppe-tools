@@ -178,3 +178,85 @@ test('public SDS resolves attachments without login, follows replacements, and e
   expect((await page.request.delete(`/api/chemical/substances/${attached.id}`)).status()).toBe(200);
   expect((await request.get(`/sds/${attached.id}`,{maxRedirects:0})).status()).toBe(404);
 });
+
+test('optional PPE prints small, persists with QR size, supports old versions, and exports readable QR at all sizes', async ({ page }) => {
+  await login(page.request);
+  const substance=await create(page.request,{name:'PPE label fixture',h_codes:['H225'],p_codes:[],ghs_pictograms:['GHS02'],sds_url:'https://example.com/sds.pdf'});
+  const api=`/api/chemical/substances/${substance.id}/labels`;
+  // Exact old schema shape: neither PPE nor QR size existed before this release.
+  const legacy={request_id:require('node:crypto').randomUUID(),title:'Legacy',snapshot:{schema:1,
+    draft:{name:'PPE label fixture',identity:'CAS 67-64-1',pictograms:['GHS02'],signal:'Danger',hazards:'H225 ของเหลวและไอไวไฟสูง',precautions:'',supplier:'',emergency:'',contents:'',extra:''},
+    options:{width:93,height:136.5,fontSize:9,copies:4,layout:'a4',pageOrientation:'portrait',content:'full',includeQr:true}}};
+  expect((await page.request.post(api,{data:legacy})).status()).toBe(201);
+  await page.goto(`/chemical/${substance.id}/label`);
+  await ready(page);
+  await expect(page.getByLabel('ขนาด QR Code',{exact:true})).toHaveValue('16');
+  const ppe=page.getByRole('checkbox',{name:/^PPE /});
+  await expect(ppe).toHaveCount(9);
+  for(const item of await ppe.all()) await expect(item).not.toBeChecked();
+  await page.getByLabel('ฉลากย่อสำหรับภาชนะเล็ก',{exact:true}).check();
+  await page.getByRole('button',{name:'ฉลากแนวนอน 4 ดวงต่อ A4',exact:true}).click();
+  for(const name of ['PPE แว่นตานิรภัย','PPE ถุงมือป้องกันสารเคมี','PPE หน้ากากกรองไอ / ก๊าซ']) await page.getByRole('checkbox',{name,exact:true}).check();
+  await page.getByText('อ่านข้อความบนฉลาก',{exact:true}).click();
+  await ready(page);
+  await expect(page.locator('details').filter({hasText:'อ่านข้อความบนฉลาก'})).toContainText('รูป PPE: แว่นตานิรภัย · ถุงมือป้องกันสารเคมี · หน้ากากกรองไอ / ก๊าซ');
+  await page.addScriptTag({path:require.resolve('jsqr')});
+  for(const size of [16,20,24]) {
+    await page.getByLabel('ขนาด QR Code',{exact:true}).selectOption(String(size)); await ready(page);
+    // Independently decode the real raster at 300 DPI and a downsampled 150 DPI print resolution.
+    for(const scale of [1,0.5]) {
+      const decoded=await page.evaluate(scale=>{
+        const image=document.querySelector('[data-testid="label-preview"]');const canvas=document.createElement('canvas');
+        canvas.width=Math.round(image.naturalWidth*scale);canvas.height=Math.round(image.naturalHeight*scale);
+        const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0,canvas.width,canvas.height);
+        const p=ctx.getImageData(0,0,canvas.width,canvas.height);return window.jsQR(p.data,p.width,p.height)?.data;
+      },scale);
+      expect(decoded).toBe(`https://tools.eashe.org/sds/${substance.id}`);
+    }
+    const event=page.waitForEvent('download');await page.getByRole('button',{name:'ดาวน์โหลด PDF',exact:true}).click();
+    await(await event).saveAs(`test-results/chemical-label-ppe-qr-${size}.pdf`);
+  }
+  await page.getByLabel('ขนาด QR Code',{exact:true}).selectOption('20');
+  await page.getByRole('button',{name:'บันทึกเป็นเวอร์ชันใหม่'}).click();
+  await expect(page.getByText('บันทึก V2 แล้ว',{exact:false})).toBeVisible();
+  await page.reload(); await ready(page);
+  await expect(page.getByLabel('ขนาด QR Code',{exact:true})).toHaveValue('20');
+  await expect(page.getByRole('checkbox',{name:'PPE ถุงมือป้องกันสารเคมี',exact:true})).toBeChecked();
+  const saved=(await(await page.request.get(api+'?version=2')).json()).data;
+  expect(saved.snapshot.draft.ppe).toEqual(['goggles','gloves','respirator']);expect(saved.snapshot.options.qrSize).toBe(20);
+  const fresh=(await(await page.request.get(`/api/chemical/substances/${substance.id}`)).json()).data;
+  expect(fresh.ppe_required).toEqual([]);expect(fresh.updated_at).toBe(substance.updated_at);
+  await page.locator('fieldset').filter({has:page.locator('legend').filter({hasText:'รูปอุปกรณ์ป้องกันส่วนบุคคล (PPE)'})}).last().screenshot({path:'test-results/chemical-label-ppe-picker.png'});
+  await page.screenshot({path:'test-results/chemical-label-ppe-screen.png',fullPage:true});
+  // All nine icons wrap; no selection is silently removed when a small label overflows.
+  for(const item of await ppe.all()) await item.check();
+  await page.getByRole('button',{name:'ฉลากแนวนอน 8 ดวงต่อ A4',exact:true}).click(); await ready(page);
+  await expect(page.getByRole('checkbox',{name:/^PPE /}).filter({visible:true})).toHaveCount(9);
+  await page.getByRole('button',{name:'ฉลากแนวตั้ง 1 ดวงต่อ A4',exact:true}).click(); await ready(page);
+  let event=page.waitForEvent('download');await page.getByRole('button',{name:'ดาวน์โหลด PDF',exact:true}).click();
+  await(await event).saveAs('test-results/chemical-label-ppe-nine.pdf');
+  await page.getByRole('button',{name:'ล้างการเลือก PPE'}).click(); await ready(page);
+  event=page.waitForEvent('download');await page.getByRole('button',{name:'ดาวน์โหลด PDF',exact:true}).click();
+  await(await event).saveAs('test-results/chemical-label-ppe-none.pdf');
+  await page.getByRole('button',{name:'บันทึกเป็นเวอร์ชันใหม่'}).click();await expect(page.getByText('บันทึก V3 แล้ว',{exact:false})).toBeVisible();
+  await page.reload();await ready(page);
+  for(const item of await ppe.all()) await expect(item).not.toBeChecked();
+  await page.getByLabel('เลือกเวอร์ชันฉลาก').selectOption('1');await ready(page);
+  for(const item of await ppe.all()) await expect(item).not.toBeChecked();
+  await expect(page.getByLabel('ขนาด QR Code',{exact:true})).toHaveValue('16');
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:'test-results/chemical-label-ppe-mobile.png',fullPage:true});
+});
+
+test('a selected PPE image failure blocks PDF rather than silently omitting protection symbols', async ({ page }) => {
+  await login(page.request);
+  const substance=await create(page.request);
+  await page.route('**/ppe-label/gloves.svg',route=>route.abort());
+  await page.goto(`/chemical/${substance.id}/label`);await ready(page);
+  await page.getByRole('checkbox',{name:'PPE ถุงมือป้องกันสารเคมี',exact:true}).check();
+  await expect(page.locator('main').getByRole('alert')).toContainText('โหลดสัญลักษณ์ PPE ไม่สำเร็จ');
+  await expect(page.getByRole('button',{name:'ดาวน์โหลด PDF',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'ล้างการเลือก PPE'}).click();await ready(page);
+  await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
+});

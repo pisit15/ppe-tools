@@ -1,11 +1,13 @@
 import type { ChemSubstance, GhsPictogramCode, SignalWord } from '@/lib/types';
 import { H_STATEMENTS, P_STATEMENTS } from './ghs';
+import type { LabelPpeCode } from './ppe';
 
 export const MISSING_LABEL_TEXT = '[เติมข้อความจาก SDS]';
 export interface LabelDraft {
   name: string;
   identity: string;
   pictograms: GhsPictogramCode[];
+  ppe: LabelPpeCode[];
   signal: SignalWord | '';
   hazards: string;
   precautions: string;
@@ -19,6 +21,8 @@ export interface LabelDraft {
 export interface LabelOptions {
   width: number; height: number; fontSize: number; copies: number; layout: 'a4' | 'single';
   pageOrientation: 'portrait' | 'landscape'; content: 'full' | 'compact'; includeQr: boolean;
+  /** Optional for snapshots saved before QR sizing was introduced. */
+  qrSize?: 16 | 20 | 24;
 }
 export interface LabelPreset {
   id: string; orientation: 'portrait' | 'landscape'; pageOrientation: 'portrait' | 'landscape';
@@ -40,7 +44,7 @@ export const LABEL_PRESETS: LabelPreset[] = [
   preset('portrait-4', 'portrait', 'portrait', 2, 2),
   preset('portrait-1', 'portrait', 'portrait', 1, 1),
 ];
-export const DEFAULT_LABEL_OPTIONS: LabelOptions = { width: 93, height: 136.5, fontSize: 9, copies: 4, layout: 'a4', pageOrientation: 'portrait', content: 'full', includeQr: true };
+export const DEFAULT_LABEL_OPTIONS: LabelOptions = { width: 93, height: 136.5, fontSize: 9, copies: 4, layout: 'a4', pageOrientation: 'portrait', content: 'full', includeQr: true, qrSize: 16 };
 export function publicSdsUrl(id: string) { return `https://tools.eashe.org/sds/${encodeURIComponent(id)}`; }
 export function applyLabelPreset(options: LabelOptions, p: LabelPreset): LabelOptions {
   return { ...options, width: p.width, height: p.height, pageOrientation: p.pageOrientation, layout: 'a4', copies: p.count };
@@ -59,6 +63,7 @@ export function labelDraft(substance: ChemSubstance): LabelDraft {
     name: substance.name,
     identity: [substance.chemical_name, substance.cas_no && `CAS ${substance.cas_no}`, substance.un_no && `UN ${substance.un_no}`].filter(Boolean).join(' · '),
     pictograms: [...new Set(substance.ghs_pictograms || [])],
+    ppe: [],
     signal: substance.signal_word || '',
     hazards: statements(substance.h_codes || [], H_STATEMENTS),
     precautions: statements(substance.p_codes || [], P_STATEMENTS),

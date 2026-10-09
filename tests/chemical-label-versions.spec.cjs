@@ -84,7 +84,7 @@ test('API isolates tenants, attributes actual actor, validates payload and keeps
   expect(retry.id).toBe(first.id); expect(retry.version).toBe(1);
   body.snapshot.draft.name='different'; expect((await request.post(url,{data:body})).status()).toBe(409);
   for(const method of ['put','patch','delete']) expect((await request[method](url,{data:{title:'Overwrite'}})).status()).toBe(405);
-  for(const mutate of [p=>p.snapshot.options.width=500,p=>p.snapshot.options.copies=0,p=>p.snapshot.options.includeQr='false',p=>p.snapshot.options.layout='evil',p=>p.snapshot.options.layout=['a4'],p=>p.snapshot.draft.signal=['Danger'],p=>p.snapshot.draft.name='x'.repeat(501),p=>p.snapshot.draft.pictograms=['GHS10']]) {
+  for(const mutate of [p=>p.snapshot.options.width=500,p=>p.snapshot.options.copies=0,p=>p.snapshot.options.includeQr='false',p=>p.snapshot.options.layout='evil',p=>p.snapshot.options.layout=['a4'],p=>p.snapshot.draft.signal=['Danger'],p=>p.snapshot.draft.name='x'.repeat(501),p=>p.snapshot.draft.pictograms=['GHS10'],p=>p.snapshot.draft.ppe=['https://evil.example/a.svg'],p=>p.snapshot.draft.ppe='gloves',p=>p.snapshot.options.qrSize=8,p=>p.snapshot.options.qrSize='16']) {
     const invalid=payload();mutate(invalid);expect((await request.post(url,{data:invalid})).status()).toBe(400);
   }
   const parallel=await Promise.all(Array.from({length:5},(_,i)=>request.post(url,{data:payload('concurrent '+i)})));

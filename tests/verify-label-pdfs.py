@@ -20,6 +20,7 @@ for preset, direction, count, width, height in manifest['presets']:
         rect = list(map(float, annotation.get_object()['/Rect']))
         left, right = sorted([rect[0], rect[2]])
         bottom, top = sorted([rect[1], rect[3]])
+        assert abs((right - left) * 25.4 / 72 - 16) < 0.01, (preset, 'QR must be 16 mm by default')
         assert 0 <= left < right <= float(page.mediabox.width)
         assert 0 <= bottom < top <= float(page.mediabox.height)
     # Extract the exact PDF image for an independent QR decoder, without re-rendering it.

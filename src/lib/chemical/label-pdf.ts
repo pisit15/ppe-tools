@@ -1,4 +1,5 @@
 import { ghsPictogram } from './ghs';
+import { LABEL_PPE, ppeFile } from './ppe';
 import { labelLayout, labelProblems, type LabelDraft, type LabelOptions } from './label';
 
 const DPI = 300;
@@ -17,11 +18,11 @@ async function labelFont() {
   }
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(src: string, kind = 'GHS'): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('โหลดสัญลักษณ์ GHS ไม่สำเร็จ กรุณาลองใหม่'));
+    img.onerror = () => reject(new Error(`โหลดสัญลักษณ์ ${kind} ไม่สำเร็จ กรุณาลองใหม่`));
     img.src = src;
   });
 }
@@ -57,7 +58,15 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
     if (!p) throw new Error(`ไม่พบสัญลักษณ์ ${code}`);
     return p;
   });
-  const [images] = await Promise.all([Promise.all(pictures.map(p => loadImage(p.file))), labelFont()]);
+  const equipment = (draft.ppe || []).map(code => {
+    const p = LABEL_PPE.find(item => item.code === code);
+    if (!p) throw new Error(`ไม่พบรูป PPE ${code}`);
+    return p;
+  });
+  const [images, ppeImages] = await Promise.all([
+    Promise.all(pictures.map(p => loadImage(p.file))),
+    Promise.all(equipment.map(p => loadImage(ppeFile(p.code), 'PPE'))), labelFont(),
+  ]);
   const qrCode = options.includeQr && draft.sdsUrl ? (await import('qrcode')).create(draft.sdsUrl, { errorCorrectionLevel: 'M' }) : null;
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -65,9 +74,11 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
   const compact = options.content === 'compact';
   const inset = compact ? 3 : 4;
   const usable = options.width - inset * 2;
-  const qr = qrCode ? { x: options.width - inset - 24, y: inset, size: 24, url: draft.sdsUrl } : undefined;
-  const sideQr = !!qr && usable >= 48;
-  const headerWidth = usable - (sideQr ? 28 : 0);
+  const qrSize = options.qrSize ?? 16;
+  if (![16, 20, 24].includes(qrSize)) throw new Error('เลือกขนาด QR Code 16, 20 หรือ 24 มม.');
+  const qr = qrCode ? { x: options.width - inset - qrSize, y: inset, size: qrSize, url: draft.sdsUrl } : undefined;
+  const sideQr = !!qr && usable >= qrSize + 24;
+  const headerWidth = usable - (sideQr ? qrSize + 4 : 0);
   const runs: TextRun[] = [];
   let y = inset;
   function text(value: string, pt = options.fontSize, bold = false, color = '#111827', width = usable) {
@@ -79,6 +90,12 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
       runs.push({ text: line, x: inset, y: y + pt * PT_TO_MM * 1.1, pt, bold, color });
       y += lineHeight;
     }
+  }
+  function qrCaption() {
+    if (!qr) return;
+    ctx!.font = `700 ${7 * PT_TO_MM}px ${FONT}`;
+    const caption = 'SDS ฉบับเต็ม';
+    runs.push({ text: caption, x: qr.x + (qr.size - ctx!.measureText(caption).width) / 2, y: qr.y + qr.size + 2.5, pt: 7, bold: true, color: '#111827' });
   }
   if (draft.demo) { text('ข้อมูลสาธิต', 8, true, '#92400e', headerWidth); y += 1; }
   text(draft.name, compact ? 11 : 14, true, '#111827', headerWidth);
@@ -94,19 +111,25 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
   if (draft.signal === 'Warning') text('ระวัง / WARNING', compact ? 10 : 13, true, '#92400e', headerWidth);
   if (!draft.signal) text('ยังไม่ระบุคำสัญญาณ', 10, true, '#92400e', headerWidth);
   if (qr && sideQr) {
-    runs.push({ text: 'SDS ฉบับเต็ม', x: qr.x + 2, y: qr.y + 27, pt: 7, bold: true, color: '#111827' });
-    y = Math.max(y, qr.y + 29);
+    qrCaption();
+    y = Math.max(y, qr.y + qr.size + 4.5);
   }
   y += 1;
   if (draft.hazards) { if (!compact) text('ข้อความแสดงความเป็นอันตราย', options.fontSize, true); text(draft.hazards); y += 1.5; }
   if (!compact && draft.precautions) { text('ข้อควรระวัง', options.fontSize, true); text(draft.precautions); y += 1.5; }
+  const ppeSize = 10;
+  const ppeGap = 2;
+  const ppeColumns = Math.max(1, Math.floor((usable + ppeGap) / (ppeSize + ppeGap)));
+  if (ppeImages.length) { text('PPE', 8, true, '#1762ad'); y += 1; }
+  const ppeY = y;
+  if (ppeImages.length) y += Math.ceil(ppeImages.length / ppeColumns) * (ppeSize + ppeGap);
   if (!compact && draft.supplier) text(`ผู้จำหน่าย: ${draft.supplier}`);
   if (draft.emergency) text(`ฉุกเฉิน: ${draft.emergency}`, options.fontSize, true);
   if (!compact && draft.extra) text(draft.extra);
   if (qr && !sideQr) {
     qr.y = y + 1;
-    runs.push({ text: 'SDS ฉบับเต็ม', x: qr.x + 2, y: qr.y + 27, pt: 7, bold: true, color: '#111827' });
-    y = qr.y + 29;
+    qrCaption();
+    y = qr.y + qr.size + 4.5;
   }
   const requiredHeight = Math.ceil(y + inset);
   const height = Math.max(requiredHeight, options.height);
@@ -127,6 +150,9 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
   images.forEach((img, index) => {
     ctx.drawImage(img, inset + (index % pictureColumns) * (pictureSize + pictureGap), pictureY + Math.floor(index / pictureColumns) * (pictureSize + pictureGap), pictureSize, pictureSize);
   });
+  ppeImages.forEach((img, index) => {
+    ctx.drawImage(img, inset + (index % ppeColumns) * (ppeSize + ppeGap), ppeY + Math.floor(index / ppeColumns) * (ppeSize + ppeGap), ppeSize, ppeSize);
+  });
   if (qrCode && qr) {
     // Integer device pixels, four-module quiet zone; no interpolation of the QR modules.
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -141,7 +167,8 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
     }
     ctx.restore();
   }
-  return { image: canvas.toDataURL('image/png'), width: options.width, height, requiredHeight, lines: runs.map(r => r.text), qr };
+  return { image: canvas.toDataURL('image/png'), width: options.width, height, requiredHeight,
+    lines: [...runs.map(r => r.text), ...(equipment.length ? [`รูป PPE: ${equipment.map(p => p.name).join(' · ')}`] : [])], qr };
 }
 
 export async function downloadChemicalLabel(draft: LabelDraft, options: LabelOptions) {

@@ -11,3 +11,10 @@ for (const [id] of manifest.presets) {
   if (code?.data !== manifest.url) throw new Error(`PDF QR decode failed: ${id}`);
   console.log(`${id}: PDF-embedded QR decoded successfully`);
 }
+const ppeManifest = path.join(root, 'chemical-label-ppe.json');
+if (fs.existsSync(ppeManifest)) for (const {name,url} of JSON.parse(fs.readFileSync(ppeManifest,'utf8'))) {
+  const png = PNG.sync.read(fs.readFileSync(path.join(root, `embedded-${name}.png`)));
+  const code = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
+  if (code?.data !== url) throw new Error(`PPE PDF QR decode failed: ${name}`);
+  console.log(`${name}: PDF-embedded QR matches its clickable SDS link`);
+}
