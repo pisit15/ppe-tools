@@ -9,6 +9,7 @@ import { STORAGE_CLASS_ORDER, STORAGE_CLASSES, STORAGE_CONDITIONS, SEPARATION_RU
 import type { CompatCell } from '@/lib/chemical/storage-classes';
 import { useCompanyScope } from '@/lib/chemical/useCompanyScope';
 import { StorageClassChip, VIZ, inputCls } from '../components/ui';
+import { SubstanceMatrix } from '../components/SubstanceMatrix';
 
 const CELL_STYLE: Record<'ok' | 'cond' | 'no', { bg: string; fg: string }> = {
   ok: { bg: '#59A14F', fg: '#fff' },
@@ -25,7 +26,7 @@ export default function CompatibilityPage() {
   const [areaPick, setAreaPick] = useState('');
   const [hover, setHover] = useState<{ a: StorageClassCode; b: StorageClassCode } | null>(null);
   const [pinned, setPinned] = useState<{ a: StorageClassCode; b: StorageClassCode } | null>(null);
-  const [tab, setTab] = useState<'check' | 'matrix'>('check');
+  const [tab, setTab] = useState<'check' | 'substances' | 'matrix'>('check');
 
   useEffect(() => {
     Promise.all([
@@ -72,10 +73,12 @@ export default function CompatibilityPage() {
       </div>
 
       <div className="flex gap-2">
-        {([['check', 'ตรวจสอบสารที่เก็บด้วยกัน'], ['matrix', 'ตารางอ้างอิง 23 × 23']] as const).map(([k, l]) => (
+        {([['check', 'ตรวจสอบสารที่เก็บด้วยกัน'], ['substances', 'ตารางสารเคมีจริง'], ['matrix', 'ตารางอ้างอิง 23 × 23']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-4 py-2 rounded-lg text-sm font-semibold ${tab === k ? 'bg-purple-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}>{l}</button>
         ))}
       </div>
+
+      {tab === 'substances' && <SubstanceMatrix items={items} areas={areas} isAll={isAll} q={q} />}
 
       {tab === 'check' && (
         <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4">
