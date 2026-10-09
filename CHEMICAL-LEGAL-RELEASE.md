@@ -1,6 +1,8 @@
-# Chemical legal screening — local release candidate
+# Chemical legal screening — production release
 
-Status: production deployment in progress on 2026-10-09. Hosted catalog migration 20261009081023 is applied and verified.
+Status: live on https://tools.eashe.org/chemical/legal on 2026-10-09.
+
+Deployment: dpl_6iY74PA2vrxmBuEkgQ6x15qMYSTu (https://ppe-tools-95x175gcf-ea-she.vercel.app). Source commit: 32b598f. Hosted catalog migration: 20261009081023. Built remotely with production configuration, checked before promotion, then promoted with Vercel CLI.
 
 ## Behavior
 
@@ -18,7 +20,7 @@ Status: production deployment in progress on 2026-10-09. Hosted catalog migratio
 - A subsequent API test confirmed all 1,004 active AMT records were returned across pages, with foreign-company rows excluded.
 - Browser tests checked persisted database snapshots, reload/history, CSV download, desktop/mobile layouts, stale writes, forged reviewer/results, anonymous/cross-site/cross-company rejection, source pagination and failed-load recovery.
 - Targeted ESLint passed. Next.js production compilation, TypeScript and all 53 static pages passed with build-only placeholder configuration. No build output using these placeholders should be deployed.
-- Read-only hosted schema inspection confirmed company_settings has PRIMARY KEY (company_id), matching the migration's foreign key. Hosted migration and reference seed are applied: 2,089 entries and 17 sources; all four new tables have RLS and no anon/authenticated grants. Application credentials can only read reference data and insert/read assessments. Existing 3 substances and 1 storage area are unchanged. The API body limit required seed transport in 24 batches; the release was activated only after count/status verification. The local migration embeds the same complete seed for reproducible clean installs. Deployment smoke checks remain.
+- Read-only hosted schema inspection confirmed company_settings has PRIMARY KEY (company_id), matching the migration's foreign key. Hosted migration and reference seed are applied: 2,089 entries and 17 sources; all four new tables have RLS and no anon/authenticated grants. Application credentials can only read reference data and insert/read assessments. Existing 3 substances and 1 storage area are unchanged. The API body limit required seed transport in 24 batches; the release was activated only after count/status verification. The local migration embeds the same complete seed for reproducible clean installs. Production smoke checks passed: staged page HTTP 200; anonymous legal API HTTP 401; tools.eashe.org resolved to the new deployment; authenticated AMT register, Acetone detail/history read and external Toluene search loaded from hosted catalog with source PDF/page and conditions. No runtime error logs were returned for this deployment during the check. Saving/history and cross-company rejection were exercised by local E2E tests; no production assessment was created. Supabase security advisor reports RLS with no policies on the four new tables: this is intentional default-deny direct-client access, with authenticated server routes enforcing company scope and restricted service-role grants. See https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy .
 
 ## Local review
 
