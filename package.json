@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:chemical": "node --test tests/chemical-integrity.test.cjs tests/chemical-legal.test.cjs",
+    "test:chemical": "node --test tests/chemical-integrity.test.cjs tests/chemical-legal.test.cjs tests/chemical-label-versions.test.cjs",
     "test:chemical:e2e": "playwright test --config playwright.chemical.config.cjs",
     "test:home-cards": "node --test tests/home-cards.test.cjs",
     "test:home-cards:e2e": "playwright test --config playwright.chemical.config.cjs tests/home-cards.spec.cjs",

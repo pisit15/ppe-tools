@@ -8,7 +8,10 @@ import { ArrowLeft, Download, FileDown, LoaderCircle, Ruler } from 'lucide-react
 import type { ChemSubstance } from '@/lib/types';
 import { useChemicalData } from '@/lib/chemical/useChemicalData';
 import { GHS_PICTOGRAMS, SIGNAL_WORDS } from '@/lib/chemical/ghs';
-import { DEFAULT_LABEL_OPTIONS, labelDraft, labelLayout, labelProblems, type LabelDraft, type LabelOptions } from '@/lib/chemical/label';
+import { labelLayout, labelProblems, type LabelDraft, type LabelOptions } from '@/lib/chemical/label';
+import type { LabelHistory } from '@/lib/chemical/label-versions';
+import { useLabelVersions } from '@/lib/chemical/useLabelVersions';
+import { LabelVersionControls } from '../../components/LabelVersionControls';
 import { downloadChemicalLabel, renderChemicalLabel, type RenderedLabel } from '@/lib/chemical/label-pdf';
 import { inputCls, labelCls } from '../../components/ui';
 import { LabelFormatPicker, LabelSheetPreview } from '../../components/LabelFormatPicker';
@@ -16,14 +19,17 @@ import { LabelFormatPicker, LabelSheetPreview } from '../../components/LabelForm
 export default function ChemicalLabelPage() {
   const { id } = useParams<{ id: string }>();
   const { data, loading, error } = useChemicalData<{ data: ChemSubstance }>(`/api/chemical/substances/${id}`);
-  if (loading) return <p role="status">กำลังโหลดข้อมูลสารเคมี…</p>;
+  const [retry, setRetry] = useState(0);
+  const history = useChemicalData<LabelHistory>(`/api/chemical/substances/${id}/labels`, retry);
+  if (loading || history.loading) return <p role="status">กำลังโหลดข้อมูลสารเคมีและฉลากที่บันทึกไว้…</p>;
   if (error || !data?.data) return <div role="alert" className="p-6 text-red-700">{error || 'ไม่พบสารเคมี'} <Link href="/chemical" className="underline">กลับทะเบียน</Link></div>;
-  return <LabelEditor key={id} substance={data.data} />;
+  if (history.error || !history.data) return <div role="alert" className="p-6 text-red-700">โหลดประวัติฉลากไม่สำเร็จ: {history.error}<button onClick={() => setRetry(n => n + 1)} className="underline ml-2">ลองโหลดประวัติอีกครั้ง</button></div>;
+  return <LabelEditor key={id} substance={data.data} history={history.data} />;
 }
 
-function LabelEditor({ substance }: { substance: ChemSubstance }) {
-  const [draft, setDraft] = useState(() => labelDraft(substance));
-  const [options, setOptions] = useState<LabelOptions>(DEFAULT_LABEL_OPTIONS);
+function LabelEditor({ substance, history }: { substance: ChemSubstance; history: LabelHistory }) {
+  const versionState = useLabelVersions(substance, history);
+  const { draft, setDraft, options, setOptions } = versionState;
   const [result, setResult] = useState<{ draft: LabelDraft; options: LabelOptions; value?: RenderedLabel; error?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [downloadError, setDownloadError] = useState('');
@@ -69,23 +75,24 @@ function LabelEditor({ substance }: { substance: ChemSubstance }) {
   }
 
   return <div className="max-w-7xl mx-auto text-gray-900">
-    <Link href={`/chemical?company_id=${encodeURIComponent(substance.company_id)}`} className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-purple-700 mb-5"><ArrowLeft size={16} /> กลับทะเบียนสารเคมี</Link>
+    <Link href={`/chemical?company_id=${encodeURIComponent(substance.company_id)}`} onClick={e => { if (!versionState.discardOK()) e.preventDefault(); }} className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-purple-700 mb-5"><ArrowLeft size={16} /> กลับทะเบียนสารเคมี</Link>
     <header className="flex items-start gap-3 mb-6">
       <div className="p-3 rounded-2xl bg-purple-100 text-purple-700"><FileDown size={28} /></div>
       <div><h1 className="text-2xl font-bold">ฉลากสารเคมี PDF</h1><p className="text-sm text-gray-600 mt-1">{substance.name} · {substance.company_id.toUpperCase()}</p></div>
     </header>
-    <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 items-start">
+    <LabelVersionControls state={versionState} />
+    <fieldset disabled={versionState.pending} className="min-w-0 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 items-start">
       <div className="space-y-5">
         <section className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
           <h2 className="font-bold flex items-center gap-2"><Ruler size={19} className="text-purple-700" /> ขนาดและจำนวนฉลาก</h2>
-                    <LabelFormatPicker options={options} onChange={next => { setOptions(next); setDownloaded(false); setDownloadError(''); }} />
+          <LabelFormatPicker options={options} onChange={next => { setOptions(next); setDownloaded(false); setDownloadError(''); }} />
           <div className="border-t border-gray-100 pt-3 text-sm">
             <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={options.includeQr && !!draft.sdsUrl} disabled={!draft.sdsUrl} onChange={e => configure('includeQr', e.target.checked)} className="accent-purple-700" /> ใส่ QR Code ไปยัง SDS ฉบับจริง</label>
             {draft.sdsUrl ? <><p className="text-xs text-gray-600 mt-2">สแกนเพื่อเปิด SDS ที่แนบอยู่ล่าสุดได้โดยไม่ต้องเข้าสู่ระบบ · ลิงก์ภายนอกใช้สิทธิ์ของเจ้าของไฟล์</p><a href={draft.sdsUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-purple-700 underline mt-1">ทดสอบเปิด SDS</a></> : <p className="text-xs text-amber-800 mt-2">สารนี้ยังไม่มี SDS แนบ จึงยังสร้าง QR ไม่ได้ เพิ่มไฟล์หรือลิงก์ SDS ในทะเบียนก่อน</p>}
           </div>
-</section>
+        </section>
         <section className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
-          <div><h2 className="font-bold">ข้อมูลบนฉลาก</h2><p className="text-sm text-gray-600 mt-1">แก้ไขสำหรับ PDF นี้เท่านั้น ข้อมูลในทะเบียนยังคงเดิม</p></div>
+          <div><h2 className="font-bold">ข้อมูลบนฉลาก</h2><p className="text-sm text-gray-600 mt-1">แก้ไขแล้วกด “บันทึกเป็นเวอร์ชันใหม่” เพื่อเรียกใช้ครั้งหน้า ข้อมูลในทะเบียนยังคงเดิม</p></div>
           {field('name', 'ชื่อสารเคมี / ผลิตภัณฑ์')}
           {field('identity', 'ชื่อทางเคมี / CAS / UN')}
           {field('contents', 'ปริมาณในภาชนะนี้ (ถ้ามี)')}
@@ -133,6 +140,6 @@ function LabelEditor({ substance }: { substance: ChemSubstance }) {
           {preview && <details className="text-xs text-gray-600"><summary className="cursor-pointer">อ่านข้อความบนฉลาก</summary><p className="whitespace-pre-wrap mt-2">{preview.lines.join('\n')}</p></details>}
         </div>
       </section>
-    </div>
+    </fieldset>
   </div>;
 }

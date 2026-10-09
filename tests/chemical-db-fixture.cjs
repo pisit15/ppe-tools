@@ -17,7 +17,7 @@ async function createDb() {
     create table law_documents(id uuid primary key,code text unique,title text,status text,file_url text,external_url text,gazette_url text);
     insert into company_settings values ('amt','AMT'),('aab','AAB');
   `);
-  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql','20261009120114_chemical_sds_provenance.sql','20261009122344_tools_home_cards.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
+  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql','20261009120114_chemical_sds_provenance.sql','20261009122344_tools_home_cards.sql','20261009141355_chemical_label_versions.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
   for (const law of require('./chemical-library-laws.json')) await db.query('insert into law_documents(id,code,title,status,file_url,external_url,gazette_url) values ($1,$2,$3,$4,$5,$6,$7)', [law.id,law.code,law.title,law.status,law.file_url,law.external_url,law.gazette_url]);
   const hash = bcrypt.hashSync('local-test-only',4);
   await db.query("insert into admin_accounts(username,password,role,display_name) values ('audit-admin',$1,'super_admin','Local test admin')",[hash]);
@@ -72,12 +72,18 @@ async function startFixture(port=4311) {
         return json(200,[]);
       }
       if(!url.pathname.startsWith('/rest/v1/')) return json(404,{message:'Not found'});
+      if(url.pathname === '/rest/v1/rpc/chem_save_label_version' && req.method === 'POST') {
+        let raw=''; for await(const chunk of req) raw+=chunk;
+        const b=JSON.parse(raw);
+        const rows=(await db.query('select * from public.chem_save_label_version($1,$2,$3,$4,$5::jsonb,$6::jsonb)',[b.p_substance_id,b.p_company_id,b.p_request_id,b.p_title,JSON.stringify(b.p_snapshot),JSON.stringify(b.p_actor)])).rows;
+        return json(200,(req.headers.accept||'').includes('application/vnd.pgrst.object+json')?rows[0]:rows);
+      }
       if(url.pathname === '/rest/v1/chem_sds_uploads' && req.method === 'POST' && failSdsReceipt) { failSdsReceipt=false; return json(500,{message:'Simulated receipt failure'}); }
       const table = ident(url.pathname.split('/').pop()); const params=[]; const predicates=[];
       for(const [key,value] of url.searchParams) {
         if(['select','order','limit','on_conflict','offset','columns'].includes(key))continue;
         const [op,...parts]=value.split('.'); const val=parts.join('.');
-        if(op === 'eq'||op === 'ilike') {params.push(val);predicates.push(ident(key)+(op === 'eq'?' = ':' ilike ')+'$'+params.length);}
+        if(op === 'eq'||op === 'ilike'||op === 'lt') {params.push(val);predicates.push(ident(key)+(op === 'eq'?' = ':op === 'lt'?' < ':' ilike ')+'$'+params.length);}
         else if(op === 'in') {const values=val.slice(1,-1).split(',');predicates.push(ident(key)+' in ('+values.map(v=>{params.push(v);return '$'+params.length;}).join(',')+')');}
         else throw new Error('Unsupported filter '+value);
       }

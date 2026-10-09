@@ -37,6 +37,7 @@ const publicSubstanceId = process.argv[3];
         ghs_pictograms: ['GHS02', 'GHS07'], signal_word: 'Danger', h_codes: ['H225', 'H319'], p_codes: ['P210', 'P280'],
         supplier: 'ผู้จำหน่ายสมมติ', emergency_contact: 'ผู้รับผิดชอบสมมติ', is_demo: true, sds_url: 'https://example.com/synthetic.pdf',
       } } });
+      if (path === `/api/chemical/substances/${id}/labels`) return route.fulfill({ json: { versions: [], latest: null, hasMore: false } });
       throw new Error(`Unexpected live API request blocked: ${path}`);
     });
     const response = await page.goto(`${base}/chemical/${id}/label`);
