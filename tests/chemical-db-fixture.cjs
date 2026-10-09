@@ -53,6 +53,12 @@ async function startFixture(port=4311) {
       if(url.pathname === '/health') return json(200,{ok:true});
       if(req.headers.authorization !== 'Bearer local-test-service-secret') return json(403,{message:'Test fixture requires server key'});
       const bucketPath = '/storage/v1/object/chemical-sds';
+      const signPath = '/storage/v1/object/sign/chemical-sds/';
+      if(url.pathname.startsWith(signPath) && req.method === 'POST') {
+        const objectPath = decodeURIComponent(url.pathname.slice(signPath.length));
+        if(!objects.has(objectPath)) return json(404,{message:'Object not found'});
+        return json(200,{signedURL:'/object/sign/chemical-sds/'+encodeURI(objectPath)+'?token=local-test-'+Date.now()});
+      }
       if(url.pathname.startsWith(bucketPath + '/') && req.method === 'POST') {
         for await (const chunk of req) { void chunk; }
         const objectPath = decodeURIComponent(url.pathname.slice(bucketPath.length + 1));

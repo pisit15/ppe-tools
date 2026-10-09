@@ -11,6 +11,7 @@ import { GHS_PICTOGRAMS, SIGNAL_WORDS } from '@/lib/chemical/ghs';
 import { DEFAULT_LABEL_OPTIONS, labelDraft, labelLayout, labelProblems, type LabelDraft, type LabelOptions } from '@/lib/chemical/label';
 import { downloadChemicalLabel, renderChemicalLabel, type RenderedLabel } from '@/lib/chemical/label-pdf';
 import { inputCls, labelCls } from '../../components/ui';
+import { LabelFormatPicker, LabelSheetPreview } from '../../components/LabelFormatPicker';
 
 export default function ChemicalLabelPage() {
   const { id } = useParams<{ id: string }>();
@@ -32,7 +33,7 @@ function LabelEditor({ substance }: { substance: ChemSubstance }) {
   const renderError = current ? result.error : '';
   let layout: ReturnType<typeof labelLayout> | undefined;
   try { layout = labelLayout(options); } catch { /* Renderer presents the validation message. */ }
-  const problems = labelProblems(draft);
+  const problems = labelProblems(draft, options);
   const overflow = !!preview && preview.requiredHeight > options.height;
 
   useEffect(() => {
@@ -77,15 +78,12 @@ function LabelEditor({ substance }: { substance: ChemSubstance }) {
       <div className="space-y-5">
         <section className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
           <h2 className="font-bold flex items-center gap-2"><Ruler size={19} className="text-purple-700" /> ขนาดและจำนวนฉลาก</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label htmlFor="label-width" className={labelCls}>ความกว้าง (มม.)</label><input id="label-width" className={inputCls} type="number" min={50} max={190} value={options.width || ''} onChange={e => configure('width', Number(e.target.value))} /></div>
-            <div><label htmlFor="label-height" className={labelCls}>ความสูง (มม.)</label><input id="label-height" className={inputCls} type="number" min={50} max={277} value={options.height || ''} onChange={e => configure('height', Number(e.target.value))} /></div>
-            <div><label htmlFor="label-copies" className={labelCls}>จำนวนฉลาก (ดวง)</label><input id="label-copies" className={inputCls} type="number" min={1} max={100} value={options.copies || ''} onChange={e => configure('copies', Number(e.target.value))} /></div>
-            <div><label htmlFor="label-font" className={labelCls}>ขนาดข้อความ</label><select id="label-font" className={inputCls} value={options.fontSize} onChange={e => configure('fontSize', Number(e.target.value))}>{[8, 9, 10, 11, 12].map(n => <option key={n} value={n}>{n} pt</option>)}</select></div>
+                    <LabelFormatPicker options={options} onChange={next => { setOptions(next); setDownloaded(false); setDownloadError(''); }} />
+          <div className="border-t border-gray-100 pt-3 text-sm">
+            <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={options.includeQr && !!draft.sdsUrl} disabled={!draft.sdsUrl} onChange={e => configure('includeQr', e.target.checked)} className="accent-purple-700" /> ใส่ QR Code ไปยัง SDS ฉบับจริง</label>
+            {draft.sdsUrl ? <><p className="text-xs text-gray-600 mt-2">สแกนเพื่อเปิด SDS ที่แนบอยู่ล่าสุดได้โดยไม่ต้องเข้าสู่ระบบ · ลิงก์ภายนอกใช้สิทธิ์ของเจ้าของไฟล์</p><a href={draft.sdsUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-purple-700 underline mt-1">ทดสอบเปิด SDS</a></> : <p className="text-xs text-amber-800 mt-2">สารนี้ยังไม่มี SDS แนบ จึงยังสร้าง QR ไม่ได้ เพิ่มไฟล์หรือลิงก์ SDS ในทะเบียนก่อน</p>}
           </div>
-          <div><label htmlFor="label-layout" className={labelCls}>รูปแบบไฟล์ PDF</label><select id="label-layout" className={inputCls} value={options.layout} onChange={e => configure('layout', e.target.value as LabelOptions['layout'])}><option value="a4">A4 — จัดหลายดวงต่อหน้า สำหรับตัดติด</option><option value="single">หนึ่งดวงต่อหน้า — หน้ากระดาษเท่าขนาดฉลาก</option></select></div>
-          <p className="text-xs text-gray-600">ค่าเริ่มต้น 90 × 120 มม. ปรับให้พอดีกับภาชนะได้ · A4 เว้นขอบ 10 มม. และช่องตัด 4 มม.</p>
-        </section>
+</section>
         <section className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
           <div><h2 className="font-bold">ข้อมูลบนฉลาก</h2><p className="text-sm text-gray-600 mt-1">แก้ไขสำหรับ PDF นี้เท่านั้น ข้อมูลในทะเบียนยังคงเดิม</p></div>
           {field('name', 'ชื่อสารเคมี / ผลิตภัณฑ์')}
@@ -101,7 +99,7 @@ function LabelEditor({ substance }: { substance: ChemSubstance }) {
           <div><label htmlFor="label-signal" className={labelCls}>คำสัญญาณ</label><select id="label-signal" className={inputCls} value={draft.signal} onChange={e => change('signal', e.target.value as LabelDraft['signal'])}><option value="">ยังไม่ระบุ</option>{SIGNAL_WORDS.map(s => <option value={s.value} key={s.value}>{s.labelTh}</option>)}</select></div>
           <p className="text-xs text-gray-600">ข้อความ H/P ที่เติมให้อัตโนมัติเป็นคำแปลย่อในระบบ สามารถแทนที่ด้วยข้อความบนฉลากจาก SDS ของผลิตภัณฑ์ได้โดยตรง</p>
           {field('hazards', 'ข้อความแสดงความเป็นอันตราย (H)', 5)}
-          {field('precautions', 'ข้อควรระวัง (P)', 7)}
+          {field('precautions', `ข้อควรระวัง (P)${options.content === 'compact' ? ' — ไม่พิมพ์ในฉลากย่อ' : ''}`, 7)}
           {!draft.hazards.trim() && <p className="text-sm text-amber-800">ยังไม่มีข้อความแสดงความเป็นอันตราย กรุณาระบุตาม SDS หากมี</p>}
           {field('supplier', 'ผู้จำหน่าย / ผู้ผลิต')}
           {field('emergency', 'เบอร์ติดต่อฉุกเฉิน')}
@@ -120,9 +118,11 @@ function LabelEditor({ substance }: { substance: ChemSubstance }) {
           {preview && <img src={preview.image} alt={`ตัวอย่างฉลาก ${draft.name}`} data-testid="label-preview" className="block mx-auto shadow-md h-auto max-w-full" style={{ width: `${options.width}mm` }} />}
         </div>
         <div className="p-5 space-y-3">
+          <LabelSheetPreview options={options} />
           {overflow && <div role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
             <p>ข้อความเกินความสูงที่เลือก ต้องใช้ความสูงอย่างน้อย {preview?.requiredHeight} มม. ตัวอย่างแสดงข้อความทั้งหมด ยังดาวน์โหลดขนาดนี้ไม่ได้</p>
             {preview && preview.requiredHeight <= 277 ? <button onClick={() => configure('height', preview.requiredHeight)} className="font-semibold underline mt-2">ปรับความสูงให้พอดี</button> : <p className="mt-2">เพิ่มความกว้างของฉลาก หรือเลือกข้อความสำหรับฉลากจาก SDS</p>}
+            {options.content === 'full' && <button onClick={() => setOptions(o => ({ ...o, content: 'compact', fontSize: 8 }))} className="block font-semibold underline mt-2">ใช้ฉลากย่อสำหรับภาชนะเล็ก (8 pt)</button>}
           </div>}
           {problems.length > 0 && <ul className="list-disc pl-5 text-sm text-amber-900">{problems.map(p => <li key={p}>{p}</li>)}</ul>}
           {layout && <p className="text-sm text-gray-700">{options.copies} ดวง · {layout.perPage} ดวงต่อหน้า · PDF {layout.pages} หน้า</p>}

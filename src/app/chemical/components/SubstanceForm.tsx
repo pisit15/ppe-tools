@@ -236,6 +236,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
             ) : (
               <input className={inputCls} aria-label="ลิงก์ SDS จากผู้ผลิต" placeholder="https://… ลิงก์ SDS จากผู้ผลิต" value={f.sds_url || ''} onChange={e => set('sds_url', e.target.value || null)} />
             )}
+            <p className="text-xs text-gray-600">SDS ที่แนบสามารถเปิดผ่าน QR บนฉลากได้โดยไม่ต้องเข้าสู่ระบบ</p>
             {!pendingFile && savedSdsKey && currentSdsKey === savedSdsKey ? <SdsImportInfo value={initial?.sds_import} />
               : (currentSdsKey || (sdsMode === 'file' && pendingFile)) ? <p className="text-sm text-gray-600">ระบบจะบันทึกผู้นำเข้า SDS และเวลาเมื่อบันทึกสารเคมี</p> : null}
             <div className="flex flex-wrap items-center gap-3 pt-1">

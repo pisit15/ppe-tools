@@ -42,6 +42,7 @@ test('register opens label; real A4 and exact-size PDFs preserve Thai content wi
   await page.getByRole('button', { name: 'ดาวน์โหลด PDF', exact: true }).click();
   await (await download).saveAs('test-results/chemical-label-a4.pdf');
   await expect(page.getByRole('status')).toContainText('สร้างไฟล์ PDF แล้ว');
+  await page.getByText('กำหนดขนาดเอง / รูปแบบไฟล์', {exact:true}).click();
   await page.getByLabel('รูปแบบไฟล์ PDF').selectOption('single');
   // Test landscape physical dimensions too (jsPDF otherwise swaps custom page dimensions).
   await page.getByLabel('ความกว้าง (มม.)').fill('150');
@@ -71,13 +72,14 @@ test('long labels never truncate; unknown codes and incomplete templates require
   await expect(page.getByRole('button', { name: 'ดาวน์โหลด PDF', exact: true })).toBeDisabled();
   await page.getByLabel('ข้อความแสดงความเป็นอันตราย (H)').fill('H225 ของเหลวและไอไวไฟสูง');
   await page.getByLabel('ข้อควรระวัง (P)', { exact: true }).fill(Array.from({ length: 14 }, (_, i) => `P${100+i} ข้อความภาษาไทยสำหรับทดสอบบรรทัดที่ ${i+1}`).join('\n'));
+  await page.getByText('กำหนดขนาดเอง / รูปแบบไฟล์', {exact:true}).click();
   await page.getByLabel('ความสูง (มม.)').fill('50');
   await ready(page);
   await expect(page.locator('main').getByRole('alert')).toContainText('ข้อความเกินความสูง');
   await expect(page.getByRole('button', { name: 'ดาวน์โหลด PDF', exact: true })).toBeDisabled();
   await page.getByText('อ่านข้อความบนฉลาก', { exact: true }).click();
-  await expect(page.locator('details')).toContainText('บรรทัดที่ 14');
-  await expect(page.locator('details')).toContainText('ข้อมูลสาธิต');
+  await expect(page.locator('details').filter({hasText:'อ่านข้อความบนฉลาก'})).toContainText('บรรทัดที่ 14');
+  await expect(page.locator('details').filter({hasText:'อ่านข้อความบนฉลาก'})).toContainText('ข้อมูลสาธิต');
   await fit(page);
   await page.getByLabel('จำนวนฉลาก (ดวง)').fill('0');
   await expect(page.locator('main').getByRole('alert')).toContainText('จำนวน 1–100');
@@ -103,4 +105,76 @@ test('missing Thai font cannot silently produce a fallback-font PDF', async ({ p
   await page.goto(`/chemical/${substance.id}/label`);
   await expect(page.locator('main').getByRole('alert')).toContainText('โหลดแบบอักษรไทยไม่สำเร็จ');
   await expect(page.getByRole('button', { name: 'ดาวน์โหลด PDF', exact: true })).toBeDisabled();
+});
+
+test('all eight presets export exact A4 counts and a decodable permanent SDS QR', async ({ page }) => {
+  test.setTimeout(180000);
+  await login(page.request);
+  const substance = await create(page.request, {name:'Acetone', sds_url:'https://example.com/original-sds.pdf'});
+  await page.goto(`/chemical/${substance.id}/label`);
+  await ready(page);
+  await expect(page.getByLabel('ใส่ QR Code ไปยัง SDS ฉบับจริง')).toBeChecked();
+  await page.getByLabel('ฉลากย่อสำหรับภาชนะเล็ก', {exact:true}).check();
+  const presets = [
+    ['landscape-8','แนวนอน',8,210,297], ['landscape-6','แนวนอน',6,297,210],
+    ['landscape-4','แนวนอน',4,297,210], ['landscape-2','แนวนอน',2,210,297],
+    ['landscape-1','แนวนอน',1,297,210], ['portrait-6','แนวตั้ง',6,210,297],
+    ['portrait-4','แนวตั้ง',4,210,297], ['portrait-1','แนวตั้ง',1,210,297],
+  ];
+  await page.addScriptTag({path:require.resolve('jsqr')});
+  for (const [id, direction, count] of presets) {
+    await page.getByRole('button',{name:`ฉลาก${direction} ${count} ดวงต่อ A4`,exact:true}).click();
+    await ready(page);
+    await expect(page.getByRole('button',{name:'ดาวน์โหลด PDF',exact:true})).toBeEnabled();
+    const decoded=await page.evaluate(()=>{
+      const image=document.querySelector('[data-testid="label-preview"]');
+      const canvas=document.createElement('canvas'); canvas.width=image.naturalWidth; canvas.height=image.naturalHeight;
+      const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
+      const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
+      return window.jsQR(pixels.data,pixels.width,pixels.height)?.data;
+    });
+    expect(decoded).toBe(`https://tools.eashe.org/sds/${substance.id}`);
+    const event=page.waitForEvent('download');
+    await page.getByRole('button',{name:'ดาวน์โหลด PDF',exact:true}).click();
+    await (await event).saveAs(`test-results/chemical-label-${id}.pdf`);
+  }
+  require('node:fs').writeFileSync('test-results/chemical-label-presets.json',JSON.stringify({presets,url:`https://tools.eashe.org/sds/${substance.id}`}));
+  await page.getByRole('button',{name:'ฉลากแนวนอน 8 ดวงต่อ A4',exact:true}).click();
+  await ready(page);
+  await page.screenshot({path:'test-results/chemical-label-presets-qr.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  // Complete mode remains available and does not silently become compact for a small preset.
+  await page.getByLabel('รายละเอียดครบ',{exact:true}).check();
+  await ready(page);
+  await expect(page.getByRole('button',{name:'ดาวน์โหลด PDF',exact:true})).toBeDisabled();
+  await expect(page.locator('main').getByRole('alert')).toContainText('ข้อความเกินความสูง');
+});
+
+test('public SDS resolves attachments without login, follows replacements, and exposes no registry access', async ({ page, request }) => {
+  await login(page.request);
+  let substance=await create(page.request,{sds_url:'https://example.com/original-sds.pdf'});
+  const scan=()=>request.get(`/sds/${substance.id}`,{maxRedirects:0});
+  let result=await scan();
+  expect(result.status()).toBe(307); expect(result.headers().location).toBe('https://example.com/original-sds.pdf');
+  expect(result.headers()['cache-control']).toContain('no-store');
+  const upload=await page.request.post('/api/chemical/sds',{multipart:{company_id:'amt',file:{name:'qr-test.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\n%%EOF')}}});
+  expect(upload.status(),await upload.text()).toBe(201); const file=await upload.json();
+  const changed=await page.request.put(`/api/chemical/substances/${substance.id}`,{data:{sds_file_path:file.path,expected_updated_at:substance.updated_at}});
+  expect(changed.status(),await changed.text()).toBe(200);substance=(await changed.json()).data;
+  result=await scan(); expect(result.status()).toBe(307);
+  expect(result.headers().location).toContain('/storage/v1/object/sign/chemical-sds/amt/');
+  expect(result.headers().location).not.toContain('example.com');
+  expect(result.headers()['x-robots-tag']).toContain('noindex');
+  expect((await request.get(`/api/chemical/substances/${substance.id}`)).status()).toBe(401);
+  expect((await request.get(`/api/chemical/sds?path=${encodeURIComponent(file.path)}`)).status()).toBe(401);
+  expect((await request.put(`/api/chemical/substances/${substance.id}`,{data:{name:'Not allowed'}})).status()).toBe(401);
+  expect((await request.get('/sds/not-a-uuid')).status()).toBe(404);
+  expect((await request.get('/sds/22222222-2222-4222-8222-222222222222')).status()).toBe(404);
+  expect((await request.get('/sds/99999999-9999-4999-8999-999999999999')).status()).toBe(404);
+  const removed=await page.request.put(`/api/chemical/substances/${substance.id}`,{data:{sds_file_path:null,sds_url:null,expected_updated_at:substance.updated_at}});
+  expect(removed.status()).toBe(200);expect((await scan()).status()).toBe(404);
+  const attached=await create(page.request,{sds_url:'https://example.com/retired-sds.pdf'});
+  expect((await page.request.delete(`/api/chemical/substances/${attached.id}`)).status()).toBe(200);
+  expect((await request.get(`/sds/${attached.id}`,{maxRedirects:0})).status()).toBe(404);
 });
