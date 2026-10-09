@@ -17,7 +17,7 @@ async function createDb() {
     create table law_documents(id uuid primary key,code text unique,title text,status text,file_url text,external_url text,gazette_url text);
     insert into company_settings values ('amt','AMT'),('aab','AAB');
   `);
-  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql','20261009120114_chemical_sds_provenance.sql','20261009122344_tools_home_cards.sql','20261009141355_chemical_label_versions.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
+  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql','20261009120114_chemical_sds_provenance.sql','20261009122344_tools_home_cards.sql','20261009163428_chemical_label_versions.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
   for (const law of require('./chemical-library-laws.json')) await db.query('insert into law_documents(id,code,title,status,file_url,external_url,gazette_url) values ($1,$2,$3,$4,$5,$6,$7)', [law.id,law.code,law.title,law.status,law.file_url,law.external_url,law.gazette_url]);
   const hash = bcrypt.hashSync('local-test-only',4);
   await db.query("insert into admin_accounts(username,password,role,display_name) values ('audit-admin',$1,'super_admin','Local test admin')",[hash]);

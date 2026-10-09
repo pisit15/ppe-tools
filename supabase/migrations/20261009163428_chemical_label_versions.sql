@@ -1,4 +1,5 @@
--- Immutable label snapshots. Access is scoped by the signed Tools session in server routes.
+-- Immutable label snapshots. Migration ID synchronized with the applied hosted migration.
+-- Access is scoped by the signed Tools session in server routes.
 create table public.chem_label_versions (
   id uuid primary key default gen_random_uuid(),
   substance_id uuid not null references public.chem_substances(id),

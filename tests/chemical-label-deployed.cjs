@@ -11,6 +11,7 @@ const publicSubstanceId = process.argv[3];
     page.on('pageerror', error => errors.push(error.message));
     const id = '00000000-0000-4000-8000-000000000001';
     expect((await page.request.get(`${base}/api/chemical/substances/${id}`)).status()).toBe(401);
+    expect((await page.request.get(`${base}/api/chemical/substances/${id}/labels`)).status()).toBe(401);
     expect((await page.request.get(`${base}/api/auth/session`)).status()).toBe(401);
     let publicSdsStatus;
     if (publicSubstanceId) {
@@ -37,11 +38,21 @@ const publicSubstanceId = process.argv[3];
         ghs_pictograms: ['GHS02', 'GHS07'], signal_word: 'Danger', h_codes: ['H225', 'H319'], p_codes: ['P210', 'P280'],
         supplier: 'ผู้จำหน่ายสมมติ', emergency_contact: 'ผู้รับผิดชอบสมมติ', is_demo: true, sds_url: 'https://example.com/synthetic.pdf',
       } } });
-      if (path === `/api/chemical/substances/${id}/labels`) return route.fulfill({ json: { versions: [], latest: null, hasMore: false } });
+      if (path === `/api/chemical/substances/${id}/labels`) {
+        const saved = { id: 'synthetic-v2', version: 2, title: 'ขวดทดสอบ 250 มล.', created_at: '2026-10-09T09:00:00Z',
+          created_by: { displayName: 'ผู้บันทึกสมมติ', username: 'browser-fixture' }, snapshot: { schema: 1,
+            draft: { name: 'Saved label version test', identity: 'ข้อมูลสาธิตสำหรับทดสอบการแสดงผล', pictograms: ['GHS02','GHS07'], signal: 'Danger', hazards: 'H225 ของเหลวและไอไวไฟสูง', precautions: 'P210 เก็บให้ห่างจากความร้อน', supplier: 'ผู้จำหน่ายสมมติ', emergency: 'ผู้รับผิดชอบสมมติ', contents: '250 มล.', extra: '' },
+            options: { width: 93, height: 136.5, fontSize: 9, copies: 4, layout: 'a4', pageOrientation: 'portrait', content: 'full', includeQr: true },
+          } };
+        return route.fulfill({ json: { versions: [saved], latest: saved, hasMore: false } });
+      }
       throw new Error(`Unexpected live API request blocked: ${path}`);
     });
     const response = await page.goto(`${base}/chemical/${id}/label`);
     expect(response.status()).toBe(200);
+    await expect(page.getByLabel('เลือกเวอร์ชันฉลาก')).toHaveValue('2');
+    await expect(page.getByLabel('ชื่อสารเคมี / ผลิตภัณฑ์',{exact:true})).toHaveValue('Saved label version test');
+    await expect(page.getByText('บันทึกโดย ผู้บันทึกสมมติ',{exact:false})).toBeVisible();
     await expect(page.getByTestId('label-preview')).toBeVisible();
     await page.getByLabel('ฉลากย่อสำหรับภาชนะเล็ก', {exact:true}).check();
     await page.getByRole('button',{name:'ฉลากแนวนอน 4 ดวงต่อ A4',exact:true}).click();
@@ -67,6 +78,6 @@ const publicSubstanceId = process.argv[3];
     expect(errors).toEqual([]);
     expect(intercepted).toContain(`/api/chemical/substances/${id}`);
     await page.screenshot({ path: 'test-results/chemical-label-deployed-synthetic.png', fullPage: true });
-    console.log(JSON.stringify({ base, anonymousApiStatus: 401, publicSdsStatus, assets: 10, decodedQr: decoded, syntheticClientPdfBytes: pdf.length, filename: download.suggestedFilename(), pageErrors: errors, note: 'No authenticated live API calls or production writes; session/substance mocked only in isolated browser.' }));
+    console.log(JSON.stringify({ base, anonymousApiStatus: 401, anonymousLabelHistoryStatus: 401, restoredSyntheticVersion: 2, publicSdsStatus, assets: 10, decodedQr: decoded, syntheticClientPdfBytes: pdf.length, filename: download.suggestedFilename(), pageErrors: errors, note: 'No authenticated live API calls or production writes; session/substance/history mocked only in isolated browser.' }));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
