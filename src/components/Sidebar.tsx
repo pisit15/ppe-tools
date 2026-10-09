@@ -25,6 +25,7 @@ import {
   Grid3x3,
   Warehouse,
   Settings,
+  Scale,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -97,6 +98,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
 
   const chemItems: NavItem[] = [
     { label: 'ทะเบียนสารเคมี', href: `/chemical${q}`, icon: <FlaskConical size={20} /> },
+    { label: 'ตรวจสอบกฎหมาย', href: `/chemical/legal${q}`, icon: <Scale size={20} /> },
     { label: 'ตารางเก็บร่วม/แยก', href: `/chemical/compatibility${q}`, icon: <Grid3x3 size={20} /> },
     { label: 'พื้นที่จัดเก็บ', href: `/chemical/storage-areas${q}`, icon: <Warehouse size={20} /> },
     { label: 'ตั้งค่า / เบอร์ฉุกเฉิน', href: `/chemical/settings${q}`, icon: <Settings size={20} /> },
@@ -123,6 +125,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
   const handleCompanyChange = (newId: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('company_id', newId);
+    if (mode === 'chemical') params.delete('substance_id');
     router.push(`${pathname}?${params.toString()}`);
   };
 

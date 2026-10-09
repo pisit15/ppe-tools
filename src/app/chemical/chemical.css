@@ -8,3 +8,15 @@
   .chemical-matrix button { min-width: 0; min-height: 18px; color: #000 !important; }
   .chemical-matrix tr { break-inside: avoid; }
 }
+.legal-card { background: white; border: 1px solid #e5e7eb; border-radius: 1rem; padding: 1.25rem; min-width: 0; }
+.legal-btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border: 1px solid #d1d5db; background: white; border-radius: .6rem; padding: .6rem .9rem; font-size: .875rem; font-weight: 600; cursor: pointer; }
+.legal-btn:hover { background: #faf5ff; }
+.legal-btn-primary { color: white; background: #7e22ce; border-color: #7e22ce; }
+.legal-btn-primary:hover { background: #6b21a8; }
+.legal-btn:disabled { opacity: .5; cursor: not-allowed; }
+.legal-label { display: block; font-size: .875rem; font-weight: 600; margin-bottom: .4rem; }
+.legal-table { width: 100%; font-size: .875rem; border-collapse: collapse; }
+.legal-table th, .legal-table td { padding: .8rem; text-align: left; vertical-align: top; border-bottom: 1px solid #e5e7eb; }
+.legal-table th { background: #f9fafb; font-weight: 600; }
+.legal-table tr:hover td { background: #faf5ff; }
+.legal-card summary:focus-visible, .legal-btn:focus-visible { outline: 3px solid #9333ea; outline-offset: 3px; }

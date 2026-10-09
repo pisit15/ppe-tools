@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, FileText, Link2, Printer, Pencil, Trash2, FlaskConical } from 'lucide-react';
+import { Plus, Search, FileText, Link2, Printer, Pencil, Trash2, FlaskConical, Scale } from 'lucide-react';
 import type { ChemStorageArea, ChemSubstance } from '@/lib/types';
 import { GHS_PICTOGRAMS } from '@/lib/chemical/ghs';
 import { STORAGE_CLASSES } from '@/lib/chemical/storage-classes';
@@ -128,7 +128,8 @@ function ScopedRegister() {
             {isAll ? 'ทุกบริษัท (ภาพรวม) — เลือกบริษัทที่แถบด้านซ้ายเพื่อเพิ่ม/แก้ไข' : `บริษัท ${companyName}`} · {loading ? 'กำลังโหลด…' : loadError ? 'โหลดไม่สำเร็จ' : `${items.length} รายการ`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/chemical/legal${q}`} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border border-purple-300 bg-white text-purple-800 hover:bg-purple-50"><Scale size={16} /> ตรวจสอบกฎหมาย</Link>
           <Link href={`/chemical/compatibility${q}`} className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">ตารางเก็บร่วม/แยก</Link>
           {canWrite && !demo ? <Link href={`/chemical/new${q}`} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700"><Plus size={16} /> เพิ่มสารเคมี</Link> : <span className="text-sm text-gray-600 self-center">{demo ? 'กำลังดูข้อมูลสาธิต' : 'เลือกบริษัทเพื่อเพิ่มสารเคมี'}</span>}
         </div>
@@ -226,6 +227,7 @@ function ScopedRegister() {
                       {isAll && <td className="px-3 py-2.5 text-xs font-semibold text-gray-700">{i.company_id.toUpperCase()}</td>}
                       <td className="px-3 py-2.5">
                         <div className="flex justify-end gap-1">
+                          <Link href={`/chemical/legal?company_id=${encodeURIComponent(i.company_id)}&substance_id=${i.id}`} aria-label={`ตรวจสอบกฎหมายของ ${i.name}`} title="ตรวจสอบกฎหมาย" className="p-3 rounded-lg hover:bg-purple-50 text-purple-800"><Scale size={16} /></Link>
                           <Link href={`/chemical/${i.id}/poster`} aria-label={`โปสเตอร์สรุป SDS ของ ${i.name}`} title="โปสเตอร์สรุป SDS (A4)" className="p-3 rounded-lg hover:bg-gray-100 text-gray-600"><Printer size={16} /></Link>
                           <Link href={`/chemical/${i.id}/edit?company_id=${encodeURIComponent(i.company_id)}`} aria-label={`แก้ไข ${i.name}`} className="inline-flex p-3 rounded-lg hover:bg-purple-50"><Pencil size={18} /></Link>
                           <button onClick={() => setConfirmDelete(i)} disabled={isAll} aria-label={`นำ ${i.name} ออกจากทะเบียน`} title="นำออกจากทะเบียน" className="p-3 rounded-lg hover:bg-red-50 text-gray-600 hover:text-red-600 disabled:opacity-30"><Trash2 size={16} /></button>

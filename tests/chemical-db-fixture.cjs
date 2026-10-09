@@ -16,7 +16,7 @@ async function createDb() {
     create table tools_users(like company_users including all);
     insert into company_settings values ('amt','AMT'),('aab','AAB');
   `);
-  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
+  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
   const hash = bcrypt.hashSync('local-test-only',4);
   await db.query("insert into admin_accounts(username,password,role,display_name) values ('audit-admin',$1,'super_admin','Local test admin')",[hash]);
   await db.query("insert into company_users(username,password,company_id,company_name) values ('audit-amt',$1,'amt','AMT')",[hash]);
@@ -28,6 +28,7 @@ async function createDb() {
       ('33333333-3333-4333-8333-333333333333','amt','Test Missing Date','5.1B','https://example.com/sds.pdf',null),
       ('44444444-4444-4444-8444-444444444444','aab','Test AAB Only','8B',null,null);
     insert into chem_substances(company_id,name,is_demo) values ('amt','Demo only',true);
+    update chem_substances set cas_no='67-64-1' where id='11111111-1111-4111-8111-111111111111';
     insert into chem_company_settings(company_id,sds_review_years,sds_review_policy) values ('amt',2,'Test company policy');
   `);
   return db;
@@ -41,6 +42,8 @@ async function startFixture(port=4311) {
       const url = new URL(req.url,'http://127.0.0.1');
       if(url.pathname === '/__test/reset' && req.method === 'POST') { await db.close(); db = await createDb(); return json(200,{ok:true}); }
       if(url.pathname === '/__test/state') return json(200,(await db.query('select * from chem_substances order by name')).rows);
+      if(url.pathname === '/__test/legal-state') return json(200,(await db.query('select * from chem_legal_assessments order by created_at desc')).rows);
+      if(url.pathname === '/__test/large-register' && req.method === 'POST') { await db.exec("insert into chem_substances(company_id,name) select 'amt','Pagination chemical ' || n from generate_series(1,1001) n"); return json(200,{ok:true}); }
       if(url.pathname === '/health') return json(200,{ok:true});
       if(!url.pathname.startsWith('/rest/v1/')) return json(404,{message:'Not found'});
       if(req.headers.authorization !== 'Bearer local-test-service-secret') return json(403,{message:'Test fixture requires server key'});
@@ -56,10 +59,12 @@ async function startFixture(port=4311) {
       const where=predicates.length?' where '+predicates.join(' and '):'';
       if(req.method === 'GET') {
         let order=''; const spec=url.searchParams.get('order'); if(spec)order=' order by '+spec.split(',').map(x=>{const [k,d]=x.split('.');return ident(k)+(d==='desc'?' desc':' asc');}).join(',');
-        rows=(await db.query('select * from '+table+where+order,params)).rows;
+        const limit=Number(url.searchParams.get('limit')||1000); const offset=Number(url.searchParams.get('offset')||0);
+        if(!Number.isInteger(limit)||!Number.isInteger(offset)||limit<0||offset<0)throw new Error('Invalid paging');
+        rows=(await db.query('select * from '+table+where+order+' limit '+limit+' offset '+offset,params)).rows;
       } else {
         let raw='';for await(const c of req)raw+=c;const body=JSON.parse(raw);const entries=Object.entries(Array.isArray(body)?body[0]:body);
-        const value=(k,v)=>['first_aid','emergency_contacts'].includes(k)?JSON.stringify(v):v;
+        const value=(k,v)=>['first_aid','emergency_contacts','snapshot','coverage','gaps','details'].includes(k)?JSON.stringify(v):v;
         if(req.method==='POST'){
           const cols=entries.map(([k])=>ident(k)).join(',');const values=entries.map(([k,v])=>{params.push(value(k,v));return '$'+params.length;}).join(',');
           const conflict=url.searchParams.get('on_conflict');const upsert=conflict?' on conflict ('+ident(conflict)+') do update set '+entries.filter(([k])=>k!==conflict).map(([k])=>ident(k)+'=excluded.'+ident(k)).join(','):'';
