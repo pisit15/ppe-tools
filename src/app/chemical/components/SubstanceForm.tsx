@@ -6,6 +6,8 @@ import type { ChemSubstance, ChemStorageArea, CreateChemSubstanceInput, SdsExtra
 import { GHS_PICTOGRAMS, SIGNAL_WORDS, PHYSICAL_STATES, PPE_OPTIONS, UNIT_OPTIONS, hText, pText, suggestStorageClass } from '@/lib/chemical/ghs';
 import { STORAGE_CLASSES } from '@/lib/chemical/storage-classes';
 import { StorageClassChip, inputCls, labelCls } from './ui';
+import { SdsImportInfo } from './SdsImportInfo';
+import { sdsSourceKey } from '@/lib/chemical/sds-provenance';
 
 type Props = {
   companyId: string;
@@ -32,8 +34,8 @@ const empty = (): FormState => ({
 });
 
 const fromSubstance = (s: ChemSubstance): FormState => {
-  const { id: _id, company_id: _c, is_active: _a, created_by: _b, created_at: _ca, updated_at: _ua, chem_storage_areas: _j, ...rest } = s;
-  void _id; void _c; void _a; void _b; void _ca; void _ua; void _j;
+  const { id: _id, company_id: _c, is_active: _a, created_by: _b, created_at: _ca, updated_at: _ua, chem_storage_areas: _j, sds_import: _si, ...rest } = s;
+  void _id; void _c; void _a; void _b; void _ca; void _ua; void _j; void _si;
   return { ...empty(), ...rest };
 };
 
@@ -70,6 +72,8 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
   const [hazardText, setHazardText] = useState((initial?.hazard_classes || []).join('\n'));
   const [sdsMode, setSdsMode] = useState<'file' | 'link'>(initial?.sds_file_path ? 'file' : initial?.sds_url ? 'link' : 'file');
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const savedSdsKey = initial ? sdsSourceKey(initial) : null;
+  const currentSdsKey = sdsSourceKey({ sds_file_path: sdsMode === 'file' ? f.sds_file_path : null, sds_url: sdsMode === 'link' ? f.sds_url : null });
   const [uploading, setUploading] = useState(false);
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
   const [extracting, setExtracting] = useState(false);
@@ -215,7 +219,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
             {sdsMode === 'file' ? (
               <div className="flex flex-wrap items-center gap-3">
                 <input ref={fileRef} type="file" accept="application/pdf,image/png,image/jpeg" className="hidden"
-                  onChange={e => setPendingFile(e.target.files?.[0] || null)} />
+                  onChange={e => { markChanged(); setPendingFile(e.target.files?.[0] || null); }} />
                 <button type="button" onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-lg border border-dashed border-gray-400 text-sm text-gray-700 hover:bg-gray-50">
                   เลือกไฟล์ PDF (≤ 25 MB)
                 </button>
@@ -232,6 +236,8 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
             ) : (
               <input className={inputCls} aria-label="ลิงก์ SDS จากผู้ผลิต" placeholder="https://… ลิงก์ SDS จากผู้ผลิต" value={f.sds_url || ''} onChange={e => set('sds_url', e.target.value || null)} />
             )}
+            {!pendingFile && savedSdsKey && currentSdsKey === savedSdsKey ? <SdsImportInfo value={initial?.sds_import} />
+              : (currentSdsKey || (sdsMode === 'file' && pendingFile)) ? <p className="text-sm text-gray-600">ระบบจะบันทึกผู้นำเข้า SDS และเวลาเมื่อบันทึกสารเคมี</p> : null}
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <button type="button" onClick={runExtract} disabled={extracting || saving || aiAvailable !== true || !(pendingFile || f.sds_file_path || f.sds_url)}
                 title={aiAvailable === false ? 'การอ่าน SDS อัตโนมัติยังไม่พร้อมใช้งาน' : 'อ่าน SDS แล้วกรอกช่องด้านล่างให้อัตโนมัติ'}

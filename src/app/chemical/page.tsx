@@ -13,6 +13,7 @@ import { matchesQuality } from '@/lib/chemical/data-quality';
 import { GhsIcons, StorageClassChip, SignalWordBadge, Toast, VIZ, inputCls } from './components/ui';
 
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { SdsImportInfo } from './components/SdsImportInfo';
 
 type QualityFilter = '' | 'missing_sds' | 'missing_date' | 'no_class';
 const PAGE_SIZE = 30;
@@ -216,6 +217,7 @@ function ScopedRegister() {
                             {!i.sds_revision_date && <span className="ml-1 text-xs px-1 rounded bg-amber-100 text-amber-900">ไม่มีวันที่</span>}
                           </button>
                         ) : <span className="text-xs" style={{ color: VIZ.accent }}>ไม่มี</span>}
+                        {(i.sds_file_path || i.sds_url) && <SdsImportInfo value={i.sds_import} compact />}
                       </td>
                       {isAll && <td className="px-3 py-2.5 text-xs font-semibold text-gray-700">{i.company_id.toUpperCase()}</td>}
                       <td className="px-3 py-2.5">

@@ -190,6 +190,7 @@ export type ChemSubstance = {
   sds_url: string | null;
   sds_file_path: string | null;
   sds_file_name: string | null;
+  sds_import?: SdsImport | null;
   sds_revision_date: string | null;
   sds_language: string | null;
   usage_purpose: string | null;
@@ -214,7 +215,16 @@ export type ChemCompanySettings = {
   updated_at?: string;
 };
 
-export type CreateChemSubstanceInput = Omit<ChemSubstance, 'id' | 'created_at' | 'updated_at' | 'chem_storage_areas'>;
+export type SdsImport = {
+  actor_id: string;
+  account_table: 'admin_accounts' | 'company_users' | 'tools_users';
+  username: string;
+  display_name: string;
+  imported_at: string;
+  method: 'file' | 'link';
+};
+
+export type CreateChemSubstanceInput = Omit<ChemSubstance, 'id' | 'created_at' | 'updated_at' | 'chem_storage_areas' | 'sds_import'>;
 export type UpdateChemSubstanceInput = Partial<CreateChemSubstanceInput>;
 
 /** ผลสกัดจาก SDS ด้วย AI — ทุกช่องเป็น optional เพราะ SDS แต่ละฉบับไม่ครบเท่ากัน */

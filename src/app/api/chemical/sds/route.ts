@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import { getSupabaseServer } from '@/lib/supabase';
 
 import { requireToolsActor, assertCompany, apiError } from '@/lib/toolsSession';
 import { assertSdsPath, assertExistingCompany } from '@/lib/chemical/access';
+import { sdsImporter } from '@/lib/chemical/sds-provenance';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,11 +46,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'รองรับเฉพาะ PDF, PNG, JPG' }, { status: 415 });
     }
     const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'sds.pdf';
-    const path = `${companyId}/${Date.now()}-${safe}`;
+    const path = `${companyId}/${randomUUID()}-${safe}`;
     const db = getSupabaseServer();
     const { error } = await db.storage.from(BUCKET)
       .upload(path, await file.arrayBuffer(), { contentType: file.type || 'application/pdf', upsert: false });
     if (error) throw error;
+    const { error: receiptError } = await db.from('chem_sds_uploads').insert({
+      path, company_id: companyId, importer: sdsImporter(actor, 'file'),
+    });
+    if (receiptError) {
+      // Do not return an upload that has no verifiable importer.
+      const { error: cleanupError } = await db.storage.from(BUCKET).remove([path]);
+      if (cleanupError) console.error('SDS upload rollback failed', cleanupError.message);
+      throw receiptError;
+    }
     return NextResponse.json({ path, file_name: file.name, size: file.size }, { status: 201 });
   } catch (error: unknown) {
     return apiError(error);

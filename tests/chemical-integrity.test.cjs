@@ -46,8 +46,30 @@ test('signed sessions reject tampered identities and expired tokens',()=>{
  try{assert.equal(verifyToolsSession(token),null);}finally{Date.now=realNow;}
 });
 test('partial edits preserve omitted fields and cannot mass-assign ownership, review or system fields',()=>{
- assert.deepEqual(sanitizeSubstance({name:'Changed',company_id:'aab',id:'spoof',reviewed_by:'spoof',is_demo:true,is_active:false}),{name:'Changed'});
+ assert.deepEqual(sanitizeSubstance({name:'Changed',company_id:'aab',id:'spoof',reviewed_by:'spoof',is_demo:true,is_active:false,sds_import:{username:'spoof'}}),{name:'Changed'});
  assert.deepEqual(sanitizeSubstance({quantity:'',first_aid:{eye:'water'},ghs_pictograms:['GHS05',3]}),{quantity:null,first_aid:{eye:'water'},ghs_pictograms:['GHS05']});
+});
+
+test('SDS upload receipts require complete identity, matching company and immutable service access',async()=>{
+ const db=await createDb();
+ try {
+  const importer={actor_id:'test-id',account_table:'company_users',username:'audit-amt',display_name:'Audit user',imported_at:'2026-10-09T10:00:00Z',method:'file'};
+  assert.equal((await db.query('select count(*)::int as n from chem_substances where sds_import is not null')).rows[0].n,0);
+  await assert.rejects(db.query("insert into chem_sds_uploads(path,company_id,importer) values ('aab/file.pdf','amt',$1)",[JSON.stringify(importer)]),/check constraint/);
+  await assert.rejects(db.query("insert into chem_sds_uploads(path,company_id,importer) values ('amt/file.pdf','amt',$1)",[JSON.stringify({...importer,account_table:null})]),/check constraint/);
+  await assert.rejects(db.query("update chem_substances set sds_import='{}'"),/check constraint/);
+  for(const role of ['anon','authenticated']) {
+   await db.exec('set role '+role);
+   await assert.rejects(db.query('select * from chem_sds_uploads'),/permission denied/);
+   await assert.rejects(db.query("insert into chem_sds_uploads(path,company_id,importer) values ('amt/file.pdf','amt',$1)",[JSON.stringify(importer)]),/permission denied/);
+   await db.exec('reset role');
+  }
+  await db.exec('set role service_role');
+  await db.query("insert into chem_sds_uploads(path,company_id,importer) values ('amt/file.pdf','amt',$1)",[JSON.stringify(importer)]);
+  assert.equal((await db.query('select importer from chem_sds_uploads')).rows[0].importer.username,'audit-amt');
+  await assert.rejects(db.query('delete from chem_sds_uploads'),/permission denied/);
+  await assert.rejects(db.query("update chem_sds_uploads set importer='{}'"),/permission denied/);
+ }finally{await db.close();}
 });
 test('migration enforces company relation, review metadata, policy and direct-access denial',async()=>{
  const db=await createDb();

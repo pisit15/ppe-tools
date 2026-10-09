@@ -17,7 +17,7 @@ async function createDb() {
     create table law_documents(id uuid primary key,code text unique,title text,status text,file_url text,external_url text,gazette_url text);
     insert into company_settings values ('amt','AMT'),('aab','AAB');
   `);
-  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
+  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql','20261009120114_chemical_sds_provenance.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
   for (const law of require('./chemical-library-laws.json')) await db.query('insert into law_documents(id,code,title,status,file_url,external_url,gazette_url) values ($1,$2,$3,$4,$5,$6,$7)', [law.id,law.code,law.title,law.status,law.file_url,law.external_url,law.gazette_url]);
   const hash = bcrypt.hashSync('local-test-only',4);
   await db.query("insert into admin_accounts(username,password,role,display_name) values ('audit-admin',$1,'super_admin','Local test admin')",[hash]);
@@ -38,17 +38,35 @@ async function createDb() {
 function ident(v) { if(!/^[a-z_][a-z0-9_]*$/.test(v)) throw new Error('Unsupported identifier'); return '"' + v + '"'; }
 async function startFixture(port=4311) {
   let db = await createDb();
+  const objects = new Set();
+  let failSdsReceipt = false;
   const server = http.createServer(async(req,res)=>{
     const json=(status,data)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(data));};
     try {
       const url = new URL(req.url,'http://127.0.0.1');
-      if(url.pathname === '/__test/reset' && req.method === 'POST') { await db.close(); db = await createDb(); return json(200,{ok:true}); }
+      if(url.pathname === '/__test/reset' && req.method === 'POST') { await db.close(); db = await createDb(); objects.clear(); failSdsReceipt = false; return json(200,{ok:true}); }
+      if(url.pathname === '/__test/fail-sds-receipt' && req.method === 'POST') { failSdsReceipt = true; return json(200,{ok:true}); }
+      if(url.pathname === '/__test/sds-state') return json(200,{objects:[...objects],receipts:(await db.query('select * from chem_sds_uploads')).rows});
       if(url.pathname === '/__test/state') return json(200,(await db.query('select * from chem_substances order by name')).rows);
       if(url.pathname === '/__test/legal-state') return json(200,(await db.query('select * from chem_legal_assessments order by created_at desc')).rows);
       if(url.pathname === '/__test/large-register' && req.method === 'POST') { await db.exec("insert into chem_substances(company_id,name) select 'amt','Pagination chemical ' || n from generate_series(1,1001) n"); return json(200,{ok:true}); }
       if(url.pathname === '/health') return json(200,{ok:true});
-      if(!url.pathname.startsWith('/rest/v1/')) return json(404,{message:'Not found'});
       if(req.headers.authorization !== 'Bearer local-test-service-secret') return json(403,{message:'Test fixture requires server key'});
+      const bucketPath = '/storage/v1/object/chemical-sds';
+      if(url.pathname.startsWith(bucketPath + '/') && req.method === 'POST') {
+        for await (const chunk of req) { void chunk; }
+        const objectPath = decodeURIComponent(url.pathname.slice(bucketPath.length + 1));
+        if(objects.has(objectPath)) return json(409,{message:'Already exists'});
+        objects.add(objectPath);
+        return json(200,{Key:'chemical-sds/'+objectPath,Id:'local-object-id'});
+      }
+      if(url.pathname === bucketPath && req.method === 'DELETE') {
+        let raw=''; for await (const chunk of req) raw+=chunk;
+        for(const objectPath of JSON.parse(raw).prefixes) objects.delete(objectPath);
+        return json(200,[]);
+      }
+      if(!url.pathname.startsWith('/rest/v1/')) return json(404,{message:'Not found'});
+      if(url.pathname === '/rest/v1/chem_sds_uploads' && req.method === 'POST' && failSdsReceipt) { failSdsReceipt=false; return json(500,{message:'Simulated receipt failure'}); }
       const table = ident(url.pathname.split('/').pop()); const params=[]; const predicates=[];
       for(const [key,value] of url.searchParams) {
         if(['select','order','limit','on_conflict','offset','columns'].includes(key))continue;
@@ -66,7 +84,7 @@ async function startFixture(port=4311) {
         rows=(await db.query('select * from '+table+where+order+' limit '+limit+' offset '+offset,params)).rows;
       } else {
         let raw='';for await(const c of req)raw+=c;const body=JSON.parse(raw);const entries=Object.entries(Array.isArray(body)?body[0]:body);
-        const value=(k,v)=>['first_aid','emergency_contacts','snapshot','coverage','gaps','details'].includes(k)?JSON.stringify(v):v;
+        const value=(k,v)=>v !== null && ['first_aid','emergency_contacts','snapshot','coverage','gaps','details','sds_import','importer'].includes(k)?JSON.stringify(v):v;
         if(req.method==='POST'){
           const cols=entries.map(([k])=>ident(k)).join(',');const values=entries.map(([k,v])=>{params.push(value(k,v));return '$'+params.length;}).join(',');
           const conflict=url.searchParams.get('on_conflict');const upsert=conflict?' on conflict ('+ident(conflict)+') do update set '+entries.filter(([k])=>k!==conflict).map(([k])=>ident(k)+'=excluded.'+ident(k)).join(','):'';
