@@ -1,6 +1,8 @@
 # Chemical legal screening — production release
 
-Status: live on https://tools.eashe.org/chemical/legal on 2026-10-09.
+Status: v2 live on https://tools.eashe.org/chemical/legal on 2026-10-09. Current deployment: dpl_BawVGyePB8z2VZZfQCnxTjX9cPSU (https://ppe-tools-bk7ee29bi-ea-she.vercel.app), source commit bedce97, catalog migration 20261009084432.
+
+## Initial release (historical)
 
 Deployment: dpl_6iY74PA2vrxmBuEkgQ6x15qMYSTu (https://ppe-tools-95x175gcf-ea-she.vercel.app). Source commit: 32b598f. Hosted catalog migration: 20261009081023. Built remotely with production configuration, checked before promotion, then promoted with Vercel CLI.
 
@@ -38,6 +40,8 @@ Uses an isolated, in-memory PGlite test database and local-only test accounts. T
 
 ## Follow-up: reuse audited evidence; defer review workflows
 
-Catalog applied in hosted migration 20261009084432; UI deployment pending. Reference v2 reconciles 1,911 entries with existing dated audit evidence, yielding 1,970 verified / 85 pending / 34 conflicts. No old release or assessment is deleted. UI now focuses on register, SDS and source-backed legal lookup. Removed review-period settings, review counters/status, review checkbox, unreviewed poster banner and legal assessment form. Emergency settings, source links, conditions and CSV remain.
+Live: catalog applied in hosted migration 20261009084432; UI built remotely, smoke-checked and promoted to tools.eashe.org. Reference v2 reconciles 1,911 entries with existing dated audit evidence, yielding 1,970 verified / 85 pending / 34 conflicts. No old release or assessment is deleted. UI now focuses on register, SDS and source-backed legal lookup. Removed review-period settings, review counters/status, review checkbox, unreviewed poster banner and legal assessment form. Emergency settings, source links, conditions and CSV remain.
 
 Validation for the follow-up: 15 unit/PostgreSQL tests and 11 browser scenarios passed; targeted ESLint passed. Production SQL confirms v2 is current, both immutable reference versions remain, and existing company substances (3) and assessments (0) are unchanged.
+
+Production follow-up verification: remote Next.js build, TypeScript and 53 static pages passed. Staged page returned HTTP 200 and unauthenticated API returned HTTP 401. Authenticated browser checks on tools.eashe.org confirmed four register cards with no review policy/status, emergency-only settings, and verified Labour/exposure references for Hydrogen peroxide and Sodium hydroxide. No error-level runtime logs were returned during the smoke check. Screenshots are saved in ../outputs/chemical-legal-system/production-register-v2.png and production-settings-v2.png.
