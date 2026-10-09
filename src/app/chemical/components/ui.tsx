@@ -33,8 +33,8 @@ export const GROUP_COLORS: Record<StorageClassDef['group'], { bg: string; fg: st
 export function GhsIcons({ codes, size = 28 }: { codes: string[]; size?: number }) {
   if (!codes || codes.length === 0) return <span className="text-xs text-gray-600">—</span>;
   return (
-    <span className="inline-flex gap-1 flex-wrap">
-      {codes.map(c => {
+    <span className="inline-flex items-center gap-1.5 flex-wrap min-w-20 max-w-32">
+      {[...new Set(codes)].map(c => {
         const p = ghsPictogram(c);
         if (!p) return null;
         // eslint-disable-next-line @next/next/no-img-element

@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, FileText, Link2, Printer, Pencil, Trash2, FlaskConical, Scale } from 'lucide-react';
+import { Plus, Search, FileText, Link2, Printer, Pencil, Trash2, FlaskConical, Scale, Tag } from 'lucide-react';
 import type { ChemStorageArea, ChemSubstance } from '@/lib/types';
 import { GHS_PICTOGRAMS } from '@/lib/chemical/ghs';
 import { STORAGE_CLASSES } from '@/lib/chemical/storage-classes';
@@ -18,6 +18,7 @@ import { SdsImportInfo } from './components/SdsImportInfo';
 type QualityFilter = '' | 'missing_sds' | 'missing_date' | 'no_class';
 const PAGE_SIZE = 30;
 const EMPTY_ITEMS: ChemSubstance[] = [];
+const actionCls = 'flex flex-col items-center justify-center gap-1 rounded-xl border border-transparent px-1.5 py-2 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500';
 type SortKey = 'name' | 'storage_class' | 'updated_at' | 'quantity';
 
 export default function ChemicalRegisterPage() {
@@ -205,7 +206,7 @@ function ScopedRegister() {
                         <div className="font-semibold text-gray-900">{i.name}</div>{isAdmin && <button onClick={() => changeDemo(i)} className="text-xs text-purple-800 underline my-1">{i.is_demo ? 'นำกลับทะเบียนจริง' : 'ย้ายไปข้อมูลสาธิต'}</button>}{(i.ai_filled_fields?.length || 0) > 0 && <div className="text-xs mt-1 text-gray-600">มีข้อมูลจาก AI</div>}
                         <div className="text-sm text-gray-500">{[i.chemical_name, i.cas_no && `CAS ${i.cas_no}`, i.un_no && `UN ${i.un_no}`].filter(Boolean).join(' · ')}</div>
                       </td>
-                      <td className="px-3 py-2.5"><GhsIcons codes={i.ghs_pictograms} size={26} /></td>
+                      <td className="px-3 py-2.5"><GhsIcons codes={i.ghs_pictograms} size={34} /></td>
                       <td className="px-3 py-2.5"><SignalWordBadge word={i.signal_word} /></td>
                       <td className="px-3 py-2.5"><StorageClassChip code={i.storage_class} /></td>
                       <td className="px-3 py-2.5 text-xs text-gray-700">{i.chem_storage_areas?.name || '—'}{i.storage_location && <div className="text-gray-600">{i.storage_location}</div>}</td>
@@ -221,11 +222,12 @@ function ScopedRegister() {
                       </td>
                       {isAll && <td className="px-3 py-2.5 text-xs font-semibold text-gray-700">{i.company_id.toUpperCase()}</td>}
                       <td className="px-3 py-2.5">
-                        <div className="flex justify-end gap-1">
-                          <Link href={`/chemical/legal?company_id=${encodeURIComponent(i.company_id)}&substance_id=${i.id}`} aria-label={`ตรวจสอบกฎหมายของ ${i.name}`} title="ตรวจสอบกฎหมาย" className="p-3 rounded-lg hover:bg-purple-50 text-purple-800"><Scale size={16} /></Link>
-                          <Link href={`/chemical/${i.id}/poster`} aria-label={`โปสเตอร์สรุป SDS ของ ${i.name}`} title="โปสเตอร์สรุป SDS (A4)" className="p-3 rounded-lg hover:bg-gray-100 text-gray-600"><Printer size={16} /></Link>
-                          <Link href={`/chemical/${i.id}/edit?company_id=${encodeURIComponent(i.company_id)}`} aria-label={`แก้ไข ${i.name}`} className="inline-flex p-3 rounded-lg hover:bg-purple-50"><Pencil size={18} /></Link>
-                          <button onClick={() => setConfirmDelete(i)} disabled={isAll} aria-label={`นำ ${i.name} ออกจากทะเบียน`} title="นำออกจากทะเบียน" className="p-3 rounded-lg hover:bg-red-50 text-gray-600 hover:text-red-600 disabled:opacity-30"><Trash2 size={16} /></button>
+                        <div className="grid grid-cols-3 2xl:grid-cols-5 gap-1.5 w-44 2xl:w-72 ml-auto">
+                          <Link href={`/chemical/legal?company_id=${encodeURIComponent(i.company_id)}&substance_id=${i.id}`} aria-label={`ตรวจสอบกฎหมายของ ${i.name}`} title="ตรวจสอบกฎหมาย" className={`${actionCls} bg-purple-50 text-purple-800 hover:bg-purple-100`}><Scale size={18} /><span>กฎหมาย</span></Link>
+                          <Link href={`/chemical/${i.id}/poster`} aria-label={`โปสเตอร์สรุป SDS ของ ${i.name}`} title="โปสเตอร์สรุป SDS (A4)" className={`${actionCls} bg-slate-100 text-slate-700 hover:bg-slate-200`}><Printer size={18} /><span>โปสเตอร์</span></Link>
+                          <Link href={`/chemical/${i.id}/label`} aria-label={`ดาวน์โหลดฉลากของ ${i.name}`} title="สร้างฉลาก PDF สำหรับติดภาชนะ" className={`${actionCls} bg-teal-50 text-teal-800 hover:bg-teal-100`}><Tag size={18} /><span>ฉลาก</span></Link>
+                          <Link href={`/chemical/${i.id}/edit?company_id=${encodeURIComponent(i.company_id)}`} aria-label={`แก้ไข ${i.name}`} className={`${actionCls} bg-blue-50 text-blue-800 hover:bg-blue-100`}><Pencil size={18} /><span>แก้ไข</span></Link>
+                          <button onClick={() => setConfirmDelete(i)} disabled={isAll} aria-label={`นำ ${i.name} ออกจากทะเบียน`} title="นำออกจากทะเบียน" className={`${actionCls} text-gray-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-30`}><Trash2 size={18} /><span>นำออก</span></button>
                         </div>
                       </td>
                     </tr>

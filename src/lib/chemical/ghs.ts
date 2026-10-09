@@ -13,15 +13,15 @@ export interface GhsPictogram {
 }
 
 export const GHS_PICTOGRAMS: GhsPictogram[] = [
-  { code: 'GHS01', nameTh: 'ระเบิดได้', nameEn: 'Explosive', file: '/ghs/GHS01.svg' },
-  { code: 'GHS02', nameTh: 'ไวไฟ', nameEn: 'Flammable', file: '/ghs/GHS02.svg' },
-  { code: 'GHS03', nameTh: 'ออกซิไดส์', nameEn: 'Oxidizing', file: '/ghs/GHS03.svg' },
-  { code: 'GHS04', nameTh: 'ก๊าซภายใต้ความดัน', nameEn: 'Gas under pressure', file: '/ghs/GHS04.svg' },
-  { code: 'GHS05', nameTh: 'กัดกร่อน', nameEn: 'Corrosive', file: '/ghs/GHS05.svg' },
-  { code: 'GHS06', nameTh: 'เป็นพิษเฉียบพลัน', nameEn: 'Acute toxicity', file: '/ghs/GHS06.svg' },
-  { code: 'GHS07', nameTh: 'ระคายเคือง / อันตราย', nameEn: 'Irritant / harmful', file: '/ghs/GHS07.svg' },
-  { code: 'GHS08', nameTh: 'อันตรายต่อสุขภาพร้ายแรง', nameEn: 'Health hazard', file: '/ghs/GHS08.svg' },
-  { code: 'GHS09', nameTh: 'อันตรายต่อสิ่งแวดล้อม', nameEn: 'Environmental hazard', file: '/ghs/GHS09.svg' },
+  { code: 'GHS01', nameTh: 'ระเบิดได้', nameEn: 'Explosive', file: '/ghs/GHS01.png' },
+  { code: 'GHS02', nameTh: 'ไวไฟ', nameEn: 'Flammable', file: '/ghs/GHS02.png' },
+  { code: 'GHS03', nameTh: 'ออกซิไดส์', nameEn: 'Oxidizing', file: '/ghs/GHS03.png' },
+  { code: 'GHS04', nameTh: 'ก๊าซภายใต้ความดัน', nameEn: 'Gas under pressure', file: '/ghs/GHS04.png' },
+  { code: 'GHS05', nameTh: 'กัดกร่อน', nameEn: 'Corrosive', file: '/ghs/GHS05.png' },
+  { code: 'GHS06', nameTh: 'เป็นพิษเฉียบพลัน', nameEn: 'Acute toxicity', file: '/ghs/GHS06.png' },
+  { code: 'GHS07', nameTh: 'ระคายเคือง / อันตราย', nameEn: 'Irritant / harmful', file: '/ghs/GHS07.png' },
+  { code: 'GHS08', nameTh: 'อันตรายต่อสุขภาพร้ายแรง', nameEn: 'Health hazard', file: '/ghs/GHS08.png' },
+  { code: 'GHS09', nameTh: 'อันตรายต่อสิ่งแวดล้อม', nameEn: 'Environmental hazard', file: '/ghs/GHS09.png' },
 ];
 
 export const ghsPictogram = (code: string): GhsPictogram | undefined => GHS_PICTOGRAMS.find(p => p.code === code);

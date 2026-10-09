@@ -10,7 +10,7 @@ import ChemicalLoginPage from '@/components/ChemicalLoginPage';
 export default function ChemicalLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const pathname = usePathname();
-  const editing = pathname === '/chemical/new' || pathname.endsWith('/edit');
+  const editing = pathname === '/chemical/new' || pathname.endsWith('/edit') || pathname.endsWith('/label');
   const [loginDone, setLoginDone] = useState(false);
 
   if (!user && !loginDone) {
