@@ -119,10 +119,24 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
   if (!compact && draft.precautions) { text('ข้อควรระวัง', options.fontSize, true); text(draft.precautions); y += 1.5; }
   const ppeSize = 10;
   const ppeGap = 2;
-  const ppeColumns = Math.max(1, Math.floor((usable + ppeGap) / (ppeSize + ppeGap)));
+  const ppeCell = 20;
+  const ppeColumns = Math.max(1, Math.floor((usable + ppeGap) / (ppeCell + ppeGap)));
+  const ppePositions: { x: number; y: number }[] = [];
   if (ppeImages.length) { text('PPE', 8, true, '#1762ad'); y += 1; }
-  const ppeY = y;
-  if (ppeImages.length) y += Math.ceil(ppeImages.length / ppeColumns) * (ppeSize + ppeGap);
+  // Captions are real layout rows: reserve their height before placing the next content.
+  for (let start = 0; start < equipment.length; start += ppeColumns) {
+    let captionHeight = 0;
+    equipment.slice(start, start + ppeColumns).forEach((p, column) => {
+      const x = inset + column * (ppeCell + ppeGap);
+      ppePositions.push({ x: x + (ppeCell - ppeSize) / 2, y });
+      ctx.font = `400 ${7 * PT_TO_MM}px ${FONT}`;
+      const captions = p.caption.flatMap(line => wrapText(ctx, line, ppeCell));
+      captions.forEach((line, row) => runs.push({ text: line, x: x + (ppeCell - ctx.measureText(line).width) / 2,
+        y: y + ppeSize + 1 + 7 * PT_TO_MM * 1.1 + row * 3.6, pt: 7, bold: false, color: '#111827' }));
+      captionHeight = Math.max(captionHeight, captions.length * 3.6);
+    });
+    y += ppeSize + 1 + captionHeight + ppeGap;
+  }
   if (!compact && draft.supplier) text(`ผู้จำหน่าย: ${draft.supplier}`);
   if (draft.emergency) text(`ฉุกเฉิน: ${draft.emergency}`, options.fontSize, true);
   if (!compact && draft.extra) text(draft.extra);
@@ -151,7 +165,7 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
     ctx.drawImage(img, inset + (index % pictureColumns) * (pictureSize + pictureGap), pictureY + Math.floor(index / pictureColumns) * (pictureSize + pictureGap), pictureSize, pictureSize);
   });
   ppeImages.forEach((img, index) => {
-    ctx.drawImage(img, inset + (index % ppeColumns) * (ppeSize + ppeGap), ppeY + Math.floor(index / ppeColumns) * (ppeSize + ppeGap), ppeSize, ppeSize);
+    ctx.drawImage(img, ppePositions[index].x, ppePositions[index].y, ppeSize, ppeSize);
   });
   if (qrCode && qr) {
     // Integer device pixels, four-module quiet zone; no interpolation of the QR modules.

@@ -193,6 +193,17 @@ test('optional PPE prints small, persists with QR size, supports old versions, a
   await expect(page.getByLabel('ขนาด QR Code',{exact:true})).toHaveValue('16');
   const ppe=page.getByRole('checkbox',{name:/^PPE /});
   await expect(ppe).toHaveCount(9);
+  const zoom=page.getByRole('button',{name:'ดูภาพใหญ่ หน้ากากกรองไอ / ก๊าซ',exact:true});
+  await zoom.click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('img')).toHaveAttribute('width','180');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(zoom).toBeFocused();
+  await page.getByRole('button',{name:'ดูภาพใหญ่ รองเท้าป้องกันสารเคมี',exact:true}).click();
+  await page.getByRole('button',{name:'ปิดภาพ PPE',exact:true}).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+
   for(const item of await ppe.all()) await expect(item).not.toBeChecked();
   await page.getByLabel('ฉลากย่อสำหรับภาชนะเล็ก',{exact:true}).check();
   await page.getByRole('button',{name:'ฉลากแนวนอน 4 ดวงต่อ A4',exact:true}).click();
@@ -200,6 +211,7 @@ test('optional PPE prints small, persists with QR size, supports old versions, a
   await page.getByText('อ่านข้อความบนฉลาก',{exact:true}).click();
   await ready(page);
   await expect(page.locator('details').filter({hasText:'อ่านข้อความบนฉลาก'})).toContainText('รูป PPE: แว่นตานิรภัย · ถุงมือป้องกันสารเคมี · หน้ากากกรองไอ / ก๊าซ');
+  await expect(page.locator('details').filter({hasText:'อ่านข้อความบนฉลาก'})).toContainText('กรองไอ/ก๊าซ');
   await page.addScriptTag({path:require.resolve('jsqr')});
   for(const size of [16,20,24]) {
     await page.getByLabel('ขนาด QR Code',{exact:true}).selectOption(String(size)); await ready(page);
