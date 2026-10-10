@@ -13,4 +13,8 @@ The label editor now has an "แสดงคำกำกับใต้ภาพ
 
 ## Rollout
 
-Prepared for ea-she/ppe-tools. Previous deployment: dpl_CXGmhsSZqzT4kWAEnZ2snPQwGSoy. Rollback is application-only; older builds always display PPE captions.
+Live at https://tools.eashe.org/chemical on 2026-10-10. Source commit `c235d0b`; deployment `dpl_BiX3bo5HsWaruLjkaDub7JGu9BFj` at https://ppe-tools-77jqumzsd-ea-she.vercel.app. Remote compilation/TypeScript/53 static pages passed and the staged label page returned 200 before promotion.
+
+The production browser smoke check restored a legacy synthetic snapshot with captions enabled by default, selected respirator and boots, confirmed their captions, then disabled captions and downloaded a 105,837-byte PDF with no page errors. The selected icons remained checked; the 16 mm QR decoded correctly. All 19 assets loaded; real anonymous registry/history APIs remained 401 and the active uploaded SDS route returned 307. Session/substance/history were mocked only inside the isolated browser; there were no authenticated production writes. No error-level runtime logs were returned.
+
+Previous deployment: `dpl_CXGmhsSZqzT4kWAEnZ2snPQwGSoy`. Rollback is application-only; older builds always display PPE captions.
