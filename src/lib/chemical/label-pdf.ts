@@ -119,7 +119,8 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
   if (!compact && draft.precautions) { text('ข้อควรระวัง', options.fontSize, true); text(draft.precautions); y += 1.5; }
   const ppeSize = 10;
   const ppeGap = 2;
-  const ppeCell = 20;
+  const showPpeCaptions = options.showPpeCaptions ?? true;
+  const ppeCell = showPpeCaptions ? 20 : ppeSize;
   const ppeColumns = Math.max(1, Math.floor((usable + ppeGap) / (ppeCell + ppeGap)));
   const ppePositions: { x: number; y: number }[] = [];
   if (ppeImages.length) { text('PPE', 8, true, '#1762ad'); y += 1; }
@@ -130,12 +131,12 @@ export async function renderChemicalLabel(draft: LabelDraft, options: LabelOptio
       const x = inset + column * (ppeCell + ppeGap);
       ppePositions.push({ x: x + (ppeCell - ppeSize) / 2, y });
       ctx.font = `400 ${7 * PT_TO_MM}px ${FONT}`;
-      const captions = p.caption.flatMap(line => wrapText(ctx, line, ppeCell));
+      const captions = showPpeCaptions ? p.caption.flatMap(line => wrapText(ctx, line, ppeCell)) : [];
       captions.forEach((line, row) => runs.push({ text: line, x: x + (ppeCell - ctx.measureText(line).width) / 2,
         y: y + ppeSize + 1 + 7 * PT_TO_MM * 1.1 + row * 3.6, pt: 7, bold: false, color: '#111827' }));
       captionHeight = Math.max(captionHeight, captions.length * 3.6);
     });
-    y += ppeSize + 1 + captionHeight + ppeGap;
+    y += ppeSize + (showPpeCaptions ? 1 + captionHeight : 0) + ppeGap;
   }
   if (!compact && draft.supplier) text(`ผู้จำหน่าย: ${draft.supplier}`);
   if (draft.emergency) text(`ฉุกเฉิน: ${draft.emergency}`, options.fontSize, true);

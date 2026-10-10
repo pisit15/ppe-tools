@@ -272,3 +272,39 @@ test('a selected PPE image failure blocks PDF rather than silently omitting prot
   await page.getByRole('button',{name:'ล้างการเลือก PPE'}).click();await ready(page);
   await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
 });
+
+
+test('PPE captions toggle in full/compact PDFs, persist per version, and reset to visible', async ({ page }) => {
+  await login(page.request);
+  const substance=await create(page.request,{name:'PPE caption toggle fixture',h_codes:['H225'],p_codes:[],ghs_pictograms:['GHS02'],supplier:'',emergency_contact:'',sds_url:'https://example.com/sds.pdf'});
+  const api=`/api/chemical/substances/${substance.id}/labels`;
+  await page.goto(`/chemical/${substance.id}/label`); await ready(page);
+  const captions=page.getByRole('checkbox',{name:'แสดงคำกำกับใต้ภาพ PPE',exact:true});
+  await expect(captions).toBeChecked();
+  for(const name of ['PPE หน้ากากกรองไอ / ก๊าซ','PPE รองเท้าป้องกันสารเคมี']) await page.getByRole('checkbox',{name,exact:true}).check();
+  await page.getByText('อ่านข้อความบนฉลาก',{exact:true}).click();await ready(page);
+  const text=page.locator('details').filter({hasText:'อ่านข้อความบนฉลาก'});
+  for(const mode of ['full','compact']) {
+    await page.getByLabel(mode==='full'?'รายละเอียดครบ':'ฉลากย่อสำหรับภาชนะเล็ก',{exact:true}).check();
+    for(const visible of [true,false]) {
+      await captions.setChecked(visible);await ready(page);
+      if(visible) { await expect(text).toContainText('กรองไอ/ก๊าซ');await expect(text).toContainText('บูทกัน'); }
+      else { await expect(text).not.toContainText('กรองไอ/ก๊าซ');await expect(text).not.toContainText('บูทกัน'); }
+      await expect(page.getByRole('checkbox',{name:'PPE รองเท้าป้องกันสารเคมี',exact:true})).toBeChecked();
+      const event=page.waitForEvent('download');await page.getByRole('button',{name:'ดาวน์โหลด PDF',exact:true}).click();
+      await(await event).saveAs(`test-results/chemical-label-captions-${mode}-${visible?'on':'off'}.pdf`);
+    }
+  }
+  await page.getByRole('button',{name:'บันทึกเป็นเวอร์ชันใหม่'}).click();await expect(page.getByText('บันทึก V1 แล้ว',{exact:false})).toBeVisible();
+  await page.reload();await ready(page);await expect(captions).not.toBeChecked();
+  expect((await(await page.request.get(api+'?version=1')).json()).data.snapshot.options.showPpeCaptions).toBe(false);
+  await page.getByRole('button',{name:'ฉลากแนวนอน 4 ดวงต่อ A4',exact:true}).click();await ready(page);await expect(captions).not.toBeChecked();
+  await captions.check();await ready(page);
+  await page.getByRole('button',{name:'บันทึกเป็นเวอร์ชันใหม่'}).click();await expect(page.getByText('บันทึก V2 แล้ว',{exact:false})).toBeVisible();
+  await page.reload();await ready(page);await expect(captions).toBeChecked();
+  expect((await(await page.request.get(api+'?version=2')).json()).data.snapshot.options.showPpeCaptions).toBe(true);
+  await page.getByLabel('เลือกเวอร์ชันฉลาก').selectOption('1');await ready(page);await expect(captions).not.toBeChecked();
+  await page.locator('fieldset').filter({has:page.locator('legend').filter({hasText:'รูปอุปกรณ์ป้องกันส่วนบุคคล (PPE)'})}).last().screenshot({path:'test-results/chemical-label-caption-toggle.png'});
+  page.once('dialog',d=>d.accept());
+  await page.getByRole('button',{name:'เริ่มใหม่จากข้อมูลทะเบียน',exact:true}).click();await ready(page);await expect(captions).toBeChecked();
+});

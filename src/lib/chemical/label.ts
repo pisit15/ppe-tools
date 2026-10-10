@@ -23,6 +23,8 @@ export interface LabelOptions {
   pageOrientation: 'portrait' | 'landscape'; content: 'full' | 'compact'; includeQr: boolean;
   /** Optional for snapshots saved before QR sizing was introduced. */
   qrSize?: 16 | 20 | 24;
+  /** Older snapshots preserve the existing visible-caption behaviour. */
+  showPpeCaptions?: boolean;
 }
 export interface LabelPreset {
   id: string; orientation: 'portrait' | 'landscape'; pageOrientation: 'portrait' | 'landscape';
@@ -44,7 +46,7 @@ export const LABEL_PRESETS: LabelPreset[] = [
   preset('portrait-4', 'portrait', 'portrait', 2, 2),
   preset('portrait-1', 'portrait', 'portrait', 1, 1),
 ];
-export const DEFAULT_LABEL_OPTIONS: LabelOptions = { width: 93, height: 136.5, fontSize: 9, copies: 4, layout: 'a4', pageOrientation: 'portrait', content: 'full', includeQr: true, qrSize: 16 };
+export const DEFAULT_LABEL_OPTIONS: LabelOptions = { width: 93, height: 136.5, fontSize: 9, copies: 4, layout: 'a4', pageOrientation: 'portrait', content: 'full', includeQr: true, qrSize: 16, showPpeCaptions: true };
 export function publicSdsUrl(id: string) { return `https://tools.eashe.org/sds/${encodeURIComponent(id)}`; }
 export function applyLabelPreset(options: LabelOptions, p: LabelPreset): LabelOptions {
   return { ...options, width: p.width, height: p.height, pageOrientation: p.pageOrientation, layout: 'a4', copies: p.count };

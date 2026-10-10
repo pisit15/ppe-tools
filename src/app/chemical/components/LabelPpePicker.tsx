@@ -4,14 +4,21 @@ import { useEffect, useRef, useState } from 'react';
 import { ZoomIn, X } from 'lucide-react';
 import { LABEL_PPE, ppeFile, type LabelPpeCode } from '@/lib/chemical/ppe';
 
-export function LabelPpePicker({ value, onChange }: { value: LabelPpeCode[]; onChange: (value: LabelPpeCode[]) => void }) {
+export function LabelPpePicker({ value, onChange, showCaptions, onCaptionsChange }: {
+  value: LabelPpeCode[]; onChange: (value: LabelPpeCode[]) => void;
+  showCaptions: boolean; onCaptionsChange: (value: boolean) => void;
+}) {
   const [expanded, setExpanded] = useState<typeof LABEL_PPE[number] | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { if (expanded) dialog.current?.showModal(); }, [expanded]);
   function close() { dialog.current?.close(); setExpanded(null); }
   return <fieldset className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
     <legend className="px-1 font-semibold text-sm text-gray-800">รูปอุปกรณ์ป้องกันส่วนบุคคล (PPE)</legend>
-    <p className="text-xs text-gray-600 mb-3">เลือกตาม SDS ของผลิตภัณฑ์ เลือกได้หลายรูปหรือไม่เลือกเลย · บนฉลากมีรูป 10 มม. พร้อมคำกำกับ</p>
+    <p className="text-xs text-gray-600 mb-3">เลือกตาม SDS ของผลิตภัณฑ์ เลือกได้หลายรูปหรือไม่เลือกเลย · พิมพ์รูปขนาด 10 มม.</p>
+    <label className="mb-3 flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
+      <input type="checkbox" checked={showCaptions} onChange={e => onCaptionsChange(e.target.checked)} className="size-4 accent-blue-700" />
+      แสดงคำกำกับใต้ภาพ PPE
+    </label>
     <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
       {LABEL_PPE.map(p => <div key={p.code} className={`flex flex-col rounded-xl border text-center ${value.includes(p.code) ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
         <label className="flex flex-1 flex-col items-center justify-between gap-2 cursor-pointer px-2 pt-3 pb-2">

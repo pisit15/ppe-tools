@@ -105,7 +105,7 @@ function LabelEditor({ substance, history }: { substance: ChemSubstance; history
               <span className="text-xs">{p.code}</span><input type="checkbox" aria-label={`${p.code} ${p.nameTh}`} checked={draft.pictograms.includes(p.code)} onChange={e => change('pictograms', e.target.checked ? [...draft.pictograms, p.code] : draft.pictograms.filter(c => c !== p.code))} className="accent-purple-700" />
             </label>)}
           </div></fieldset>
-          <LabelPpePicker value={draft.ppe} onChange={ppe => change('ppe', ppe)} />
+          <LabelPpePicker value={draft.ppe} onChange={ppe => change('ppe', ppe)} showCaptions={options.showPpeCaptions ?? true} onCaptionsChange={value => configure('showPpeCaptions', value)} />
           <div><label htmlFor="label-signal" className={labelCls}>คำสัญญาณ</label><select id="label-signal" className={inputCls} value={draft.signal} onChange={e => change('signal', e.target.value as LabelDraft['signal'])}><option value="">ยังไม่ระบุ</option>{SIGNAL_WORDS.map(s => <option value={s.value} key={s.value}>{s.labelTh}</option>)}</select></div>
           <p className="text-xs text-gray-600">ข้อความ H/P ที่เติมให้อัตโนมัติเป็นคำแปลย่อในระบบ สามารถแทนที่ด้วยข้อความบนฉลากจาก SDS ของผลิตภัณฑ์ได้โดยตรง</p>
           {field('hazards', 'ข้อความแสดงความเป็นอันตราย (H)', 5)}

@@ -16,7 +16,7 @@ export function labelSnapshot(draft: LabelDraft, options: LabelOptions): LabelSn
   const { name, identity, pictograms, signal, hazards, precautions, supplier, emergency, contents, extra } = draft;
   return { schema: 1, draft: { name, identity, pictograms, ppe: draft.ppe || [], signal, hazards, precautions, supplier, emergency, contents, extra }, options: {
     width: options.width, height: options.height, fontSize: options.fontSize, copies: options.copies, layout: options.layout,
-    pageOrientation: options.pageOrientation, content: options.content, includeQr: options.includeQr, qrSize: options.qrSize ?? 16,
+    pageOrientation: options.pageOrientation, content: options.content, includeQr: options.includeQr, qrSize: options.qrSize ?? 16, showPpeCaptions: options.showPpeCaptions ?? true,
   } };
 }
 export function restoreLabel(snapshot: LabelSnapshot, substance: ChemSubstance): LabelDraft {
@@ -39,6 +39,8 @@ export function validateLabelSnapshot(input: unknown): LabelSnapshot {
   if (!Array.isArray(draft.pictograms) || draft.pictograms.length > 9 || !draft.pictograms.every(p => typeof p === 'string' && /^GHS0[1-9]$/.test(p))) return invalid();
   const ppe = draft.ppe === undefined ? [] : draft.ppe;
   const qrSize = options.qrSize === undefined ? 16 : options.qrSize;
+  const showPpeCaptions = options.showPpeCaptions === undefined ? true : options.showPpeCaptions;
+  if (typeof showPpeCaptions !== 'boolean') return invalid();
   if (!Array.isArray(ppe) || ppe.length > LABEL_PPE.length || !ppe.every(code => LABEL_PPE.some(p => p.code === code))) return invalid();
   if (typeof qrSize !== 'number' || ![16, 20, 24].includes(qrSize)) return invalid();
   if (typeof draft.signal !== 'string' || !['', 'Danger', 'Warning', 'None'].includes(draft.signal)) return invalid();
@@ -49,7 +51,7 @@ export function validateLabelSnapshot(input: unknown): LabelSnapshot {
   const cleanOptions: LabelOptions = {
     width: options.width as number, height: options.height as number, fontSize: options.fontSize as number, copies: options.copies as number,
     layout: options.layout as LabelOptions['layout'], pageOrientation: options.pageOrientation as LabelOptions['pageOrientation'],
-    content: options.content as LabelOptions['content'], includeQr: options.includeQr, qrSize: qrSize as LabelOptions['qrSize'],
+    content: options.content as LabelOptions['content'], includeQr: options.includeQr, qrSize: qrSize as LabelOptions['qrSize'], showPpeCaptions,
   };
   labelLayout(cleanOptions);
   // Saving an unfinished draft is allowed; PDF export still applies labelProblems and overflow checks.
