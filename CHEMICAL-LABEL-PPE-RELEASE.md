@@ -16,4 +16,8 @@ PPE codes and QR size are saved with each label version. Previous snapshots lack
 
 ## Rollout
 
-Pending production deployment. Previous deployment: `dpl_6L5ZWnMr6S6Sb2d2yv6REeDupsqt`. Rollback is an application promotion only; no database rollback is needed. An older application will not render newly selected PPE.
+Live on https://tools.eashe.org/chemical on 2026-10-09. Source commit `b355dc8`; production deployment `dpl_H3uwyXWMajaMFJaCFLhT9rY9G7zd` at https://ppe-tools-rh45zjt5b-ea-she.vercel.app. Remote production build, TypeScript and 53 static pages passed before promotion.
+
+The deployed browser client loaded all 19 font/GHS/PPE assets, restored a legacy V2 fixture with missing new fields, selected two PPE icons, decoded its 16 mm QR, and downloaded a 102,547-byte PDF without page errors. Session, substance and history responses were mocked only inside the isolated browser; no authenticated production writes were made. Separately, real anonymous registry/history APIs remained 401 and the active uploaded Sulfuric acid SDS route returned 307. No error-level runtime logs were returned during the check.
+
+Previous deployment: `dpl_6L5ZWnMr6S6Sb2d2yv6REeDupsqt`. Rollback is an application promotion only; no database rollback is needed. An older application will not render newly selected PPE.
