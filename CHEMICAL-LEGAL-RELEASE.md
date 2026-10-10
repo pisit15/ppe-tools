@@ -1,6 +1,6 @@
 # Chemical legal screening — production release
 
-Status: v2 live on https://tools.eashe.org/chemical/legal on 2026-10-09. Current deployment: dpl_H3uwyXWMajaMFJaCFLhT9rY9G7zd (https://ppe-tools-rh45zjt5b-ea-she.vercel.app), source commit b355dc8, catalog migration unchanged at 20261009084432. Recent additions are documented in CHEMICAL-SDS-IMPORT-RELEASE.md, HOME-CARDS-RELEASE.md, CHEMICAL-LABEL-RELEASE.md, CHEMICAL-LABEL-PRESETS-RELEASE.md, CHEMICAL-LABEL-VERSIONS-RELEASE.md and CHEMICAL-LABEL-PPE-RELEASE.md.
+Status: v2 live on https://tools.eashe.org/chemical/legal on 2026-10-09. Current deployment (2026-10-10): dpl_CXGmhsSZqzT4kWAEnZ2snPQwGSoy (https://ppe-tools-e5318k57b-ea-she.vercel.app), source commit ede67eb, catalog migration unchanged at 20261009084432. Recent additions are documented in CHEMICAL-SDS-IMPORT-RELEASE.md, HOME-CARDS-RELEASE.md, CHEMICAL-LABEL-RELEASE.md, CHEMICAL-LABEL-PRESETS-RELEASE.md, CHEMICAL-LABEL-VERSIONS-RELEASE.md CHEMICAL-LABEL-PPE-RELEASE.md and CHEMICAL-LABEL-PPE-ARTWORK-RELEASE.md.
 
 ## Initial release (historical)
 

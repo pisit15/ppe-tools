@@ -19,4 +19,8 @@ Both full and compact PDFs retain 10 mm PPE images and now add short 7 pt Thai c
 
 ## Rollout
 
-Prepared for staged production deployment to ea-she/ppe-tools. Previous live deployment: dpl_H3uwyXWMajaMFJaCFLhT9rY9G7zd. No database migration is required.
+Live at https://tools.eashe.org/chemical on 2026-10-10. Source commit `ede67eb`; deployment `dpl_CXGmhsSZqzT4kWAEnZ2snPQwGSoy` at https://ppe-tools-e5318k57b-ea-she.vercel.app. Remote production compilation, TypeScript and all 53 static pages passed. The staged page returned 200 and the boot asset hash matched the tested file before promotion.
+
+After promotion the browser smoke check compared all nine live SVG files byte-for-byte with the source, opened/closed the large boot preview, checked 52 px picker artwork, restored a legacy V2, selected respirator and boots, verified both captions, decoded the 16 mm QR, and downloaded a 112,514-byte PDF without page errors. Session/substance/history were synthetic responses only inside an isolated browser; no authenticated live API calls or production writes were made. Separately, real anonymous registry/history access remained 401 and the active uploaded SDS route returned 307. No error-level Vercel runtime logs were returned.
+
+Previous live deployment: `dpl_H3uwyXWMajaMFJaCFLhT9rY9G7zd`. No database migration is required; rollback is application-only.
