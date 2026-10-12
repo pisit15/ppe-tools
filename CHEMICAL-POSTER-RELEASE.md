@@ -1,6 +1,8 @@
 # Chemical poster templates and revisions
 
-Implemented 2026-10-12 for tools.eashe.org.
+Live on https://tools.eashe.org on 2026-10-12.
+
+Source commit: `99ac5d7`. Deployment: `dpl_5Ct3Qtx4igTetX2fhttceVXwdS6C` (https://ppe-tools-9nw5vc9s0-ea-she.vercel.app). Staged with production configuration, checked (page 200 / protected API 401), then promoted. Production compiled-client smoke exported both PDFs (498,571 / 617,269 bytes), decoded both SDS QR codes, and recorded no browser errors. Error-level deployment logs were empty. Hosted table/RPC grant checks passed. Browser/API persistence journeys ran against isolated PostgreSQL; production smoke did not write customer revisions.
 
 - Editable A4 posters with a portrait summary and an AAB landscape table based on the supplied reference.
 - Admin can create/copy/edit/hide templates, limit availability by company, edit headings/title/company/form defaults/accent, and upload a logo. These are configurable layouts, not an arbitrary drag-and-drop page builder.
@@ -12,7 +14,7 @@ Implemented 2026-10-12 for tools.eashe.org.
 
 ## Security and migration
 
-Migration: `20261012041236_chemical_poster_templates_versions.sql` (hosted migration applied successfully).
+Migration: `20261012041236_chemical_poster_templates_versions.sql` (hosted migration applied successfully). Follow-up seed correction `20261012042316_chemical_aab_poster_form_code.sql` uses the exact reference identifier `AAB-AABX-OHS-FM-031`; it changes only the untouched seed and preserves any Admin edits.
 
 Tables have RLS and no direct anon/authenticated grants. The existing signed Tools session controls tenant access in server routes. Template changes require a verified Admin account. Version inserts use a service-only RPC with a parent-row lock and idempotency key. Versions cannot be updated/deleted by the service role. Template updates check the expected revision to prevent lost updates. Clients cannot forge Admin template designs; old saved designs remain available only through a scoped previous snapshot.
 

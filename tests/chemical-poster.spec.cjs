@@ -77,7 +77,7 @@ test("user saves AAB Rev1/2/3, reopens on another device, resets without changin
     "SDS-AAB-CCO-149",
   );
   await expect(page.getByLabel("รหัสแบบฟอร์ม", { exact: true })).toHaveValue(
-    "AAB-AABS-OHS-FM-031",
+    "AAB-AABX-OHS-FM-031",
   );
   await page.getByLabel("Rev. บนเอกสาร", { exact: true }).fill("02");
   await save.click();

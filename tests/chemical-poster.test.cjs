@@ -82,6 +82,7 @@ test("templates are admin-server managed and unavailable directly to clients", a
         .rows[0].n,
       2,
     );
+    assert.equal((await db.query("select config->>'formCode' as code from chem_poster_templates where config->>'layout'='aab'")).rows[0].code, 'AAB-AABX-OHS-FM-031');
     for (const role of ["anon", "authenticated"]) {
       await db.exec("set role " + role);
       await assert.rejects(
