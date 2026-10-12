@@ -83,6 +83,23 @@ snapshot.template.config.logo ||= config.logo;
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.addInitScript(() => {
+      const draw = CanvasRenderingContext2D.prototype.drawImage;
+      let imageCanvas;
+      CanvasRenderingContext2D.prototype.drawImage = function (im, ...args) {
+        if (
+          this.canvas.width === 2480 &&
+          this.canvas.height === 3508 &&
+          im instanceof HTMLImageElement
+        ) {
+          if (imageCanvas !== this.canvas) {
+            window.posterImages = [];
+            imageCanvas = this.canvas;
+          }
+          if (im.src.includes("/ghs/"))
+            window.posterImages.push({ src: im.src, args });
+        }
+        return draw.call(this, im, ...args);
+      };
       const fill = CanvasRenderingContext2D.prototype.fillText;
       let lastCanvas;
       CanvasRenderingContext2D.prototype.fillText = function (
@@ -176,6 +193,27 @@ snapshot.template.config.logo ||= config.logo;
       throw e;
     }
     const rows = await page.evaluate(() => window.posterTexts);
+    const images = await page.evaluate(() => window.posterImages || []);
+    expect(images).toHaveLength(snapshot.draft.pictograms.length);
+    for (const im of images) {
+      expect(im.args[2]).toBeGreaterThanOrEqual(10);
+      expect(im.args[3]).toBeGreaterThanOrEqual(10);
+    }
+    if (snapshot.draft.pictograms.length <= 3 && !snapshot.draft.ingredients) {
+      for (const im of images) expect(im.args[2]).toBe(18);
+    }
+    await page.addScriptTag({ path: require.resolve("jsqr") });
+    const qr = await page.evaluate(() => {
+      const im = document.querySelector('[data-testid="poster-preview"]');
+      const c = document.createElement("canvas");
+      c.width = im.naturalWidth;
+      c.height = im.naturalHeight;
+      const ctx = c.getContext("2d");
+      ctx.drawImage(im, 0, 0);
+      const pix = ctx.getImageData(0, 0, c.width, c.height);
+      return window.jsQR(pix.data, pix.width, pix.height)?.data;
+    });
+    expect(qr).toBe(`https://tools.eashe.org/sds/${id}`);
     const sectionY = (prefix) => rows.find((r) => r.text.startsWith(prefix))?.y;
     const firstAid = sectionY("Section 4"),
       storage = sectionY("Section 5"),
@@ -209,7 +247,7 @@ snapshot.template.config.logo ||= config.logo;
       (base.includes("tools.eashe.org") ? "-production" : "-local");
     fs.writeFileSync(
       path.join(folder, tag + ".json"),
-      JSON.stringify({ base, errors, rows }, null, 2),
+      JSON.stringify({ base, errors, rows, images, qr }, null, 2),
     );
     const img = await page.getByTestId("poster-preview").getAttribute("src");
     fs.writeFileSync(

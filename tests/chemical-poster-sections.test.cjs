@@ -108,3 +108,37 @@ test("deduplicates plain text only when the whole text is present, never by a sh
   assert.equal(out.spill, "เก็บสารที่หก\nP391 เก็บสารด้วยวัสดุที่เหมาะสม");
   assert.equal(out.precautions, "");
 });
+
+const {
+  amtGhsLayout,
+  AMT_SDS_QR,
+} = require("../src/lib/chemical/poster-ghs-layout.ts");
+test("AMT enlarges three GHS symbols to 18 mm and keeps up to nine clear of QR and signal", () => {
+  assert.equal(amtGhsLayout(3, 93.3, true).size, 18);
+  for (let count = 0; count <= 9; count++) {
+    for (const qr of [false, true]) {
+      const layout = amtGhsLayout(count, 93.3, qr);
+      assert.ok(layout, `count ${count}, QR ${qr}`);
+      assert.equal(layout.positions.length, count);
+      assert.ok(layout.size >= 10);
+      for (const [i, p] of layout.positions.entries()) {
+        assert.ok(p.y >= 93.3 && p.y + layout.size <= 128);
+        assert.ok(p.x >= 13 && p.x + layout.size <= 72);
+        if (qr)
+          assert.ok(
+            p.x + layout.size <= AMT_SDS_QR.x - 1 ||
+              p.y + layout.size <= AMT_SDS_QR.y - 1,
+          );
+        for (const other of layout.positions.slice(i + 1)) {
+          assert.ok(
+            p.x + layout.size <= other.x ||
+              other.x + layout.size <= p.x ||
+              p.y + layout.size <= other.y ||
+              other.y + layout.size <= p.y,
+          );
+        }
+      }
+    }
+  }
+  assert.equal(amtGhsLayout(9, 106, true), null);
+});

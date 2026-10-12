@@ -1,6 +1,7 @@
 import type { PosterSnapshot, PosterSection } from "./poster";
 import { ghsPictogram } from "./ghs";
 import { amtSections } from "./poster-sections";
+import { amtGhsLayout, AMT_SDS_QR } from "./poster-ghs-layout";
 import { LABEL_PPE, ppeFile } from "./ppe";
 
 const FONT = "ChemicalLabelThai",
@@ -465,17 +466,21 @@ export async function renderPoster(
       "#111",
       "องค์ประกอบ",
     );
-    const columns = Math.min(3, Math.max(1, ghs.length)),
-      size = 8;
-    ghs.forEach((im, i) =>
-      image(
-        im,
-        13 + (i % columns) * size,
-        105 + Math.floor(i / columns) * size,
-        size,
-        size,
-      ),
-    );
+    // Consume the actual ingredient text height, rather than reserving blank
+    // lines and forcing every GHS symbol to 8 mm. The signal stays below y=129.
+    const symbolTop =
+      87 + Math.min(ghs.length ? 17 : 22, textHeight(d.ingredients, 59)) + 2;
+    const symbolsLayout = amtGhsLayout(ghs.length, symbolTop, !!sdsUrl);
+    if (symbolsLayout) {
+      ghs.forEach((im, i) => {
+        const { x, y } = symbolsLayout.positions[i];
+        image(im, x, y, symbolsLayout.size, symbolsLayout.size);
+      });
+    } else {
+      problems.push(
+        "สัญลักษณ์ GHS: พื้นที่ไม่พอสำหรับภาพขนาดอ่านได้ กรุณาย่อข้อความส่วนประกอบ",
+      );
+    }
     if (d.signal && d.signal !== "None")
       txt(
         d.signal === "Danger" ? "อันตราย" : "ระวัง",
@@ -488,7 +493,7 @@ export async function renderPoster(
         "#c00000",
         "คำสัญญาณ",
       );
-    if (sdsUrl) qr = { x: 54, y: 112, size: 16 };
+    if (sdsUrl) qr = { ...AMT_SDS_QR };
 
     amtBand("ppe", ppeY, "#72aa45", 79, 122);
     const cw = 23.6;
