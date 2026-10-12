@@ -28,8 +28,13 @@ test("user saves AAB Rev1/2/3, reopens on another device, resets without changin
 }, info) => {
   await login(page.request);
   const before = (await (await page.request.get(root)).json()).data;
-  await page.goto('/chemical?company_id=amt');
-  await page.getByRole('link', { name: `โปสเตอร์สรุป SDS ของ ${before.name}`, exact: true }).click();
+  await page.goto("/chemical?company_id=amt");
+  await page
+    .getByRole("link", {
+      name: `โปสเตอร์สรุป SDS ของ ${before.name}`,
+      exact: true,
+    })
+    .click();
   await expect(page).toHaveURL(new RegExp(`/chemical/${id}/poster$`));
   await page
     .getByLabel("แม่แบบโปสเตอร์", { exact: true })
@@ -310,4 +315,178 @@ test("Admin creates, edits, hides company templates; users cannot change designs
   } finally {
     await anonymous.close();
   }
+});
+
+test("AMT seven-section template is company scoped, editable, revisioned and exports A4 with SDS QR", async ({
+  page,
+  browser,
+}, info) => {
+  await login(page.request);
+  const before = (await (await page.request.get(root)).json()).data;
+  const ts = (
+    await (
+      await page.request.get("/api/chemical/poster-templates?company_id=amt")
+    ).json()
+  ).data;
+  const amt = ts.find((t) => t.config.layout === "amt");
+  expect(amt.company_id).toBe("amt");
+  expect(amt.config.logo).toMatch(/^data:image\/png;base64,/);
+  await page.goto(`/chemical/${id}/poster`);
+  await page.getByLabel("แม่แบบโปสเตอร์", { exact: true }).selectOption(amt.id);
+  await page.getByLabel("รหัสเอกสาร SDS", { exact: true }).fill("HSE-SDS-001");
+  await page
+    .getByLabel("วันที่มีผล (Effective date)", { exact: true })
+    .fill("12-Oct-2026");
+  await page
+    .getByLabel("ผู้จัดทำ (Issued)", { exact: true })
+    .fill("ผู้จัดทำทดสอบ");
+  await page.getByText("ผลิตภัณฑ์", { exact: true }).click();
+  await page
+    .getByLabel("ชื่อผลิตภัณฑ์ / สารเคมี", { exact: true })
+    .fill("SITAP C-110");
+  await page
+    .getByLabel("ชื่อทางเคมี", { exact: true })
+    .fill("Polyphosphates and Polymer");
+  await page.locator("#poster-cas").fill("");
+  await page.locator("#poster-un").fill("");
+  await page.getByText("ข้อมูลความปลอดภัยจาก SDS", { exact: true }).click();
+  for (const [key, value] of Object.entries({
+    storageClass: "",
+    physical:
+      "ลักษณะทั่วไป: ของเหลวใส เหลืองอ่อน\npH: 7.4 - 9.4\nความสามารถในการละลายได้: ละลายน้ำได้ทุกส่วน",
+    ingredients: "Polyphosphates · CAS: ไม่ระบุ\nPolymer · CAS: ไม่ระบุ",
+    ppeNotes:
+      "ระบบหายใจ: หน้ากาก\nตา: แว่นตากันสารเคมี\nผิวหนัง: ถุงมือป้องกันสารเคมี",
+    hazards: "ข้อความอันตรายจาก SDS ที่ผู้ใช้กรอก",
+    firstAid:
+      "กรณีสัมผัสผิวหนังหรือดวงตา: ข้อมูลการปฐมพยาบาลจาก SDS\nกรณีได้รับทางหายใจ: ข้อมูลจาก SDS\nกรณีกลืนกิน: ข้อมูลจาก SDS",
+    storage: "เก็บในภาชนะปิดสนิท เย็น มืด และมีการระบายอากาศที่ดี",
+    precautions: "มีระบบระบายอากาศที่ดี",
+    spill:
+      "วิธีการและวัสดุสำหรับกักเก็บและทำความสะอาด: ข้อมูลจาก SDS\nข้อควรระวังส่วนบุคคล: ข้อมูลจาก SDS\nข้อควรระวังด้านสิ่งแวดล้อม: ข้อมูลจาก SDS",
+    fire: "สารดับเพลิงที่เหมาะสม: ข้อมูลจาก SDS\nความเป็นอันตรายเฉพาะ: ข้อมูลจาก SDS\nอุปกรณ์สำหรับนักผจญเพลิง: ข้อมูลจาก SDS",
+    emergency: "หน่วยงานฉุกเฉินของบริษัท",
+  }))
+    await page.locator(`#poster-${key}`).fill(value);
+  await page
+    .getByRole("button", { name: "บันทึกเป็น Rev ใหม่", exact: true })
+    .click();
+  await expect(
+    page.getByText("บันทึก Rev1 แล้ว", { exact: false }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("แม่แบบโปสเตอร์", { exact: true })).toHaveValue(
+    amt.id,
+  );
+  const first = (await state(page.request)).latest;
+  expect(first.snapshot.draft.company).toBe(
+    "Amita Technology (Thailand) Co., Ltd.",
+  );
+  expect(first.snapshot.draft.formCode).toBe("AHS-002");
+  expect(first.snapshot.template.config.layout).toBe("amt");
+  const pdf = page.getByRole("button", { name: "ดาวน์โหลด PDF", exact: true });
+  await expect(pdf).toBeEnabled();
+  await page.addScriptTag({ path: require.resolve("jsqr") });
+  const decoded = await page.evaluate(() => {
+    const img = document.querySelector('[data-testid="poster-preview"]');
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const p = ctx.getImageData(0, 0, c.width, c.height);
+    return {
+      width: c.width,
+      height: c.height,
+      qr: window.jsQR(p.data, p.width, p.height)?.data,
+    };
+  });
+  expect(decoded.width).toBe(2480);
+  expect(decoded.height).toBe(3508);
+  expect(decoded.qr).toBe(`https://tools.eashe.org/sds/${id}`);
+  const png = await page.getByTestId("poster-preview").getAttribute("src");
+  fs.mkdirSync(".verification/amt-poster", { recursive: true });
+  fs.writeFileSync(
+    ".verification/amt-poster/preview.png",
+    Buffer.from(png.split(",")[1], "base64"),
+  );
+  const download = page.waitForEvent("download");
+  await pdf.click();
+  await (await download).saveAs(".verification/amt-poster/amt-poster.pdf");
+  await page.getByText("รูป PPE และรูปผลิตภัณฑ์", { exact: true }).click();
+  await page
+    .getByRole("checkbox", { name: "PPE แว่นตานิรภัย", exact: true })
+    .check();
+  await page
+    .getByRole("checkbox", { name: "PPE ถุงมือป้องกันสารเคมี", exact: true })
+    .check();
+  await expect(pdf).toBeEnabled();
+  const ppePng = await page.getByTestId("poster-preview").getAttribute("src");
+  fs.writeFileSync(
+    ".verification/amt-poster/ppe-preview.png",
+    Buffer.from(ppePng.split(",")[1], "base64"),
+  );
+  await page.getByLabel("รหัสเอกสาร SDS", { exact: true }).fill("HSE-SDS-002");
+  await page
+    .getByRole("button", { name: "บันทึกเป็น Rev ใหม่", exact: true })
+    .click();
+  await expect(
+    page.getByText("บันทึก Rev2 แล้ว", { exact: false }),
+  ).toBeVisible();
+  expect((await state(page.request)).latest.snapshot.draft.ppe).toEqual([
+    "goggles",
+    "gloves",
+  ]);
+  await page.getByLabel("เลือก Rev โปสเตอร์").selectOption("1");
+  await expect(page.getByLabel("รหัสเอกสาร SDS", { exact: true })).toHaveValue(
+    "HSE-SDS-001",
+  );
+  expect((await (await page.request.get(root)).json()).data.updated_at).toBe(
+    before.updated_at,
+  );
+  const admin = await browser.newContext({ baseURL: "http://127.0.0.1:4310" });
+  try {
+    await login(admin.request, "audit-admin");
+    const foreign = (
+      await (
+        await admin.request.get("/api/chemical/poster-templates?company_id=aab")
+      ).json()
+    ).data;
+    expect(foreign.some((t) => t.id === amt.id)).toBe(false);
+    const response = await admin.request.patch(
+      "/api/chemical/poster-templates",
+      {
+        data: {
+          ...amt,
+          is_visible: false,
+          config: { ...amt.config, title: "AMT updated heading" },
+        },
+      },
+    );
+    expect(response.status()).toBe(200);
+    await page.reload();
+    await expect(
+      page.getByLabel("แม่แบบโปสเตอร์", { exact: true }),
+    ).toHaveValue("saved");
+    expect(
+      (await state(page.request)).latest.snapshot.template.config.title,
+    ).toBe(amt.config.title);
+    await expect(pdf).toBeEnabled();
+  } finally {
+    await admin.close();
+  }
+  await page.getByText("ข้อมูลความปลอดภัยจาก SDS", { exact: true }).click();
+  await page
+    .locator("#poster-hazards")
+    .fill("ข้อความยาวเกินพื้นที่ ".repeat(150));
+  await expect(
+    page.getByRole("alert").filter({ hasText: "ข้อความบางส่วนเกินพื้นที่" }),
+  ).toBeVisible();
+  await expect(pdf).toBeDisabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
 });

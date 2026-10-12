@@ -40,6 +40,21 @@ const templates = configs.map((config, i) => ({
   revision: 1,
   config,
 }));
+const amtMigration = fs
+  .readdirSync(path.join(__dirname, "../supabase/migrations"))
+  .find((n) => n.endsWith("_chemical_amt_poster_template.sql"));
+const amtSql = fs.readFileSync(
+  path.join(__dirname, "../supabase/migrations", amtMigration),
+  "utf8",
+);
+templates.push({
+  id: "869518ab-bb68-4ebc-9a59-fda4fc7e6c22",
+  name: "AMT · SDS 7 หมวด",
+  company_id: "amt",
+  is_visible: true,
+  revision: 1,
+  config: JSON.parse(amtSql.match(/\$json\$([\s\S]*?)\$json\$/)[1]),
+});
 (async () => {
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   try {
@@ -188,7 +203,7 @@ const templates = configs.map((config, i) => ({
       page.getByLabel("แม่แบบโปสเตอร์", { exact: true }),
     ).toHaveValue(templates[0].id);
     await page.addScriptTag({ path: require.resolve("jsqr") });
-    for (const [i, t] of templates.entries()) {
+    for (const t of templates) {
       await page
         .getByLabel("แม่แบบโปสเตอร์", { exact: true })
         .selectOption(t.id);
@@ -222,7 +237,7 @@ const templates = configs.map((config, i) => ({
       await page
         .getByRole("button", { name: "ดาวน์โหลด PDF", exact: true })
         .click();
-      const file = path.join(folder, `${i ? "aab" : "summary"}-compiled.pdf`);
+      const file = path.join(folder, `${t.config.layout}-compiled.pdf`);
       await (await event).saveAs(file);
       report.downloads.push({
         layout: t.config.layout,

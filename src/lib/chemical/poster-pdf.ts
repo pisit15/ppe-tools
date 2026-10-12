@@ -338,7 +338,265 @@ export async function renderPoster(
     .filter(Boolean)
     .join(" / ");
   let qr: RenderedPoster["qr"];
-  if (aab) {
+  if (c.layout === "amt") {
+    // AMT's supplied A4 portrait form: seven coloured bands and a document block.
+    // Use editable draft values; the reference's chemical data/signatures are not defaults.
+    function amtBand(
+      key: PosterSection,
+      y: number,
+      color: string,
+      x = 9,
+      w = 192,
+    ) {
+      ctx!.fillStyle = color;
+      ctx!.fillRect(x, y, w, 8);
+      txt(
+        c.headings[key],
+        x + 2,
+        y + 1.1,
+        w - 4,
+        6,
+        10,
+        true,
+        "#111",
+        c.headings[key],
+      );
+    }
+    function amtBody(
+      key: PosterSection,
+      value: string,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+    ) {
+      // Ruled rows echo the original form without reducing text to fixed input lines.
+      ctx!.strokeStyle = "#a3a3a3";
+      ctx!.lineWidth = 0.13;
+      const lineHeight = fs * PT * 1.35;
+      for (let line = y + 1 + lineHeight; line < y + h; line += lineHeight) {
+        ctx!.beginPath();
+        ctx!.moveTo(x, line);
+        ctx!.lineTo(x + w, line);
+        ctx!.stroke();
+      }
+      txt(
+        value,
+        x + 2,
+        y + 1,
+        w - 4,
+        h - 2,
+        fs,
+        false,
+        "#111",
+        c.headings[key],
+      );
+    }
+    txt(d.company, 9, 6, 192, 6, 10, true, "#111", "ชื่อบริษัท");
+    if (logo) image(logo, 12, 17, 29, 11);
+    else txt(c.brand, 12, 18, 29, 10, 16, true, c.accent, "ตราบริษัท");
+    txt(c.title, 49, 17, 149, 13, 21, true, "#111", "ชื่อหัวโปสเตอร์");
+    amtBand("physical", 31, "#f4ca58");
+    amtBody("physical", d.physical, 79, 39, 122, 30);
+
+    ctx.strokeStyle = c.accent;
+    ctx.lineWidth = 0.6;
+    for (const inset of [0, 1]) {
+      ctx.beginPath();
+      ctx.roundRect(9 + inset, 40 + inset, 68 - inset * 2, 95 - inset * 2, 9);
+      ctx.stroke();
+    }
+    txt("ชื่อทางการค้า", 13, 45, 59, 5, 10, true);
+    txt(d.name, 13, 52, 59, 12, 12, true, "#bc1670", "ชื่อผลิตภัณฑ์");
+    const identity = [
+      d.chemicalName,
+      d.cas && `CAS: ${d.cas}`,
+      d.un && `UN: ${d.un}`,
+      d.formula && `สูตรเคมี: ${d.formula}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    if (identity)
+      txt(
+        identity,
+        13,
+        65,
+        59,
+        12,
+        8,
+        false,
+        "#111",
+        "ชื่อทางเคมี / CAS / UN / สูตรเคมี",
+      );
+    txt(
+      c.headings.ingredients,
+      13,
+      80,
+      59,
+      6,
+      9,
+      true,
+      "#111",
+      "หัวข้อองค์ประกอบ",
+    );
+    txt(
+      d.ingredients,
+      13,
+      87,
+      59,
+      ghs.length ? 17 : 22,
+      fs,
+      false,
+      "#111",
+      "องค์ประกอบ",
+    );
+    const columns = Math.min(3, Math.max(1, ghs.length)),
+      size = 8;
+    ghs.forEach((im, i) =>
+      image(
+        im,
+        13 + (i % columns) * size,
+        105 + Math.floor(i / columns) * size,
+        size,
+        size,
+      ),
+    );
+    if (d.signal && d.signal !== "None")
+      txt(
+        d.signal === "Danger" ? "อันตราย" : "ระวัง",
+        13,
+        129,
+        35,
+        4.5,
+        8,
+        true,
+        "#c00000",
+        "คำสัญญาณ",
+      );
+    if (sdsUrl) qr = { x: 54, y: 112, size: 16 };
+
+    amtBand("ppe", 69, "#72aa45", 79, 122);
+    const cw = 23.6,
+      rowH = d.showPpeCaptions ? 14 : 9;
+    ppes.forEach((p, i) => {
+      const x = 81 + (i % 5) * cw,
+        y = 78 + Math.floor(i / 5) * rowH;
+      image(ppeImages[i], x + (cw - 7) / 2, y, 7, 7);
+      if (d.showPpeCaptions)
+        txt(
+          p.caption.join(" "),
+          x,
+          y + 7.2,
+          cw - 1,
+          6.5,
+          6.5,
+          false,
+          "#111",
+          p.name,
+        );
+    });
+    const notesY = 78 + Math.ceil(ppes.length / 5) * rowH;
+    if (d.ppeNotes || !ppes.length)
+      txt(
+        d.ppeNotes,
+        81,
+        notesY,
+        118,
+        110 - notesY,
+        fs,
+        false,
+        "#111",
+        "รายละเอียด PPE",
+      );
+    amtBand("hazards", 111, "#3996d3", 79, 122);
+    amtBody("hazards", d.hazards, 79, 119, 122, 16);
+    amtBand("firstAid", 136, "#fff139");
+    amtBody("firstAid", d.firstAid, 9, 144, 192, 29);
+    amtBand("storage", 174, "#9ecaf0");
+    amtBody(
+      "storage",
+      [
+        d.storage,
+        d.precautions && `${c.headings.precautions}: ${d.precautions}`,
+        d.storageClass && `ประเภทการจัดเก็บ: ${d.storageClass}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      9,
+      182,
+      192,
+      25,
+    );
+    amtBand("spill", 208, "#d2d4d6");
+    amtBody("spill", d.spill, 9, 216, 124, 25);
+    amtBand("fire", 241, "#edb1c4", 9, 124);
+    amtBody("fire", d.fire, 9, 249, 124, 24);
+    if (d.emergency)
+      txt(
+        `ฉุกเฉิน: ${d.emergency}`,
+        11,
+        274,
+        120,
+        8,
+        7,
+        true,
+        "#111",
+        "ข้อมูลติดต่อฉุกเฉิน",
+      );
+
+    const rows = [
+      ["REVISION.", d.documentRevision],
+      ["DOCUMENT NO.", d.documentCode],
+      ["EFFECTIVE DATE", d.effectiveDate],
+      ["ISSUED BY", d.issued],
+      ["CHECKED BY", d.checked],
+      ["APPROVED BY", d.approved],
+    ];
+    rows.forEach(([key, value], i) => {
+      const y = 225 + i * 8;
+      rect(134, y, 29, 8, "#f4ca58");
+      rect(163, y, 38, 8);
+      txt(key, 135, y + 1.6, 27, 6, 7, false, "#111", key);
+      txt(value, 164, y + 1, 36, 6.7, 7, false, "#111", key);
+    });
+    const footer = [
+      d.department,
+      d.supplier && `ผู้จำหน่าย: ${d.supplier}`,
+      d.sdsDate && `SDS: ${d.sdsDate}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    if (footer)
+      txt(
+        footer,
+        11,
+        282,
+        188,
+        5,
+        6.5,
+        false,
+        "#111",
+        "หน่วยงาน / ผู้จำหน่าย / วันที่ SDS",
+      );
+    ctx.strokeStyle = c.accent;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(8, 14, 194, 274);
+    if (d.formRevision || demo)
+      txt(
+        [d.formRevision && `Rev: ${d.formRevision}`, demo && "ข้อมูลสาธิต"]
+          .filter(Boolean)
+          .join(" · "),
+        9,
+        290,
+        95,
+        5,
+        7,
+        false,
+        "#111",
+        "Rev. แบบฟอร์ม",
+      );
+    if (d.formCode) rightText(d.formCode, 111, 290, 90, 5, 7, "รหัสแบบฟอร์ม");
+  } else if (aab) {
     rightText(docLine, 135, 2, 155, 5, 7, "รหัสเอกสาร / Rev. / วันที่มีผล");
     rect(7, 8, 283, 18);
     if (logo) image(logo, 10, 10, 28, 14);

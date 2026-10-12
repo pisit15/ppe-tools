@@ -22,7 +22,7 @@ export const POSTER_SECTIONS = {
 };
 export type PosterSection = keyof typeof POSTER_SECTIONS;
 export interface PosterTemplateConfig {
-  layout: "summary" | "aab";
+  layout: "summary" | "aab" | "amt";
   title: string;
   subtitle: string;
   brand: string;
@@ -203,7 +203,7 @@ export function posterImage(v: unknown, max = 400000) {
 }
 export function validatePosterConfig(input: unknown): PosterTemplateConfig {
   const c = record(input);
-  if (!["summary", "aab"].includes(String(c.layout)))
+  if (!["summary", "aab", "amt"].includes(String(c.layout)))
     throw new Error("รูปแบบแม่แบบไม่ถูกต้อง");
   if (typeof c.accent !== "string" || !/^#[0-9a-f]{6}$/i.test(c.accent))
     throw new Error("สีแม่แบบไม่ถูกต้อง");

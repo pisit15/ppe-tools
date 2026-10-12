@@ -166,8 +166,8 @@ export default function PosterTemplatesPage() {
       </a>
       <h1 className="text-2xl font-bold mb-2">จัดการแม่แบบโปสเตอร์</h1>
       <p className="text-gray-600 mb-6">
-        สร้างแบบสำหรับแต่ละบริษัท เลือกโครงหน้าแนวตั้งหรือแบบตาราง AAB
-        แล้วปรับหัวข้อ สี และตราบริษัท
+        สร้างแบบสำหรับแต่ละบริษัท เลือกโครงหน้าแบบสรุป ตาราง AAB หรือแบบ AMT 7
+        หมวด แล้วปรับหัวข้อ สี และตราบริษัท
       </p>
       {error && (
         <p role="alert" className="bg-red-50 text-red-700 p-3 mb-4">
@@ -286,6 +286,7 @@ export default function PosterTemplatesPage() {
                 >
                   <option value="summary">สรุป · A4 แนวตั้ง</option>
                   <option value="aab">ตาราง AAB · A4 แนวนอน</option>
+                  <option value="amt">AMT · SDS 7 หมวด · A4 แนวตั้ง</option>
                 </select>
               </div>
             </div>
@@ -293,7 +294,7 @@ export default function PosterTemplatesPage() {
               [
                 ["title", "ชื่อหัวโปสเตอร์"],
                 ["subtitle", "ชื่อบริษัทเริ่มต้น"],
-                ["brand", "ชื่อย่อแทนโลโก้ (แบบตาราง AAB)"],
+                ["brand", "ชื่อย่อแทนโลโก้ (แบบ AAB / AMT)"],
                 ["formCode", "รหัสแบบฟอร์มเริ่มต้น"],
                 ["formRevision", "Rev. แบบฟอร์มเริ่มต้น"],
               ] as const
