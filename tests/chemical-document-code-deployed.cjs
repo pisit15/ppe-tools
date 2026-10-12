@@ -23,6 +23,7 @@ const items = [
       if (path === '/api/auth/session') return route.fulfill({ json: { user: { id: 'ui-fixture', username: 'ui-fixture', companyId: 'amt', companyName: 'AMT', role: 'user' } } });
       if (path === '/api/chemical/substances') return route.fulfill({ json: { data: items } });
       if (path === '/api/chemical/storage-areas') return route.fulfill({ json: { data: [] } });
+      if (path === '/api/chemical/settings') return route.fulfill({ json: { data: { company_id: 'amt', show_emergency: true, emergency_contacts: [] } } });
       if (path === '/api/chemical/extract') return route.fulfill({ json: { available: false } });
       const item = items.find(item => path === `/api/chemical/substances/${item.id}`);
       if (item) return route.fulfill({ json: { data: item } });
