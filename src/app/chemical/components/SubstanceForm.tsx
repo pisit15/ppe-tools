@@ -139,8 +139,18 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
       } else {
         setError('เลือกไฟล์ SDS หรือใส่ลิงก์ก่อน แล้วจึงกดสกัดข้อมูล'); setExtracting(false); return;
       }
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || data.error || 'สกัดไม่สำเร็จ');
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const fallback = res.status === 413
+          ? 'ไฟล์ใหญ่เกินขีดจำกัดการส่ง กรุณาลดขนาด PDF แล้วลองใหม่'
+          : res.status === 504
+            ? 'การอ่าน SDS ใช้เวลานานเกินกำหนด กรุณาลองใหม่ ข้อมูลในฟอร์มยังคงเดิม'
+            : 'สกัด SDS ไม่สำเร็จ กรุณาลองใหม่ ข้อมูลในฟอร์มยังคงเดิม';
+        throw new Error(data?.error || fallback);
+      }
+      if (!data?.data || typeof data.data !== 'object' || Array.isArray(data.data)) {
+        throw new Error('AI ส่งข้อมูลไม่ครบ กรุณาลองสกัดใหม่ ข้อมูลในฟอร์มยังคงเดิม');
+      }
       applyExtraction(data.data as SdsExtraction);
       onToast({ type: 'success', msg: 'สกัดข้อมูลจาก SDS แล้ว — กรุณาตรวจทานทุกช่องก่อนบันทึก' });
     } catch (e) {

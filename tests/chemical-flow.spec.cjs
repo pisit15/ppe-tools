@@ -146,3 +146,27 @@ test('AI provenance survives reopening without review controls; demo restoration
  await expect(page.getByText('บริษัทเปลี่ยนไปหรือยังไม่ได้เลือกบริษัท',{exact:false})).toBeVisible();
  await expect(page.getByRole('button',{name:'บันทึกสารเคมี',exact:true})).toHaveCount(0);
 });
+
+test('AI extraction errors preserve the form and allow retry, including gateway HTML errors',async({page})=>{
+ await login(page.request);
+ let attempt=0;
+ await page.route('**/api/chemical/extract',route=>{
+  if(route.request().method()==='GET')return route.fulfill({json:{available:true}});
+  attempt++;
+  if(attempt===1)return route.fulfill({status:502,json:{error:'คำตอบจาก AI ยาวเกินขีดจำกัด',code:'AI_TRUNCATED'}});
+  if(attempt===2)return route.fulfill({status:504,contentType:'text/html',body:'<html>Gateway timeout</html>'});
+  return route.fulfill({json:{data:{name:'Extracted product',chemical_name:'Success after retry',first_aid:{eye:'ล้างด้วยน้ำ'}}}});
+ });
+ await page.goto('/chemical/new?company_id=amt');
+ await page.getByLabel('ชื่อสารเคมี / ชื่อทางการค้า *',{exact:true}).fill('Keep my input');
+ await page.getByLabel('ชื่อทางเคมี',{exact:true}).fill('Keep chemical');
+ await page.getByRole('button',{name:'ใส่ลิงก์',exact:true}).click();
+ await page.getByLabel('ลิงก์ SDS จากผู้ผลิต').fill('https://example.com/fixture.pdf');
+ const button=page.getByRole('button',{name:'สกัดข้อมูลจาก SDS',exact:false});
+ await button.click();await expect(page.getByText('คำตอบจาก AI ยาวเกินขีดจำกัด',{exact:true})).toBeVisible();
+ await expect(page.getByLabel('ชื่อทางเคมี',{exact:true})).toHaveValue('Keep chemical');
+ await button.click();await expect(page.getByText('การอ่าน SDS ใช้เวลานานเกินกำหนด กรุณาลองใหม่ ข้อมูลในฟอร์มยังคงเดิม',{exact:true})).toBeVisible();
+ await button.click();await expect(page.getByLabel('ชื่อทางเคมี',{exact:true})).toHaveValue('Success after retry');
+ await expect(page.getByLabel('ชื่อสารเคมี / ชื่อทางการค้า *',{exact:true})).toHaveValue('Keep my input');
+ await expect(page.getByLabel('ปฐมพยาบาล — เข้าตา',{exact:true})).toHaveValue('ล้างด้วยน้ำ');
+});
