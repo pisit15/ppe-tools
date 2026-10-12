@@ -263,11 +263,11 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
           {/* Identity */}
           <Section id="identity" title="ข้อมูลสาร (SDS ข้อ 1, 3, 9)">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2"><label htmlFor="chemical-field-3" className={labelCls}>ชื่อสารเคมี / ชื่อทางการค้า *</label><input id="chemical-field-3" className={inputCls} value={f.name} onChange={e => set('name', e.target.value)} placeholder="เช่น Acetone, Hydrochloric acid 35%" /></div>
+              <div className="sm:col-span-2"><label htmlFor="chemical-field-3" className={labelCls}>ชื่อสารเคมี / ชื่อทางการค้า *</label><input id="chemical-field-3" className={inputCls} value={f.name} onChange={e => set('name', e.target.value)} /></div>
               <div><label htmlFor="chemical-field-4" className={labelCls}>ชื่อทางเคมี</label><input id="chemical-field-4" className={inputCls} value={f.chemical_name || ''} onChange={e => set('chemical_name', e.target.value || null)} /></div>
               <div><label htmlFor="chemical-field-5" className={labelCls}>ผู้ผลิต / ผู้จำหน่าย</label><input id="chemical-field-5" className={inputCls} value={f.supplier || ''} onChange={e => set('supplier', e.target.value || null)} /></div>
-              <div><label htmlFor="chemical-field-6" className={labelCls}>CAS No.</label><input id="chemical-field-6" className={inputCls} value={f.cas_no || ''} onChange={e => set('cas_no', e.target.value || null)} placeholder="67-64-1" /></div>
-              <div><label htmlFor="chemical-field-7" className={labelCls}>UN No.</label><input id="chemical-field-7" className={inputCls} value={f.un_no || ''} onChange={e => set('un_no', e.target.value || null)} placeholder="1090" /></div>
+              <div><label htmlFor="chemical-field-6" className={labelCls}>CAS No.</label><input id="chemical-field-6" className={inputCls} value={f.cas_no || ''} onChange={e => set('cas_no', e.target.value || null)} /></div>
+              <div><label htmlFor="chemical-field-7" className={labelCls}>UN No.</label><input id="chemical-field-7" className={inputCls} value={f.un_no || ''} onChange={e => set('un_no', e.target.value || null)} /></div>
               <div><label htmlFor="chemical-field-8" className={labelCls}>สถานะทางกายภาพ</label>
                 <select id="chemical-field-8" className={inputCls} value={f.physical_state || ''} onChange={e => set('physical_state', (e.target.value || null) as FormState['physical_state'])}>
                   <option value="">—</option>{PHYSICAL_STATES.map(s => <option key={s.value} value={s.value}>{s.labelTh}</option>)}
@@ -280,7 +280,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
               <div className="grid grid-cols-3 gap-2">
                 <div><label htmlFor="chemical-field-12" className={labelCls}>ปริมาณ</label><input id="chemical-field-12" type="number" step="0.01" className={inputCls} value={f.quantity ?? ''} onChange={e => set('quantity', e.target.value === '' ? null : Number(e.target.value))} /></div>
                 <div><label htmlFor="chemical-field-13" className={labelCls}>หน่วย</label><input id="chemical-field-13" className={inputCls} list="chem-units" value={f.unit || ''} onChange={e => set('unit', e.target.value || null)} /><datalist id="chem-units">{UNIT_OPTIONS.map(u => <option key={u} value={u} />)}</datalist></div>
-                <div><label htmlFor="chemical-field-14" className={labelCls}>ภาชนะ</label><input id="chemical-field-14" className={inputCls} value={f.container || ''} onChange={e => set('container', e.target.value || null)} placeholder="ถัง 200 L" /></div>
+                <div><label htmlFor="chemical-field-14" className={labelCls}>ภาชนะ</label><input id="chemical-field-14" className={inputCls} value={f.container || ''} onChange={e => set('container', e.target.value || null)} /></div>
               </div>
             </div>
           </Section>
@@ -306,10 +306,10 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
                 <select id="chemical-field-15" className={inputCls} value={f.signal_word || ''} onChange={e => set('signal_word', (e.target.value || null) as FormState['signal_word'])}>
                   <option value="">—</option>{SIGNAL_WORDS.map(s => <option key={s.value} value={s.value}>{s.labelTh}</option>)}
                 </select></div>
-              <div><label htmlFor="chemical-field-16" className={labelCls}>Hazard class (บรรทัดละ 1 รายการ)</label><textarea id="chemical-field-16" className={inputCls} rows={2} value={hazardText} onChange={e => { setHazardText(e.target.value); set('hazard_classes', e.target.value.split('\n').map(s => s.trim()).filter(Boolean)); }} placeholder="Flammable liquids, Category 2&#10;Eye irritation, Category 2" /></div>
-              <div><label htmlFor="chemical-field-17" className={labelCls}>รหัส H (คั่นด้วยจุลภาค)</label><input id="chemical-field-17" className={inputCls} value={hText_} onChange={e => { setHText(e.target.value); set('h_codes', parseCodes(e.target.value, 'H')); }} placeholder="H225, H319, H336" />
+              <div><label htmlFor="chemical-field-16" className={labelCls}>Hazard class (บรรทัดละ 1 รายการ)</label><textarea id="chemical-field-16" className={inputCls} rows={2} value={hazardText} onChange={e => { setHazardText(e.target.value); set('hazard_classes', e.target.value.split('\n').map(s => s.trim()).filter(Boolean)); }} /></div>
+              <div><label htmlFor="chemical-field-17" className={labelCls}>รหัส H (คั่นด้วยจุลภาค)</label><input id="chemical-field-17" className={inputCls} value={hText_} onChange={e => { setHText(e.target.value); set('h_codes', parseCodes(e.target.value, 'H')); }} />
                 <ul className="mt-1 space-y-0.5">{f.h_codes.map(c => <li key={c} className="text-sm text-gray-600"><b>{c}</b> {hText(c) || <span className="text-gray-600">(ไม่มีคำแปลในระบบ)</span>}</li>)}</ul></div>
-              <div><label htmlFor="chemical-field-18" className={labelCls}>รหัส P (คั่นด้วยจุลภาค)</label><input id="chemical-field-18" className={inputCls} value={pText_} onChange={e => { setPText(e.target.value); set('p_codes', parseCodes(e.target.value, 'P')); }} placeholder="P210, P280, P305+P351+P338" />
+              <div><label htmlFor="chemical-field-18" className={labelCls}>รหัส P (คั่นด้วยจุลภาค)</label><input id="chemical-field-18" className={inputCls} value={pText_} onChange={e => { setPText(e.target.value); set('p_codes', parseCodes(e.target.value, 'P')); }} />
                 <ul className="mt-1 space-y-0.5">{f.p_codes.map(c => <li key={c} className="text-sm text-gray-600"><b>{c}</b> {pText(c) || <span className="text-gray-600">(ไม่มีคำแปลในระบบ)</span>}</li>)}</ul></div>
             </div>
           </Section>
@@ -339,7 +339,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
                 </select>
                 <input className={`${inputCls} mt-2`} aria-label="ตำแหน่ง ชั้น หรือตู้" placeholder="ตำแหน่ง/ชั้น/ตู้ (ถ้ามี)" value={f.storage_location || ''} onChange={e => set('storage_location', e.target.value || null)} />
               </div>
-              <div className="sm:col-span-2"><label htmlFor="chemical-field-21" className={labelCls}>เงื่อนไขการเก็บจาก SDS</label><textarea id="chemical-field-21" className={inputCls} rows={2} value={f.storage_conditions || ''} onChange={e => set('storage_conditions', e.target.value || null)} placeholder="เก็บในที่เย็น แห้ง ระบายอากาศดี ห่างจากแหล่งความร้อน ปิดภาชนะให้สนิท" /></div>
+              <div className="sm:col-span-2"><label htmlFor="chemical-field-21" className={labelCls}>เงื่อนไขการเก็บจาก SDS</label><textarea id="chemical-field-21" className={inputCls} rows={2} value={f.storage_conditions || ''} onChange={e => set('storage_conditions', e.target.value || null)} /></div>
             </div>
           </Section>
 
