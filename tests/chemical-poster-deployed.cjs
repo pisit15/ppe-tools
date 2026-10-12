@@ -65,7 +65,7 @@ const templates = configs.map((config, i) => ({
       expect(r.status()).toBe(401);
       report.anonymous.push(r.status());
     }
-    await page.route("**/api/**", (route) => {
+    await page.context().route("**/api/**", (route) => {
       const req = route.request(),
         p = new URL(req.url()).pathname;
       expect(req.method()).toBe("GET");
@@ -234,22 +234,25 @@ const templates = configs.map((config, i) => ({
       path: path.join(folder, "editor.png"),
       fullPage: true,
     });
-    page.once("dialog", (d) => d.accept());
+    const popup = page.waitForEvent("popup");
     await page
       .getByRole("link", { name: "จัดการแม่แบบ (Admin)", exact: true })
       .click();
-    await expect(page).toHaveURL(base + "/chemical/poster-templates");
-    report.navigation.push("poster → Admin templates");
+    const admin = await popup;
+    admin.on("pageerror", (e) => errors.push(e.message));
+    await expect(admin).toHaveURL(base + "/chemical/poster-templates");
+    report.navigation.push("poster → Admin templates (new tab)");
     await expect(
-      page.getByRole("heading", { name: "จัดการแม่แบบโปสเตอร์", exact: true }),
+      admin.getByRole("heading", { name: "จัดการแม่แบบโปสเตอร์", exact: true }),
     ).toBeVisible();
-    await expect(page.getByLabel("ชื่อแม่แบบ", { exact: true })).toHaveValue(
+    await expect(admin.getByLabel("ชื่อแม่แบบ", { exact: true })).toHaveValue(
       templates[0].name,
     );
-    await page.screenshot({
+    await admin.screenshot({
       path: path.join(folder, "admin.png"),
       fullPage: true,
     });
+    await admin.close();
     expect(errors).toEqual([]);
     fs.writeFileSync(
       path.join(folder, "smoke.json"),

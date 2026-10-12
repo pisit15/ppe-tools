@@ -16,6 +16,12 @@ The repair merges `origin/main` into the chemical feature branch, preserving the
 
 Repair validation: 11 isolated browser/API journeys passed, including navigation from the registry into both editors, label V1–3, poster Rev1–3, reset/history, Admin template copy/scope/hide, and tenant/CSRF boundaries. TypeScript passed. Before the repair, the compiled-client check reproduced the public-domain failure: poster-history returned 404 instead of the expected unauthenticated 401. No production customer records were written during verification.
 
+## Verified recovery
+
+After explicit user approval to update `main`, the normal fast-forward push published combined commit `94dfdafc0b8b7efba75051d329f811a815dae760`. Vercel Git deployment `dpl_CE6JyvUEBemGnwAj6QYts9Pe7U8w` became Ready and `tools.eashe.org` resolved to that exact `main` commit.
+
+The custom-domain compiled-client journey passed: register → label → register → poster → Admin template editor (a new tab). It exported the label PDF (104,610 bytes), summary PDF (498,571 bytes), and AAB PDF (617,320 bytes), decoded both poster SDS QR codes, verified protected APIs returned 401, and recorded no JavaScript errors. The smoke test uses context-level API fixtures so the Admin popup is isolated too. The follow-up changes only this release record and the smoke test's new-tab handling; application source is identical to the verified recovery deployment.
+
 ## Original staged release
 
 Source commit: `99ac5d7`. Deployment: `dpl_5Ct3Qtx4igTetX2fhttceVXwdS6C` (https://ppe-tools-9nw5vc9s0-ea-she.vercel.app). Staged with production configuration, checked (page 200 / protected API 401), then promoted. Production compiled-client smoke exported both PDFs (498,571 / 617,269 bytes), decoded both SDS QR codes, and recorded no browser errors. Error-level deployment logs were empty. Hosted table/RPC grant checks passed. Browser/API persistence journeys ran against isolated PostgreSQL; production smoke did not write customer revisions.
