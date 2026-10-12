@@ -154,6 +154,8 @@ export type ChemStorageArea = {
 };
 
 export type ChemSubstance = {
+  /** Company-assigned registry / SDS document identifier; optional for older records. */
+  document_code?: string | null;
   is_demo?: boolean;
   ai_filled_fields?: string[];
   review_status?: 'unreviewed' | 'reviewed';

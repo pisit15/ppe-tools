@@ -138,6 +138,7 @@ export function posterDraft(
     ...d,
     name: s.name,
     chemicalName: s.chemical_name || "",
+    documentCode: s.document_code || "",
     cas: s.cas_no || "",
     un: s.un_no || "",
     supplier: s.supplier || "",

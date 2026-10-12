@@ -19,7 +19,8 @@ type QualityFilter = '' | 'missing_sds' | 'missing_date' | 'no_class';
 const PAGE_SIZE = 30;
 const EMPTY_ITEMS: ChemSubstance[] = [];
 const actionCls = 'flex flex-col items-center justify-center gap-1 rounded-xl border border-transparent px-1.5 py-2 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500';
-type SortKey = 'name' | 'storage_class' | 'updated_at' | 'quantity';
+const documentCodeCollator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' });
+type SortKey = 'document_code' | 'name' | 'storage_class' | 'updated_at' | 'quantity';
 
 export default function ChemicalRegisterPage() {
   const { q } = useCompanyScope();
@@ -52,7 +53,7 @@ function ScopedRegister() {
     const s = search.trim().toLowerCase();
     return items.filter(i => {
       if (!matchesQuality(i, quality)) return false;
-      if (s && ![i.name, i.chemical_name, i.cas_no, i.un_no, i.supplier, i.usage_purpose].some(v => (v || '').toLowerCase().includes(s))) return false;
+      if (s && ![i.document_code, i.name, i.chemical_name, i.cas_no, i.un_no, i.supplier, i.usage_purpose].some(v => (v || '').toLowerCase().includes(s))) return false;
       if (classFilter === '__none') { if (i.storage_class) return false; } else if (classFilter && i.storage_class !== classFilter) return false;
       if (pictoFilter && !i.ghs_pictograms.includes(pictoFilter as ChemSubstance['ghs_pictograms'][number])) return false;
       if (areaFilter && i.storage_area_id !== areaFilter) return false;
@@ -63,6 +64,16 @@ function ScopedRegister() {
   const sorted = useMemo(() => {
     const d = sortAsc ? 1 : -1;
     return [...filtered].sort((a, b) => {
+      if (sortKey === 'document_code') {
+        const left = a.document_code?.trim() || '';
+        const right = b.document_code?.trim() || '';
+        // Empty codes remain last in either direction; ties have a stable name/id order.
+        if (!left && right) return 1;
+        if (left && !right) return -1;
+        return documentCodeCollator.compare(left, right) * d
+          || documentCodeCollator.compare(a.name, b.name)
+          || a.id.localeCompare(b.id);
+      }
       if (sortKey === 'quantity') return ((a.quantity || 0) - (b.quantity || 0)) * d;
       if (sortKey === 'updated_at') return a.updated_at.localeCompare(b.updated_at) * d;
       return String(a[sortKey] || '').localeCompare(String(b[sortKey] || ''), 'th') * d;
@@ -111,7 +122,7 @@ function ScopedRegister() {
 
   const th = (key: SortKey, label: string) => (
     <th className="px-3 py-2 text-left text-sm text-gray-700 whitespace-nowrap" aria-sort={sortKey === key ? sortAsc ? 'ascending' : 'descending' : 'none'}>
-      <button className="py-2 font-semibold focus-visible:ring-2 focus-visible:ring-purple-600" onClick={() => { if (sortKey === key) setSortAsc(!sortAsc); else { setSortKey(key); setSortAsc(true); } }}>
+      <button className="py-2 font-semibold focus-visible:ring-2 focus-visible:ring-purple-600" onClick={() => { setPage(1); if (sortKey === key) setSortAsc(!sortAsc); else { setSortKey(key); setSortAsc(true); } }}>
         {label} {sortKey === key && <span aria-hidden="true">{sortAsc ? '▲' : '▼'}</span>}
       </button>
     </th>
@@ -149,7 +160,7 @@ function ScopedRegister() {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
         <div className="relative md:col-span-3">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
-          <input className={`${inputCls} pl-9`} aria-label="ค้นหาสารเคมี" placeholder="ค้นหาชื่อ / CAS / UN / ผู้ผลิต / แผนกที่ใช้" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+          <input className={`${inputCls} pl-9`} aria-label="ค้นหาสารเคมี" placeholder="ค้นหาชื่อ / รหัสเอกสาร / CAS / UN / ผู้ผลิต / แผนกที่ใช้" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
         </div>
         <select className={`${inputCls}`} aria-label="ประเภทการจัดเก็บ" value={classFilter} onChange={e => { setClassFilter(e.target.value); setPage(1); }}>
           <option value="">ทุกประเภทการจัดเก็บ</option><option value="__none">ยังไม่ระบุประเภท</option>
@@ -187,6 +198,7 @@ function ScopedRegister() {
             <table className="w-full min-w-[850px] text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  {th('document_code', 'รหัส / เลขเอกสาร')}
                   {th('name', 'สารเคมี')}
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">GHS</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">สัญญาณ</th>
@@ -202,6 +214,7 @@ function ScopedRegister() {
                 {rows.map(i => {
                   return (
                     <tr key={i.id} className="border-b border-gray-100 hover:bg-purple-50/40">
+                      <td className="px-3 py-2.5 text-sm font-medium text-gray-700 max-w-48 break-words">{i.document_code || <span className="text-gray-500" aria-label="ยังไม่ระบุรหัสเอกสาร">—</span>}</td>
                       <td className="px-3 py-2.5">
                         <div className="font-semibold text-gray-900">{i.name}</div>{isAdmin && <button onClick={() => changeDemo(i)} className="text-xs text-purple-800 underline my-1">{i.is_demo ? 'นำกลับทะเบียนจริง' : 'ย้ายไปข้อมูลสาธิต'}</button>}{(i.ai_filled_fields?.length || 0) > 0 && <div className="text-xs mt-1 text-gray-600">มีข้อมูลจาก AI</div>}
                         <div className="text-sm text-gray-500">{[i.chemical_name, i.cas_no && `CAS ${i.cas_no}`, i.un_no && `UN ${i.un_no}`].filter(Boolean).join(' · ')}</div>

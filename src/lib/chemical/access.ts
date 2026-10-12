@@ -13,6 +13,7 @@ export async function prepareSubstance(body: Record<string, unknown>, actor: Too
   const companyId = existing?.company_id || body.company_id;
   assertCompany(actor, companyId, true);
   if (existing && body.company_id !== undefined && body.company_id !== companyId) throw new AccessError('ไม่สามารถย้ายสารเคมีข้ามบริษัท', 409);
+  if (body.document_code !== undefined && body.document_code !== null && (typeof body.document_code !== 'string' || body.document_code.trim().length > 120)) throw new AccessError('รหัส / หมายเลขเอกสารต้องเป็นข้อความไม่เกิน 120 ตัวอักษร', 400);
   const db = getSupabaseServer();
   await assertExistingCompany(companyId);
   const clean = sanitizeSubstance(body as Partial<CreateChemSubstanceInput>);

@@ -23,7 +23,7 @@ type Props = {
 type FormState = Omit<CreateChemSubstanceInput, 'company_id' | 'is_active' | 'created_by'>;
 
 const empty = (): FormState => ({
-  name: '', chemical_name: null, cas_no: null, un_no: null, supplier: null, physical_state: null,
+  document_code: null, name: '', chemical_name: null, cas_no: null, un_no: null, supplier: null, physical_state: null,
   ghs_pictograms: [], signal_word: null, hazard_classes: [], h_codes: [], p_codes: [],
   flash_point_c: null, boiling_point_c: null,
   storage_class: null, storage_class_suggested: null, storage_area_id: null, storage_location: null, storage_conditions: null,
@@ -264,6 +264,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
           <Section id="identity" title="ข้อมูลสาร (SDS ข้อ 1, 3, 9)">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2"><label htmlFor="chemical-field-3" className={labelCls}>ชื่อสารเคมี / ชื่อทางการค้า *</label><input id="chemical-field-3" className={inputCls} value={f.name} onChange={e => set('name', e.target.value)} /></div>
+              <div className="sm:col-span-2"><label htmlFor="chemical-document-code" className={labelCls}>รหัส / หมายเลขเอกสาร</label><input id="chemical-document-code" className={inputCls} maxLength={120} value={f.document_code || ''} onChange={e => set('document_code', e.target.value || null)} aria-describedby="chemical-document-code-help" /><p id="chemical-document-code-help" className="mt-1 text-xs text-gray-500">รหัสที่บริษัทกำหนด ใช้ค้นหาและเรียงลำดับในทะเบียน · เว้นว่างได้</p></div>
               <div><label htmlFor="chemical-field-4" className={labelCls}>ชื่อทางเคมี</label><input id="chemical-field-4" className={inputCls} value={f.chemical_name || ''} onChange={e => set('chemical_name', e.target.value || null)} /></div>
               <div><label htmlFor="chemical-field-5" className={labelCls}>ผู้ผลิต / ผู้จำหน่าย</label><input id="chemical-field-5" className={inputCls} value={f.supplier || ''} onChange={e => set('supplier', e.target.value || null)} /></div>
               <div><label htmlFor="chemical-field-6" className={labelCls}>CAS No.</label><input id="chemical-field-6" className={inputCls} value={f.cas_no || ''} onChange={e => set('cas_no', e.target.value || null)} /></div>
