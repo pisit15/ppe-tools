@@ -28,7 +28,9 @@ test("user saves AAB Rev1/2/3, reopens on another device, resets without changin
 }, info) => {
   await login(page.request);
   const before = (await (await page.request.get(root)).json()).data;
-  await page.goto(`/chemical/${id}/poster`);
+  await page.goto('/chemical?company_id=amt');
+  await page.getByRole('link', { name: `โปสเตอร์สรุป SDS ของ ${before.name}`, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/chemical/${id}/poster$`));
   await page
     .getByLabel("แม่แบบโปสเตอร์", { exact: true })
     .selectOption({ label: "AAB · ตาราง SDS หน้างาน · A4 แนวนอน" });

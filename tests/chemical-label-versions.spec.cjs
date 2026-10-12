@@ -14,7 +14,9 @@ test.beforeEach(async ({ request }) => expect((await request.post('http://127.0.
 test('save V1, reopen, save V2, recall V1 as V3, reset from fresh registry without deleting history', async ({ page }) => {
   await login(page.request);
   const before = (await (await page.request.get(root)).json()).data;
-  await page.goto(`/chemical/${id}/label`);
+  await page.goto('/chemical?company_id=amt');
+  await page.getByRole('link', { name: `ดาวน์โหลดฉลากของ ${before.name}`, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/chemical/${id}/label$`));
   const name = page.getByLabel('ชื่อสารเคมี / ผลิตภัณฑ์', {exact:true});
   const save = page.getByRole('button', {name:'บันทึกเป็นเวอร์ชันใหม่',exact:true});
   await name.fill('Acetone ฉลากขวดเล็ก');

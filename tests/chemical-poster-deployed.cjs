@@ -30,6 +30,8 @@ const sql = fs.readFileSync(
 const configs = [...sql.matchAll(/\$json\$([\s\S]*?)\$json\$/g)].map((m) =>
   JSON.parse(m[1]),
 );
+// The hosted follow-up migration corrects the original form-code transcription.
+configs[1].formCode = "AAB-AABX-OHS-FM-031";
 const templates = configs.map((config, i) => ({
   id: `00000000-0000-4000-8000-00000000000${i + 1}`,
   name: i ? "AAB · ตาราง SDS หน้างาน" : "แบบสรุปแนวตั้ง",
@@ -47,7 +49,14 @@ const templates = configs.map((config, i) => ({
       }),
       errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    const report = { base, errors, downloads: [], anonymous: [] };
+    const report = {
+      base,
+      errors,
+      downloads: [],
+      anonymous: [],
+      navigation: [],
+      note: "Compiled production client with intercepted read-only API fixtures; no customer writes.",
+    };
     for (const endpoint of [
       `/api/chemical/substances/${source.id}/posters`,
       "/api/chemical/poster-templates?company_id=amt",
@@ -72,6 +81,14 @@ const templates = configs.map((config, i) => ({
               displayName: "Rendering check",
             },
           },
+        });
+      if (p === "/api/chemical/substances")
+        return route.fulfill({ json: { data: [source] } });
+      if (p === "/api/chemical/storage-areas")
+        return route.fulfill({ json: { data: [] } });
+      if (p === `/api/chemical/substances/${source.id}/labels`)
+        return route.fulfill({
+          json: { versions: [], latest: null, hasMore: false },
         });
       if (p === `/api/chemical/substances/${source.id}`)
         return route.fulfill({ json: { data: source } });
@@ -100,12 +117,76 @@ const templates = configs.map((config, i) => ({
         });
       throw new Error("Unexpected API request blocked: " + p);
     });
-    await page.goto(`${base}/chemical/${source.id}/poster`);
+    const folder = path.join(__dirname, "../.verification/poster");
+    fs.mkdirSync(folder, { recursive: true });
+    await page.goto(`${base}/chemical?company_id=amt`);
+    const labelLink = page.getByRole("link", {
+      name: `ดาวน์โหลดฉลากของ ${source.name}`,
+      exact: true,
+    });
+    const posterLink = page.getByRole("link", {
+      name: `โปสเตอร์สรุป SDS ของ ${source.name}`,
+      exact: true,
+    });
+    await expect(labelLink).toBeVisible();
+    await expect(posterLink).toBeVisible();
+    await expect(
+      page.getByRole("link", {
+        name: `ตรวจสอบกฎหมายของ ${source.name}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/ถึงรอบทบทวน|ยังไม่ตรวจทาน|ตั้งนโยบายรอบทบทวน/),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: path.join(folder, "register-compiled.png"),
+      fullPage: true,
+    });
+    await labelLink.click();
+    await expect(page).toHaveURL(`${base}/chemical/${source.id}/label`);
+    await expect(
+      page.getByRole("heading", { name: "ฉลากสารเคมี PDF", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByLabel("เลือกเวอร์ชันฉลาก")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "บันทึกเป็นเวอร์ชันใหม่", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: /^PPE / })).toHaveCount(9);
+    await expect(page.getByLabel("ขนาด QR Code", { exact: true })).toHaveValue(
+      "16",
+    );
+    await expect(page.getByTestId("label-preview")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "ดาวน์โหลด PDF", exact: true }),
+    ).toBeEnabled();
+    const labelDownload = page.waitForEvent("download");
+    await page
+      .getByRole("button", { name: "ดาวน์โหลด PDF", exact: true })
+      .click();
+    const labelFile = path.join(folder, "label-compiled.pdf");
+    await (await labelDownload).saveAs(labelFile);
+    report.downloads.push({
+      layout: "label",
+      bytes: fs.statSync(labelFile).size,
+    });
+    report.navigation.push("registry → label PDF / versions / PPE / QR");
+    await page
+      .getByRole("link", { name: "กลับทะเบียนสารเคมี", exact: true })
+      .click();
+    await expect(page).toHaveURL(`${base}/chemical?company_id=amt`);
+    await posterLink.click();
+    await expect(page).toHaveURL(`${base}/chemical/${source.id}/poster`);
+    await expect(page.getByLabel("เลือก Rev โปสเตอร์")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "บันทึกเป็น Rev ใหม่", exact: true }),
+    ).toBeVisible();
+    report.navigation.push(
+      "registry → editable poster / Rev history / AAB template",
+    );
     await expect(
       page.getByLabel("แม่แบบโปสเตอร์", { exact: true }),
     ).toHaveValue(templates[0].id);
-    const folder = path.join(__dirname, "../.verification/poster");
-    fs.mkdirSync(folder, { recursive: true });
     await page.addScriptTag({ path: require.resolve("jsqr") });
     for (const [i, t] of templates.entries()) {
       await page
@@ -153,7 +234,12 @@ const templates = configs.map((config, i) => ({
       path: path.join(folder, "editor.png"),
       fullPage: true,
     });
-    await page.goto(base + "/chemical/poster-templates");
+    page.once("dialog", (d) => d.accept());
+    await page
+      .getByRole("link", { name: "จัดการแม่แบบ (Admin)", exact: true })
+      .click();
+    await expect(page).toHaveURL(base + "/chemical/poster-templates");
+    report.navigation.push("poster → Admin templates");
     await expect(
       page.getByRole("heading", { name: "จัดการแม่แบบโปสเตอร์", exact: true }),
     ).toBeVisible();

@@ -1,6 +1,22 @@
 # Chemical poster templates and revisions
 
-Live on https://tools.eashe.org on 2026-10-12.
+Production source reconciliation on 2026-10-12.
+
+The original manual release below was replaced by the automatic `main` deployment `dpl_3JvYbibTn3uDoaQzmAu3ZLDYDmDN` (`6659f56`) minutes later. That branch still lacked the chemical label/legal/poster work, so the public domain returned the old registry and the poster-history API returned 404. The deployed client and routes had regressed; the hosted summary and AAB template records were still present.
+
+The repair merges `origin/main` into the chemical feature branch, preserving the two newer commits which remove example placeholders from the chemical form. Release this combined history to `main` with a normal fast-forward push; do not force-push or replace the production branch setting. Future production work must start from updated `main`.
+
+## Production release check
+
+1. Fetch `origin` and confirm the release includes current `origin/main`. Integrate any new production changes before releasing.
+2. Run the register/form, label-history and poster journeys against the isolated database.
+3. Publish the combined tested commit to the production branch. Check that `tools.eashe.org` resolves to that exact commit after the Git deployment completes.
+4. Run `node tests/chemical-poster-deployed.cjs https://tools.eashe.org .verification/poster-source.json`. This now starts at the register, follows the Label and Poster links, checks removed review controls stay absent, exports label/summary/AAB PDFs, and follows the Admin template link. Page API data is intercepted only inside the isolated browser; anonymous API checks, deployed assets and route rendering are real.
+5. Confirm the domain still points at the intended commit after all pushes. A successful staging deployment or poster URL alone is not evidence that the public register is current.
+
+Repair validation: 11 isolated browser/API journeys passed, including navigation from the registry into both editors, label V1–3, poster Rev1–3, reset/history, Admin template copy/scope/hide, and tenant/CSRF boundaries. TypeScript passed. Before the repair, the compiled-client check reproduced the public-domain failure: poster-history returned 404 instead of the expected unauthenticated 401. No production customer records were written during verification.
+
+## Original staged release
 
 Source commit: `99ac5d7`. Deployment: `dpl_5Ct3Qtx4igTetX2fhttceVXwdS6C` (https://ppe-tools-9nw5vc9s0-ea-she.vercel.app). Staged with production configuration, checked (page 200 / protected API 401), then promoted. Production compiled-client smoke exported both PDFs (498,571 / 617,269 bytes), decoded both SDS QR codes, and recorded no browser errors. Error-level deployment logs were empty. Hosted table/RPC grant checks passed. Browser/API persistence journeys ran against isolated PostgreSQL; production smoke did not write customer revisions.
 
