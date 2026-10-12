@@ -490,3 +490,18 @@ test("AMT seven-section template is company scoped, editable, revisioned and exp
     ),
   ).toBe(true);
 });
+
+test("AMT routes precautions to their sections, removes duplicates, keeps general text and downloads the same composed PDF", () => {
+  const { execFileSync } = require("node:child_process");
+  const result = execFileSync(
+    process.execPath,
+    [
+      require.resolve("./chemical-poster-sections-deployed.cjs"),
+      "http://127.0.0.1:4310",
+    ],
+    { encoding: "utf8", timeout: 80000 },
+  );
+  expect(result).toContain('"rendered":true');
+  expect(result).toContain('"downloaded":true');
+  expect(result).toContain('"unchangedSnapshot":true');
+});

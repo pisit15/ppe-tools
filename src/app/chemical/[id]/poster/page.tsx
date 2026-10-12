@@ -315,8 +315,9 @@ function PosterEditor({ substance, history, templates, settings }: Loaded) {
             </select>
             {snapshot.template.config.layout === "amt" && (
               <p className="mt-3 text-sm text-gray-600">
-                แบบ AMT 7 หมวด · ข้อควรระวังแสดงในหมวดการจัดเก็บ
-                และข้อมูลติดต่อฉุกเฉินแสดงใต้หมวดการดับเพลิง
+                แบบ AMT 7 หมวด · แยกข้อควรระวังตามรหัส P ไปยังหมวดที่เกี่ยวข้อง
+                และตัดข้อความซ้ำที่ตรงกัน
+                ข้อความทั่วไปแสดงใต้หัวข้อข้อควรระวังแยกต่างหาก
               </p>
             )}
             <label htmlFor="poster-font" className={`${labelCls} mt-4`}>

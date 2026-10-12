@@ -1,5 +1,6 @@
 import type { PosterSnapshot, PosterSection } from "./poster";
 import { ghsPictogram } from "./ghs";
+import { amtSections } from "./poster-sections";
 import { LABEL_PPE, ppeFile } from "./ppe";
 
 const FONT = "ChemicalLabelThai",
@@ -396,8 +397,22 @@ export async function renderPoster(
     if (logo) image(logo, 12, 17, 29, 11);
     else txt(c.brand, 12, 18, 29, 10, 16, true, c.accent, "ตราบริษัท");
     txt(c.title, 49, 17, 149, 13, 21, true, "#111", "ชื่อหัวโปสเตอร์");
+    const content = amtSections(d);
+    function textHeight(value: string, w: number) {
+      ctx!.font = `400 ${fs * PT}px ${FONT}`;
+      return wrap(ctx!, value || "—", w).length * fs * PT * 1.35;
+    }
+    // Give PPE the unused physical-data space when its notes need it.
+    const rowH = d.showPpeCaptions ? 14 : 9;
+    const ppeHeight =
+      Math.ceil(ppes.length / 5) * rowH + textHeight(content.ppeNotes, 118);
+    const physicalHeight = Math.max(
+      Math.min(30, 62 - ppeHeight),
+      Math.min(30, textHeight(d.physical, 118) + 2),
+    );
+    const ppeY = 39 + physicalHeight;
     amtBand("physical", 31, "#f4ca58");
-    amtBody("physical", d.physical, 79, 39, 122, 30);
+    amtBody("physical", d.physical, 79, 39, 122, physicalHeight);
 
     ctx.strokeStyle = c.accent;
     ctx.lineWidth = 0.6;
@@ -475,12 +490,11 @@ export async function renderPoster(
       );
     if (sdsUrl) qr = { x: 54, y: 112, size: 16 };
 
-    amtBand("ppe", 69, "#72aa45", 79, 122);
-    const cw = 23.6,
-      rowH = d.showPpeCaptions ? 14 : 9;
+    amtBand("ppe", ppeY, "#72aa45", 79, 122);
+    const cw = 23.6;
     ppes.forEach((p, i) => {
       const x = 81 + (i % 5) * cw,
-        y = 78 + Math.floor(i / 5) * rowH;
+        y = ppeY + 9 + Math.floor(i / 5) * rowH;
       image(ppeImages[i], x + (cw - 7) / 2, y, 7, 7);
       if (d.showPpeCaptions)
         txt(
@@ -495,10 +509,10 @@ export async function renderPoster(
           p.name,
         );
     });
-    const notesY = 78 + Math.ceil(ppes.length / 5) * rowH;
-    if (d.ppeNotes || !ppes.length)
+    const notesY = ppeY + 9 + Math.ceil(ppes.length / 5) * rowH;
+    if (content.ppeNotes || !ppes.length)
       txt(
-        d.ppeNotes,
+        content.ppeNotes,
         81,
         notesY,
         118,
@@ -510,27 +524,81 @@ export async function renderPoster(
       );
     amtBand("hazards", 111, "#3996d3", 79, 122);
     amtBody("hazards", d.hazards, 79, 119, 122, 16);
-    amtBand("firstAid", 136, "#fff139");
-    amtBody("firstAid", d.firstAid, 9, 144, 192, 29);
-    amtBand("storage", 174, "#9ecaf0");
-    amtBody(
-      "storage",
-      [
-        d.storage,
-        d.precautions && `${c.headings.precautions}: ${d.precautions}`,
-        d.storageClass && `ประเภทการจัดเก็บ: ${d.storageClass}`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      9,
-      182,
-      192,
-      25,
+    const blocks: {
+      key: PosterSection;
+      value: string;
+      color: string;
+      width: number;
+      weight: number;
+    }[] = [
+      {
+        key: "firstAid",
+        value: content.firstAid,
+        color: "#fff139",
+        width: 192,
+        weight: 29,
+      },
+      {
+        key: "storage",
+        value: [
+          content.storage,
+          d.storageClass && `ประเภทการจัดเก็บ: ${d.storageClass}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        color: "#9ecaf0",
+        width: 192,
+        weight: 25,
+      },
+      ...(content.precautions
+        ? [
+            {
+              key: "precautions" as const,
+              value: content.precautions,
+              color: "#fff4ba",
+              width: 192,
+              weight: 10,
+            },
+          ]
+        : []),
+      {
+        key: "spill",
+        value: content.spill,
+        color: "#d2d4d6",
+        width: 124,
+        weight: 25,
+      },
+    ];
+    // Rebalance these rows so first-aid text can use spare storage space. Keep
+    // the document table and fire section fixed, and retain the overflow guard.
+    const available = 105 - blocks.length * 9;
+    const needs = blocks.map((b) =>
+      Math.max(7, textHeight(b.value, b.width - 4) + 2),
     );
-    amtBand("spill", 208, "#d2d4d6");
-    amtBody("spill", d.spill, 9, 216, 124, 25);
+    const total = needs.reduce((a, b) => a + b, 0);
+    const weights = blocks.reduce((sum, b) => sum + b.weight, 0);
+    const heights = needs.map((n, i) =>
+      total <= available
+        ? n + ((available - total) * blocks[i].weight) / weights
+        : (available * n) / total,
+    );
+    // The full-width spill heading must finish before the document table at
+    // y=225. If content cannot fit, txt() reports it instead of overlapping.
+    const last = blocks.length - 1;
+    const beforeSpill = heights.slice(0, last).reduce((sum, h) => sum + h, 0);
+    const maxBeforeSpill = 216 - 136 - last * 9;
+    if (beforeSpill > maxBeforeSpill) {
+      for (let i = 0; i < last; i++) heights[i] *= maxBeforeSpill / beforeSpill;
+      heights[last] += beforeSpill - maxBeforeSpill;
+    }
+    let y = 136;
+    blocks.forEach((b, i) => {
+      amtBand(b.key, y, b.color);
+      amtBody(b.key, b.value, 9, y + 8, b.width, heights[i]);
+      y += heights[i] + 9;
+    });
     amtBand("fire", 241, "#edb1c4", 9, 124);
-    amtBody("fire", d.fire, 9, 249, 124, 24);
+    amtBody("fire", content.fire, 9, 249, 124, 24);
     if (d.emergency)
       txt(
         `ฉุกเฉิน: ${d.emergency}`,
