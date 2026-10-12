@@ -1,0 +1,27 @@
+# Chemical poster templates and revisions
+
+Implemented 2026-10-12 for tools.eashe.org.
+
+- Editable A4 posters with a portrait summary and an AAB landscape table based on the supplied reference.
+- Admin can create/copy/edit/hide templates, limit availability by company, edit headings/title/company/form defaults/accent, and upload a logo. These are configurable layouts, not an arbitrary drag-and-drop page builder.
+- AAB document code, document revision, effective date, form code and form revision are editable. Department, issuer/checker/approver names are plain document fields; no approval workflow is introduced. Example signatures or product-specific safety data are not seeded.
+- The AAB seed uses text branding; upload the original company logo in Admin to replace it. Reference screenshot borders are annotations, not part of the PDF.
+- Users save append-only Rev1/2/3 snapshots per substance, reopen the latest, select older versions, and reset from the registry without deleting history. Template design and uploaded bitmaps are frozen in each snapshot. System history numbers are independent of editable document revision numbers.
+- PPE selection and captions are optional; AAB uses checkboxes for the PPE checklist. The current SDS URL and demo marking are resolved from the current registry, including when an older snapshot is opened.
+- Single-page A4 PDF at 300 DPI uses the same rendering as the preview, with Thai word wrapping and an overflow guard. QR codes link to the existing public SDS resolver. Bitmap uploads are limited, resized locally, and retained in snapshots.
+
+## Security and migration
+
+Migration: `20261012041236_chemical_poster_templates_versions.sql` (hosted migration applied successfully).
+
+Tables have RLS and no direct anon/authenticated grants. The existing signed Tools session controls tenant access in server routes. Template changes require a verified Admin account. Version inserts use a service-only RPC with a parent-row lock and idempotency key. Versions cannot be updated/deleted by the service role. Template updates check the expected revision to prevent lost updates. Clients cannot forge Admin template designs; old saved designs remain available only through a scoped previous snapshot.
+
+Supabase advisor reports informational “RLS enabled, no policy” for both server-only tables; this is intentional with direct client privileges revoked. Reference: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+
+## Verification
+
+- 2 real PostgreSQL/PGlite tests: RLS/grants, immutable versions, tenant and active-record checks, duplicate-request identity.
+- 2 browser journeys: save/reopen Rev1–3, second browser session, reset, registry unchanged, PNG upload, portrait/landscape PDF, overflow and mobile layout; Admin copy/scope/edit/hide, optimistic conflict, frozen snapshots, 401/403/404 tenant/CSRF boundaries, forged design and invalid-image rejection.
+- Production build and TypeScript completed successfully. ESLint has no errors; bitmap preview warnings are expected for canvas/data URLs.
+- Downloaded PDFs rendered with Poppler: one A4 page in the correct orientation, matching visual preview and clickable SDS link.
+- Compiled-client smoke uses isolated intercepted API responses and the read-only source record requested by the user. Both PDFs export with a decodable SDS QR and no JavaScript errors. No customer revisions are created for testing.

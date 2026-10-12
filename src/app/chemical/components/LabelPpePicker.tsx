@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ZoomIn, X } from 'lucide-react';
 import { LABEL_PPE, ppeFile, type LabelPpeCode } from '@/lib/chemical/ppe';
 
-export function LabelPpePicker({ value, onChange, showCaptions, onCaptionsChange }: {
+export function LabelPpePicker({ value, onChange, showCaptions, onCaptionsChange, mode = 'label' }: {
   value: LabelPpeCode[]; onChange: (value: LabelPpeCode[]) => void;
-  showCaptions: boolean; onCaptionsChange: (value: boolean) => void;
+  showCaptions: boolean; onCaptionsChange: (value: boolean) => void; mode?: 'label' | 'poster';
 }) {
   const [expanded, setExpanded] = useState<typeof LABEL_PPE[number] | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -14,7 +14,7 @@ export function LabelPpePicker({ value, onChange, showCaptions, onCaptionsChange
   function close() { dialog.current?.close(); setExpanded(null); }
   return <fieldset className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
     <legend className="px-1 font-semibold text-sm text-gray-800">รูปอุปกรณ์ป้องกันส่วนบุคคล (PPE)</legend>
-    <p className="text-xs text-gray-600 mb-3">เลือกตาม SDS ของผลิตภัณฑ์ เลือกได้หลายรูปหรือไม่เลือกเลย · พิมพ์รูปขนาด 10 มม.</p>
+    <p className="text-xs text-gray-600 mb-3">เลือกตาม SDS ของผลิตภัณฑ์ เลือกได้หลายรูปหรือไม่เลือกเลย · พิมพ์รูปขนาด {mode === 'poster' ? 8 : 10} มม.</p>
     <label className="mb-3 flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
       <input type="checkbox" checked={showCaptions} onChange={e => onCaptionsChange(e.target.checked)} className="size-4 accent-blue-700" />
       แสดงคำกำกับใต้ภาพ PPE
@@ -30,7 +30,7 @@ export function LabelPpePicker({ value, onChange, showCaptions, onCaptionsChange
         <button type="button" aria-label={`ดูภาพใหญ่ ${p.name}`} onClick={() => setExpanded(p)} className="flex min-h-9 items-center justify-center gap-1 rounded-b-xl border-t border-blue-50 text-xs text-blue-700 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-blue-600"><ZoomIn size={14} /> ขยาย</button>
       </div>)}
     </div>
-    <div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-gray-600">{value.length ? `เลือก ${value.length} รูป` : 'ไม่แสดง PPE บนฉลาก'}</span><button type="button" disabled={!value.length} onClick={() => onChange([])} className="text-blue-700 underline disabled:text-gray-400 disabled:no-underline">ล้างการเลือก PPE</button></div>
+    <div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-gray-600">{value.length ? `เลือก ${value.length} รูป` : mode === 'poster' ? 'ยังไม่เลือก PPE ที่ต้องใช้' : 'ไม่แสดง PPE บนฉลาก'}</span><button type="button" disabled={!value.length} onClick={() => onChange([])} className="text-blue-700 underline disabled:text-gray-400 disabled:no-underline">ล้างการเลือก PPE</button></div>
     <dialog ref={dialog} aria-labelledby="ppe-preview-title" onClose={() => setExpanded(null)} onClick={e => { if (e.target === e.currentTarget) close(); }} className="m-auto w-[calc(100%_-_2rem)] max-w-sm rounded-2xl p-0 shadow-xl backdrop:bg-slate-950/50">
       {expanded && <div className="p-6 text-center">
         <div className="flex justify-end"><button type="button" aria-label="ปิดภาพ PPE" onClick={close} className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-600"><X size={20} /></button></div>
