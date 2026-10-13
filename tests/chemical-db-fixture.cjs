@@ -17,7 +17,7 @@ async function createDb() {
     create table law_documents(id uuid primary key,code text unique,title text,status text,file_url text,external_url text,gazette_url text);
     insert into company_settings values ('amt','AMT'),('aab','AAB');
   `);
-  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql','20261009120114_chemical_sds_provenance.sql','20261009122344_tools_home_cards.sql','20261009163428_chemical_label_versions.sql','20261012041236_chemical_poster_templates_versions.sql','20261012042316_chemical_aab_poster_form_code.sql','20261012055604_chemical_document_code.sql','20261012063421_chemical_amt_poster_template.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
+  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql','20261009120114_chemical_sds_provenance.sql','20261009122344_tools_home_cards.sql','20261009163428_chemical_label_versions.sql','20261012041236_chemical_poster_templates_versions.sql','20261012042316_chemical_aab_poster_form_code.sql','20261012055604_chemical_document_code.sql','20261012063421_chemical_amt_poster_template.sql','20261013035232_chemical_mixture_components.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
   for (const law of require('./chemical-library-laws.json')) await db.query('insert into law_documents(id,code,title,status,file_url,external_url,gazette_url) values ($1,$2,$3,$4,$5,$6,$7)', [law.id,law.code,law.title,law.status,law.file_url,law.external_url,law.gazette_url]);
   const hash = bcrypt.hashSync('local-test-only',4);
   await db.query("insert into admin_accounts(username,password,role,display_name) values ('audit-admin',$1,'super_admin','Local test admin')",[hash]);
@@ -96,7 +96,7 @@ async function startFixture(port=4311) {
         rows=(await db.query('select * from '+table+where+order+' limit '+limit+' offset '+offset,params)).rows;
       } else {
         let raw='';for await(const c of req)raw+=c;const body=JSON.parse(raw);const entries=Object.entries(Array.isArray(body)?body[0]:body);
-        const value=(k,v)=>v !== null && ['first_aid','emergency_contacts','snapshot','config','updated_by','coverage','gaps','details','sds_import','importer'].includes(k)?JSON.stringify(v):v;
+        const value=(k,v)=>v !== null && ['components','first_aid','emergency_contacts','snapshot','config','updated_by','coverage','gaps','details','sds_import','importer'].includes(k)?JSON.stringify(v):v;
         if(req.method==='POST'){
           const cols=entries.map(([k])=>ident(k)).join(',');const values=entries.map(([k,v])=>{params.push(value(k,v));return '$'+params.length;}).join(',');
           const conflict=url.searchParams.get('on_conflict');const upsert=conflict?' on conflict ('+ident(conflict)+') do update set '+entries.filter(([k])=>k!==conflict).map(([k])=>ident(k)+'=excluded.'+ident(k)).join(','):'';

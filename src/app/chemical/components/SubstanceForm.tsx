@@ -1,4 +1,6 @@
 'use client';
+import CompositionEditor from './CompositionEditor';
+import { validateComponents } from '@/lib/chemical/components';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Sparkles, Upload, Link2, FileText, Trash2, Wand2, AlertTriangle } from 'lucide-react';
@@ -23,6 +25,7 @@ type Props = {
 type FormState = Omit<CreateChemSubstanceInput, 'company_id' | 'is_active' | 'created_by'>;
 
 const empty = (): FormState => ({
+  product_type: 'unknown', components: [],
   document_code: null, name: '', chemical_name: null, cas_no: null, un_no: null, supplier: null, physical_state: null,
   ghs_pictograms: [], signal_word: null, hazard_classes: [], h_codes: [], p_codes: [],
   flash_point_c: null, boiling_point_c: null,
@@ -106,7 +109,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
     markChanged();
     const applied: string[] = [];
     const next = { ...f };
-      const keys: (keyof SdsExtraction)[] = ['name', 'chemical_name', 'cas_no', 'un_no', 'supplier', 'physical_state', 'ghs_pictograms', 'signal_word',
+      const keys: (keyof SdsExtraction)[] = ['name', 'chemical_name', 'cas_no', 'product_type', 'un_no', 'supplier', 'physical_state', 'ghs_pictograms', 'signal_word',
         'hazard_classes', 'h_codes', 'p_codes', 'flash_point_c', 'boiling_point_c', 'storage_conditions', 'ppe_required', 'first_aid',
         'fire_fighting', 'spill_response', 'emergency_contact', 'sds_revision_date', 'sds_language'];
       keys.forEach(k => {
@@ -117,6 +120,8 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
         (next as Record<string, unknown>)[k] = v;
         applied.push(k);
       });
+    if (d.components !== undefined) { next.components = d.components; applied.push('components'); }
+    if (d.product_type === 'mixture') { next.cas_no = d.cas_no || null; applied.push('cas_no'); }
     setF(next);
     setAiFields(prev => [...new Set([...prev, ...applied])]);
     if (d.h_codes?.length) setHText(d.h_codes.join(', '));
@@ -172,6 +177,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
     if (!f.name.trim()) { setError('กรุณาระบุชื่อสารเคมี'); return; }
     setSaving(true); setError('');
     try {
+      validateComponents(f.components || []);
       let payload: FormState & { company_id: string; created_by?: string } = { ...f, storage_class_suggested: suggestion?.code || null, company_id: companyId };
       if (sdsMode === 'file') {
         setUploading(true);
@@ -209,6 +215,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
             {[
               { id: 'sds', label: 'เอกสาร SDS', values: [pendingFile || f.sds_url || f.sds_file_path, f.sds_revision_date, f.sds_language] },
               { id: 'identity', label: 'ข้อมูลสาร', values: [f.name, f.chemical_name, f.supplier, f.physical_state] },
+              { id: 'composition', label: 'องค์ประกอบ', values: [!!f.product_type && f.product_type !== 'unknown', (f.components || []).length] },
               { id: 'ghs', label: 'ความเป็นอันตราย', values: [f.ghs_pictograms.length, f.signal_word, f.h_codes.length, f.p_codes.length] },
               { id: 'storage', label: 'การจัดเก็บ', values: [f.storage_class, f.storage_area_id, f.storage_conditions] },
               { id: 'safety', label: 'ข้อมูลความปลอดภัย', values: [f.ppe_required.length, Object.values(f.first_aid).some(Boolean), f.fire_fighting, f.spill_response] },
@@ -277,7 +284,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
               <div className="sm:col-span-2"><label htmlFor="chemical-document-code" className={labelCls}>รหัส / หมายเลขเอกสาร</label><input id="chemical-document-code" className={inputCls} maxLength={120} value={f.document_code || ''} onChange={e => set('document_code', e.target.value || null)} aria-describedby="chemical-document-code-help" /><p id="chemical-document-code-help" className="mt-1 text-xs text-gray-500">รหัสที่บริษัทกำหนด ใช้ค้นหาและเรียงลำดับในทะเบียน · เว้นว่างได้</p></div>
               <div><label htmlFor="chemical-field-4" className={labelCls}>ชื่อทางเคมี</label><input id="chemical-field-4" className={inputCls} value={f.chemical_name || ''} onChange={e => set('chemical_name', e.target.value || null)} /></div>
               <div><label htmlFor="chemical-field-5" className={labelCls}>ผู้ผลิต / ผู้จำหน่าย</label><input id="chemical-field-5" className={inputCls} value={f.supplier || ''} onChange={e => set('supplier', e.target.value || null)} /></div>
-              <div><label htmlFor="chemical-field-6" className={labelCls}>CAS No.</label><input id="chemical-field-6" className={inputCls} value={f.cas_no || ''} onChange={e => set('cas_no', e.target.value || null)} /></div>
+              <div><label htmlFor="chemical-field-6" className={labelCls}>{f.product_type === 'mixture' ? 'CAS ของผลิตภัณฑ์ (เฉพาะที่ SDS ระบุ)' : 'CAS No.'}</label><input id="chemical-field-6" className={inputCls} value={f.cas_no || ''} onChange={e => set('cas_no', e.target.value || null)} /></div>
               <div><label htmlFor="chemical-field-7" className={labelCls}>UN No.</label><input id="chemical-field-7" className={inputCls} value={f.un_no || ''} onChange={e => set('un_no', e.target.value || null)} /></div>
               <div><label htmlFor="chemical-field-8" className={labelCls}>สถานะทางกายภาพ</label>
                 <select id="chemical-field-8" className={inputCls} value={f.physical_state || ''} onChange={e => set('physical_state', (e.target.value || null) as FormState['physical_state'])}>
@@ -294,6 +301,11 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
                 <div><label htmlFor="chemical-field-14" className={labelCls}>ภาชนะ</label><input id="chemical-field-14" className={inputCls} value={f.container || ''} onChange={e => set('container', e.target.value || null)} /></div>
               </div>
             </div>
+          </Section>
+
+          <Section id="composition" title="องค์ประกอบของผลิตภัณฑ์ (SDS ข้อ 3)">
+            <CompositionEditor productType={f.product_type || 'unknown'} components={f.components || []} onTypeChange={v => { markChanged(); set('product_type', v); }} onChange={v => { markChanged(); set('components', v); }} />
+            <p className="text-xs text-gray-600">การสกัด AI ใหม่จะแทนที่ตารางองค์ประกอบด้วยข้อมูลจาก SDS ที่เลือก</p>
           </Section>
 
           {/* GHS */}

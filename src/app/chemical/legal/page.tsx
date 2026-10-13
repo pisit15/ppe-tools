@@ -1,4 +1,7 @@
 'use client';
+import ProductLegalResults from './ProductLegalResults';
+import type { ChemicalComponent, ChemicalProductType } from '@/lib/types';
+import type { ProductLegalCheck } from '@/lib/chemical/legal/product';
 import { SdsLink } from '../components/SdsLink';
 import LegalSourceLinks from './LegalSourceLinks';
 
@@ -13,11 +16,11 @@ import { CATEGORY_LABELS, LEGAL_CATEGORIES, type LegalCandidate, type LegalCheck
 import { inputCls } from '../components/ui';
 import { LegalResult, LegalEntryList } from './LegalResult';
 
-type RegisterRow = { id: string; company_id: string; name: string; cas_no: string | null; has_sds: boolean; valid_cas: string | null; counts: LegalCheck['counts'] | null };
+type RegisterRow = { product_type: ChemicalProductType; components: ChemicalComponent[]; component_count: number; checked_cas_count: number; incomplete: boolean; id: string; company_id: string; name: string; cas_no: string | null; has_sds: boolean; valid_cas: string | null; counts: LegalCheck['counts'] | null };
 type LegalResponse = {
   release: LegalRelease; sources: LegalSource[]; stats: { category: keyof typeof CATEGORY_LABELS; total: number; verified: number }[];
   register?: RegisterRow[]; candidates?: LegalCandidate[]; total?: number; invalidCas?: boolean; unmapped?: LegalEntry[];
-  check?: LegalCheck | null; identityWarning?: string; substance?: { id: string; company_id: string; name: string; cas_no: string | null; has_sds: boolean; updated_at: string };
+  composition?: ProductLegalCheck; check?: LegalCheck | null; identityWarning?: string; substance?: { product_type: ChemicalProductType; components: ChemicalComponent[]; id: string; company_id: string; name: string; cas_no: string | null; has_sds: boolean; updated_at: string };
 };
 export default function ChemicalLegalPage() {
   const { q } = useCompanyScope();
@@ -42,7 +45,7 @@ function LegalWorkspace({ substanceId }: { substanceId: string | null }) {
     setMode(next); setCas(''); setSubmitted('');
   };
   const runSearch = (query: string) => { setText(query); setSubmitted(query.trim()); setCas(normalizeCas(query) || ''); };
-  const register = (data?.register || []).filter(r => (!onlyMatched || hasVerifiedLegalMatch(r.counts)) && [r.name, r.cas_no || '', r.company_id].join(' ').toLowerCase().includes(registerSearch.toLowerCase()));
+  const register = (data?.register || []).filter(r => (!onlyMatched || hasVerifiedLegalMatch(r.counts)) && [r.name, r.cas_no || '', r.company_id, ...(r.components || []).flatMap(c => [c.name, c.cas_no || ''])].join(' ').toLowerCase().includes(registerSearch.toLowerCase()));
   return <div className="max-w-[1500px] mx-auto space-y-5 pb-10 text-gray-800">
     <header className="flex flex-wrap gap-4 justify-between items-start">
       <div><div className="flex items-center gap-2"><Scale className="text-purple-700" size={28} /><h1 className="text-2xl font-bold text-gray-950">ตรวจสอบกฎหมายสารเคมี</h1></div><p className="text-sm text-gray-600 mt-2">{companyName} · ค้นหาบัญชีรายชื่อและเงื่อนไขที่เกี่ยวข้อง</p></div>
@@ -64,7 +67,7 @@ function LegalWorkspace({ substanceId }: { substanceId: string | null }) {
     </section>}
     {result.loading ? <div className="legal-card" role="status">กำลังโหลดและตรวจชุดข้อมูลกฎหมาย…</div> : result.error ? <div className="legal-card text-red-800" role="alert">{result.error}<button className="legal-btn mt-3" onClick={() => setRefresh(v => v + 1)}>ลองโหลดใหม่</button></div> : data && <>
       <div className="flex flex-wrap justify-between gap-2 text-sm text-gray-600"><span>{data.release.label} · {data.release.entry_count.toLocaleString()} รายการอ้างอิง (ไม่ใช่จำนวนสารไม่ซ้ำ)</span><span>ตรวจแหล่งข้อมูลถึง {new Date(data.release.checked_on).toLocaleDateString('th-TH', { timeZone: 'UTC' })}</span></div>
-      {substanceId && <div className="legal-card"><Link className="text-purple-700 underline text-sm" href={`/chemical/legal${q}`}>← รายการในทะเบียน</Link><h2 className="text-xl font-bold mt-3">{data.substance?.name}</h2><p className="mt-1 text-sm">CAS ในทะเบียน: {data.substance?.cas_no || 'ยังไม่ระบุ'}</p>{data.substance?.has_sds && <div className="mt-3"><SdsLink id={data.substance.id} name={data.substance.name} /></div>}{data.identityWarning && <p role="status" className="mt-3 text-amber-900">{data.identityWarning} <Link href={`/chemical/legal${q}`} className="underline">กลับไปเลือกโหมดค้นหา</Link></p>}</div>}
+      {substanceId && <div className="legal-card"><Link className="text-purple-700 underline text-sm" href={`/chemical/legal${q}`}>← รายการในทะเบียน</Link><h2 className="text-xl font-bold mt-3">{data.substance?.name}</h2><p className="mt-1 text-sm">CAS ระดับผลิตภัณฑ์: {data.substance?.cas_no || (data.substance?.product_type === 'mixture' ? 'ไม่ระบุเลขรวม — ดู CAS แยกตามองค์ประกอบด้านล่าง' : 'ยังไม่ระบุ')}</p>{data.substance?.has_sds && <div className="mt-3"><SdsLink id={data.substance.id} name={data.substance.name} /></div>}{data.identityWarning && <p role="status" className="mt-3 text-amber-900">{data.identityWarning} <Link href={`/chemical/legal${q}`} className="underline">กลับไปเลือกโหมดค้นหา</Link></p>}</div>}
       {!substanceId && mode === 'register' && <section className="legal-card">
         <div className="flex flex-wrap gap-3 items-center justify-between mb-4"><h2 className="font-bold">ตรวจจากทะเบียนบริษัท</h2><input aria-label="กรองทะเบียนเพื่อตรวจกฎหมาย" placeholder="ชื่อสาร / CAS / บริษัท" className={`${inputCls} sm:max-w-sm`} value={registerSearch} onChange={e => setRegisterSearch(e.target.value)} /></div>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -72,7 +75,7 @@ function LegalWorkspace({ substanceId }: { substanceId: string | null }) {
           <p role="status" className="text-sm text-gray-600">แสดง {register.length} จาก {data.register?.length || 0} รายการ</p>
         </div>
         {onlyMatched && <p className="text-sm text-gray-600 mb-4">แสดงสารที่พบรายการกฎหมายปัจจุบันที่ยืนยันแล้วอย่างน้อย 1 เรื่อง</p>}
-        {register.length === 0 ? <p className="text-gray-600">{data.register?.length ? 'ไม่พบรายการตรงกับตัวกรอง' : 'ยังไม่มีสารในทะเบียนใช้งานจริง สามารถค้นหาสารอื่นได้ทันที'}</p> : <div className="overflow-x-auto"><table className="legal-table min-w-[950px]"><caption className="sr-only">รายการกฎหมายของสารในทะเบียน</caption><thead><tr><th>สารเคมี / CAS</th>{LEGAL_CATEGORIES.map(c => <th key={c}>{CATEGORY_LABELS[c]}</th>)}<th>รายละเอียด</th></tr></thead><tbody>{register.map(row => <tr key={row.id}><td><strong>{row.name}</strong><p className="text-gray-600 mt-1">{row.cas_no || 'ยังไม่มี CAS'}{isAll ? ` · ${row.company_id.toUpperCase()}` : ''}</p>{row.has_sds && <SdsLink id={row.id} name={row.name} compact />}</td>{LEGAL_CATEGORIES.map(c => <td key={c}>{!row.valid_cas ? 'ต้องตรวจ CAS' : row.counts?.[c].verified ? <span className="text-purple-800">พบ {row.counts[c].verified} รายการ<br /><small>มีเงื่อนไขตามกฎหมาย</small></span> : row.counts?.[c].pending ? <span className="text-amber-900">ข้อมูลต้องตรวจเพิ่ม {row.counts[c].pending}</span> : c === 'health' ? 'ตามกลุ่มสาร/งานที่สัมผัส' : 'ไม่พบในชุดข้อมูลนี้'}</td>)}<td><Link className="legal-btn whitespace-nowrap" href={`/chemical/legal?company_id=${encodeURIComponent(row.company_id)}&substance_id=${row.id}`}>ดูข้อกฎหมาย</Link></td></tr>)}</tbody></table></div>}
+        {register.length === 0 ? <p className="text-gray-600">{data.register?.length ? 'ไม่พบรายการตรงกับตัวกรอง' : 'ยังไม่มีสารในทะเบียนใช้งานจริง สามารถค้นหาสารอื่นได้ทันที'}</p> : <div className="overflow-x-auto"><table className="legal-table min-w-[950px]"><caption className="sr-only">รายการกฎหมายของสารในทะเบียน</caption><thead><tr><th>สารเคมี / CAS</th>{LEGAL_CATEGORIES.map(c => <th key={c}>{CATEGORY_LABELS[c]}</th>)}<th>รายละเอียด</th></tr></thead><tbody>{register.map(row => <tr key={row.id}><td><strong>{row.name}</strong><p className="text-gray-600 mt-1">{row.cas_no || (row.product_type === 'mixture' ? 'ดู CAS แยกตามองค์ประกอบ' : 'ยังไม่มี CAS')}{isAll ? ` · ${row.company_id.toUpperCase()}` : ''}</p>{(row.product_type === 'mixture' || row.component_count > 0) && <p className="text-xs text-purple-800 mt-1">{row.product_type === 'mixture' ? 'สารผสม · ' : ''}{row.component_count} องค์ประกอบ · ค้นหาได้ {row.checked_cas_count} CAS</p>}{row.incomplete && <p className="text-xs text-amber-800 mt-1">ข้อมูลองค์ประกอบ / CAS ยังไม่ครบ</p>}{row.has_sds && <SdsLink id={row.id} name={row.name} compact />}</td>{LEGAL_CATEGORIES.map(c => <td key={c}>{!row.checked_cas_count ? 'ยังไม่มี CAS ที่ค้นหาได้' : row.counts?.[c].verified ? <span className="text-purple-800">พบ {row.counts[c].verified} รายการ<br /><small>มีเงื่อนไขตามกฎหมาย</small></span> : row.counts?.[c].pending ? <span className="text-amber-900">ข้อมูลต้องตรวจเพิ่ม {row.counts[c].pending}</span> : c === 'health' ? 'ตามกลุ่มสาร/งานที่สัมผัส' : 'ไม่พบในชุดข้อมูลนี้'}</td>)}<td><Link className="legal-btn whitespace-nowrap" href={`/chemical/legal?company_id=${encodeURIComponent(row.company_id)}&substance_id=${row.id}`}>ดูข้อกฎหมาย</Link></td></tr>)}</tbody></table></div>}
       </section>}
       {!substanceId && mode === 'search' && !cas && submitted && <section className="legal-card" aria-live="polite">
         <h2 className="font-bold mb-3">เลือกตัวตนของสารก่อนดูผลกฎหมาย</h2>
@@ -83,7 +86,9 @@ function LegalWorkspace({ substanceId }: { substanceId: string | null }) {
         </>}
         {!!data.unmapped?.length && <div className="mt-5"><h3 className="font-bold mb-2">รายการกลุ่มสาร / CAS ที่ยังจับคู่ไม่ได้</h3><LegalEntryList entries={data.unmapped} sources={data.sources} /></div>}
       </section>}
-      {data.check && <LegalResult key={`${data.check.cas}:${substanceId || 'external'}`} check={data.check} sources={data.sources} release={data.release} />}
+      {substanceId && data.composition && (data.substance?.product_type === 'mixture' || !!data.substance?.components?.length)
+        ? <ProductLegalResults composition={data.composition} sources={data.sources} release={data.release} />
+        : data.check && <LegalResult key={`${data.check.cas}:${substanceId || 'external'}`} check={data.check} sources={data.sources} release={data.release} />}
       {!substanceId && mode === 'sources' && <div className="space-y-4">
         <section className="legal-card"><h2 className="font-bold text-lg mb-4">ความครอบคลุมของฐานข้อมูลรุ่นนี้</h2><div className="overflow-x-auto"><table className="legal-table min-w-[650px]"><thead><tr><th>เรื่อง</th><th>ยืนยันจากต้นฉบับ / ทั้งหมด</th><th>ขอบเขต</th></tr></thead><tbody>{data.stats.map(s => <tr key={s.category}><td>{CATEGORY_LABELS[s.category]}</td><td>{s.verified} / {s.total}</td><td>{data.release.coverage[s.category]}</td></tr>)}</tbody></table></div><ul className="list-disc pl-5 mt-4 text-sm text-amber-950 space-y-2">{data.release.gaps.map(gap => <li key={gap}>{gap}</li>)}</ul></section>
         <section className="legal-card"><h2 className="font-bold text-lg mb-4">กฎหมายและเอกสารจากคลัง EA SHE</h2><div className="grid md:grid-cols-2 gap-3">{data.sources.map(source => <div key={source.id} className="border border-gray-200 p-4 rounded-xl"><h3 className="font-semibold mb-2">{source.title}</h3><LegalSourceLinks source={source} />{source.note && <p className="text-sm text-gray-600 mt-2">{source.note}</p>}</div>)}</div></section>

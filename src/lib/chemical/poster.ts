@@ -1,3 +1,4 @@
+import { componentSummary } from './components';
 import type {
   ChemCompanySettings,
   ChemSubstance,
@@ -137,6 +138,7 @@ export function posterDraft(
   return {
     ...d,
     name: s.name,
+    ingredients: (s.components || []).map(componentSummary).join('\n'),
     chemicalName: s.chemical_name || "",
     documentCode: s.document_code || "",
     cas: s.cas_no || "",

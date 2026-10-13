@@ -153,7 +153,20 @@ export type ChemStorageArea = {
   updated_at: string;
 };
 
+export type ChemicalProductType = 'unknown' | 'single' | 'mixture';
+export type ChemicalComponent = {
+  name: string;
+  cas_no: string | null;
+  cas_status: 'specified' | 'not_provided' | 'confidential';
+  /** Preserve exact bounds/inequalities from SDS; never turn a range into an average. */
+  concentration_text: string | null;
+  concentration_basis: 'unspecified' | 'w/w' | 'v/v' | 'w/v';
+  source_page: string | null;
+};
+
 export type ChemSubstance = {
+  product_type?: ChemicalProductType;
+  components?: ChemicalComponent[];
   /** Company-assigned registry / SDS document identifier; optional for older records. */
   document_code?: string | null;
   is_demo?: boolean;
@@ -231,7 +244,7 @@ export type UpdateChemSubstanceInput = Partial<CreateChemSubstanceInput>;
 
 /** ผลสกัดจาก SDS ด้วย AI — ทุกช่องเป็น optional เพราะ SDS แต่ละฉบับไม่ครบเท่ากัน */
 export type SdsExtraction = Partial<Pick<ChemSubstance,
-  'name' | 'chemical_name' | 'cas_no' | 'un_no' | 'supplier' | 'physical_state'
+  'name' | 'chemical_name' | 'cas_no' | 'product_type' | 'components' | 'un_no' | 'supplier' | 'physical_state'
   | 'ghs_pictograms' | 'signal_word' | 'hazard_classes' | 'h_codes' | 'p_codes'
   | 'flash_point_c' | 'boiling_point_c' | 'storage_conditions' | 'ppe_required'
   | 'first_aid' | 'fire_fighting' | 'spill_response' | 'emergency_contact'

@@ -1,3 +1,4 @@
+import { validateComponents, validateProductType } from './components';
 import type { ChemSubstance, CreateChemSubstanceInput } from '@/lib/types';
 import { getSupabaseServer } from '@/lib/supabase';
 import { AccessError, assertCompany, type ToolsActor } from '@/lib/toolsSession';
@@ -17,6 +18,10 @@ export async function prepareSubstance(body: Record<string, unknown>, actor: Too
   const db = getSupabaseServer();
   await assertExistingCompany(companyId);
   const clean = sanitizeSubstance(body as Partial<CreateChemSubstanceInput>);
+  try {
+    if ('product_type' in body) clean.product_type = validateProductType(body.product_type);
+    if ('components' in body) clean.components = validateComponents(body.components);
+  } catch (error) { throw new AccessError(error instanceof Error ? error.message : 'ข้อมูลองค์ประกอบไม่ถูกต้อง', 400); }
   if ((!existing || clean.name !== undefined) && !clean.name?.trim()) throw new AccessError('กรุณาระบุชื่อสารเคมี', 400);
   const areaId = clean.storage_area_id === undefined ? existing?.storage_area_id : clean.storage_area_id;
   if (areaId) {

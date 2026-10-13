@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Aluminium nitrate",
+    "cas_no": "13473-90-0",
+    "cas_status": "specified",
+    "concentration_text": "1 ~ 10",
+    "concentration_basis": "w/w",
+    "source_page": "2"
+  },
+  {
+    "name": "Ammonium nitrate",
+    "cas_no": "6484-52-2",
+    "cas_status": "specified",
+    "concentration_text": "1 ~ 10",
+    "concentration_basis": "w/w",
+    "source_page": "2"
+  },
+  {
+    "name": "Ammonium hexafluorozirconate",
+    "cas_no": "16919-31-6",
+    "cas_status": "specified",
+    "concentration_text": "1 ~ 10",
+    "concentration_basis": "w/w",
+    "source_page": "2"
+  },
+  {
+    "name": "Nitric acid",
+    "cas_no": "7697-37-2",
+    "cas_status": "specified",
+    "concentration_text": "1 ~ 10",
+    "concentration_basis": "w/w",
+    "source_page": "2"
+  },
+  {
+    "name": "Water",
+    "cas_no": "7732-18-5",
+    "cas_status": "specified",
+    "concentration_text": null,
+    "concentration_basis": "w/w",
+    "source_page": "2"
+  }
+]

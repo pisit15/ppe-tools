@@ -54,7 +54,7 @@ function ScopedRegister() {
     const s = search.trim().toLowerCase();
     return items.filter(i => {
       if (!matchesQuality(i, quality)) return false;
-      if (s && ![i.document_code, i.name, i.chemical_name, i.cas_no, i.un_no, i.supplier, i.usage_purpose].some(v => (v || '').toLowerCase().includes(s))) return false;
+      if (s && ![i.document_code, i.name, i.chemical_name, i.cas_no, i.un_no, i.supplier, i.usage_purpose, ...(i.components || []).flatMap(c => [c.name, c.cas_no])].some(v => (v || '').toLowerCase().includes(s))) return false;
       if (classFilter === '__none') { if (i.storage_class) return false; } else if (classFilter && i.storage_class !== classFilter) return false;
       if (pictoFilter && !i.ghs_pictograms.includes(pictoFilter as ChemSubstance['ghs_pictograms'][number])) return false;
       if (areaFilter && i.storage_area_id !== areaFilter) return false;
@@ -207,6 +207,7 @@ function ScopedRegister() {
                       <td className="px-3 py-2.5 text-sm font-medium text-gray-700 max-w-48 break-words">{i.document_code || <span className="text-gray-500" aria-label="ยังไม่ระบุรหัสเอกสาร">—</span>}</td>
                       <td className="px-3 py-2.5">
                         <div className="font-semibold text-gray-900">{i.name}</div>{isAdmin && <button onClick={() => changeDemo(i)} className="text-xs text-purple-800 underline my-1">{i.is_demo ? 'นำกลับทะเบียนจริง' : 'ย้ายไปข้อมูลสาธิต'}</button>}{(i.ai_filled_fields?.length || 0) > 0 && <div className="text-xs mt-1 text-gray-600">มีข้อมูลจาก AI</div>}
+                        {(i.product_type === 'mixture' || !!i.components?.length) && <div className="text-xs text-purple-700 mt-1">{i.product_type === 'mixture' ? 'สารผสม · ' : ''}{i.components?.length || 0} องค์ประกอบตาม SDS</div>}
                         <div className="text-sm text-gray-500">{[i.chemical_name, i.cas_no && `CAS ${i.cas_no}`, i.un_no && `UN ${i.un_no}`].filter(Boolean).join(' · ')}</div>
                       </td>
                       <td className="px-3 py-2.5"><GhsIcons codes={i.ghs_pictograms} size={34} /></td>
