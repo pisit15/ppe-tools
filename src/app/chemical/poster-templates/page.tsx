@@ -166,8 +166,8 @@ export default function PosterTemplatesPage() {
       </a>
       <h1 className="text-2xl font-bold mb-2">จัดการแม่แบบโปสเตอร์</h1>
       <p className="text-gray-600 mb-6">
-        สร้างแบบสำหรับแต่ละบริษัท เลือกโครงหน้าแบบสรุป ตาราง AAB หรือแบบ AMT 7
-        หมวด แล้วปรับหัวข้อ สี และตราบริษัท
+        แม่แบบที่เปิดใช้ ทุกบริษัทเลือกได้ เลือกโครงหน้าแบบสรุป ตาราง AAB
+        หรือแบบ AMT 7 หมวด แล้วปรับหัวข้อ สี และตราบริษัท
       </p>
       {error && (
         <p role="alert" className="bg-red-50 text-red-700 p-3 mb-4">
@@ -251,7 +251,7 @@ export default function PosterTemplatesPage() {
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="template-company" className={labelCls}>
-                  บริษัทที่เลือกใช้ได้
+                  บริษัทต้นแบบ
                 </label>
                 <select
                   id="template-company"
@@ -261,7 +261,7 @@ export default function PosterTemplatesPage() {
                     setDraft({ ...draft, company_id: e.target.value })
                   }
                 >
-                  <option value="all">ทุกบริษัท</option>
+                  <option value="all">แม่แบบกลาง</option>
                   {companies.map((c) => (
                     <option key={c.company_id} value={c.company_id}>
                       {c.company_name}

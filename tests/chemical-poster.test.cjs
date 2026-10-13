@@ -106,3 +106,49 @@ test("templates are admin-server managed and unavailable directly to clients", a
     await db.close();
   }
 });
+
+test("poster default is nullable, references an existing template, and preserves company settings", async () => {
+  const db = await createDb();
+  try {
+    await db.exec("set role service_role");
+    const before = (
+      await db.query(
+        "select * from chem_company_settings where company_id='amt'",
+      )
+    ).rows[0];
+    assert.equal(before.default_poster_template_id, null);
+    const id = (
+      await db.query(
+        "select id from chem_poster_templates where config->>'layout'='amt'",
+      )
+    ).rows[0].id;
+    await db.query(
+      "update chem_company_settings set default_poster_template_id=$1 where company_id='amt'",
+      [id],
+    );
+    const after = (
+      await db.query(
+        "select * from chem_company_settings where company_id='amt'",
+      )
+    ).rows[0];
+    assert.equal(after.default_poster_template_id, id);
+    assert.deepEqual(after.emergency_contacts, before.emergency_contacts);
+    assert.equal(after.sds_review_years, before.sds_review_years);
+    await assert.rejects(
+      db.query(
+        "update chem_company_settings set default_poster_template_id=$1 where company_id='amt'",
+        [randomUUID()],
+      ),
+      /foreign key/,
+    );
+    await db.exec("reset role; set role authenticated");
+    await assert.rejects(
+      db.exec(
+        "update chem_company_settings set default_poster_template_id=null",
+      ),
+      /permission denied/,
+    );
+  } finally {
+    await db.close();
+  }
+});

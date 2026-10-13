@@ -173,7 +173,7 @@ test("Admin creates, edits, hides company templates; users cannot change designs
     .selectOption({ label: "AAB · ตาราง SDS หน้างาน" });
   await page.getByRole("button", { name: "ทำสำเนา", exact: true }).click();
   await page.getByLabel("ชื่อแม่แบบ", { exact: true }).fill("AMT ทดสอบ");
-  await page.getByLabel("บริษัทที่เลือกใช้ได้").selectOption("amt");
+  await page.getByLabel("บริษัทต้นแบบ").selectOption("amt");
   await page.getByLabel("ชื่อบริษัทเริ่มต้น").fill("บริษัท AMT");
   await page.getByRole("button", { name: "บันทึกแม่แบบ", exact: true }).click();
   await expect(
@@ -317,7 +317,7 @@ test("Admin creates, edits, hides company templates; users cannot change designs
   }
 });
 
-test("AMT seven-section template is company scoped, editable, revisioned and exports A4 with SDS QR", async ({
+test("AMT seven-section template is shared, editable, revisioned and exports A4 with SDS QR", async ({
   page,
   browser,
 }, info) => {
@@ -452,7 +452,7 @@ test("AMT seven-section template is company scoped, editable, revisioned and exp
         await admin.request.get("/api/chemical/poster-templates?company_id=aab")
       ).json()
     ).data;
-    expect(foreign.some((t) => t.id === amt.id)).toBe(false);
+    expect(foreign.some((t) => t.id === amt.id)).toBe(true);
     const response = await admin.request.patch(
       "/api/chemical/poster-templates",
       {
@@ -505,3 +505,216 @@ test("AMT routes precautions to their sections, removes duplicates, keeps genera
   expect(result).toContain('"downloaded":true');
   expect(result).toContain('"unchangedSnapshot":true');
 });
+
+test("AAB sees AMT, sets a persistent company default, and keeps existing Rev while other companies stay isolated", async ({
+  page,
+  browser,
+}) => {
+  await login(page.request, "audit-aab");
+  const templates = (
+    await (
+      await page.request.get("/api/chemical/poster-templates?company_id=aab")
+    ).json()
+  ).data;
+  expect(templates.map((t) => t.config.layout).sort()).toEqual([
+    "aab",
+    "amt",
+    "summary",
+  ]);
+  const amt = templates.find((t) => t.config.layout === "amt");
+  const aab = templates.find((t) => t.config.layout === "aab");
+  const settings = "/api/chemical/settings?company_id=aab";
+  await page.request.put("/api/chemical/settings", {
+    data: {
+      company_id: "aab",
+      show_emergency: false,
+      emergency_contacts: [{ label: "เดิม", phone: "123" }],
+    },
+  });
+  await page.goto(`/chemical/${foreign}/poster`);
+  await page.getByLabel("แม่แบบโปสเตอร์", { exact: true }).selectOption(amt.id);
+  await page
+    .getByRole("button", {
+      name: "ใช้เป็นแม่แบบเริ่มต้นของบริษัท",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByText("ตั้งแม่แบบเริ่มต้นของบริษัทแล้ว", { exact: false }),
+  ).toBeVisible();
+  const savedSettings = (await (await page.request.get(settings)).json()).data;
+  expect(savedSettings.default_poster_template_id).toBe(amt.id);
+  expect(savedSettings.show_emergency).toBe(false);
+  expect(savedSettings.emergency_contacts).toEqual([
+    { label: "เดิม", phone: "123" },
+  ]);
+  await page.reload();
+  await expect(page.getByLabel("แม่แบบโปสเตอร์", { exact: true })).toHaveValue(
+    amt.id,
+  );
+  await page
+    .getByRole("button", { name: "บันทึกเป็น Rev ใหม่", exact: true })
+    .click();
+  await expect(
+    page.getByText("บันทึก Rev1 แล้ว", { exact: false }),
+  ).toBeVisible();
+  await page.getByLabel("แม่แบบโปสเตอร์", { exact: true }).selectOption(aab.id);
+  await page
+    .getByRole("button", {
+      name: "ใช้เป็นแม่แบบเริ่มต้นของบริษัท",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByText("ตั้งแม่แบบเริ่มต้นของบริษัทแล้ว", { exact: false }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("แม่แบบโปสเตอร์", { exact: true })).toHaveValue(
+    amt.id,
+  );
+  expect(
+    (await (await page.request.get(settings)).json()).data
+      .default_poster_template_id,
+  ).toBe(aab.id);
+  expect(
+    (
+      await page.request.put("/api/chemical/settings", {
+        data: { company_id: "amt", default_poster_template_id: amt.id },
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await page.request.put("/api/chemical/settings", {
+        data: { company_id: "aab", default_poster_template_id: randomUUID() },
+      })
+    ).status(),
+  ).toBe(400);
+  expect(
+    (
+      await page.request.put("/api/chemical/settings", {
+        data: { company_id: "aab", default_poster_template_id: "invalid" },
+      })
+    ).status(),
+  ).toBe(400);
+  expect((await page.request.get(root)).status()).toBe(404);
+  const other = await browser.newContext({ baseURL: "http://127.0.0.1:4310" });
+  try {
+    await login(other.request);
+    const cfg = (
+      await (
+        await other.request.get("/api/chemical/settings?company_id=amt")
+      ).json()
+    ).data;
+    expect(cfg.default_poster_template_id).toBeNull();
+    expect(cfg.sds_review_years).toBe(2);
+  } finally {
+    await other.close();
+  }
+});
+
+for (const layout of ["summary", "aab", "amt"]) {
+  test(`direct preview editing in ${layout} adds/deletes text, persists Rev and exports without changing registry`, async ({
+    page,
+  }, info) => {
+    await login(page.request);
+    const before = (await (await page.request.get(root)).json()).data;
+    const templates = (
+      await (
+        await page.request.get("/api/chemical/poster-templates?company_id=amt")
+      ).json()
+    ).data;
+    await page.goto(`/chemical/${id}/poster`);
+    await page
+      .getByLabel("แม่แบบโปสเตอร์", { exact: true })
+      .selectOption(templates.find((t) => t.config.layout === layout).id);
+    await page.getByText("ข้อมูลความปลอดภัยจาก SDS", { exact: true }).click();
+    if (layout === "amt") {
+      await page
+        .locator("#poster-precautions")
+        .fill(
+          "P310 ติดต่อแพทย์ทันที\nP280 สวมถุงมือ\nP220 เก็บให้ห่างจากเสื้อผ้าและวัสดุติดไฟได้",
+        );
+    }
+    await page.getByTestId("poster-edit-firstAid").click();
+    const inline = page.getByLabel("ข้อความบนโปสเตอร์: การปฐมพยาบาล", {
+      exact: true,
+    });
+    if (layout === "amt") await expect(inline).toHaveValue(/P310/);
+    await inline.fill("เข้าตา: ล้างตาทันที\nข้อความที่ผู้ใช้เพิ่ม");
+    await page.getByRole("button", { name: "เสร็จ", exact: true }).click();
+    await expect(page.locator("#poster-firstAid")).toHaveValue(
+      "เข้าตา: ล้างตาทันที\nข้อความที่ผู้ใช้เพิ่ม",
+    );
+    if (layout === "amt") {
+      await expect(page.locator("#poster-precautions")).toHaveValue("");
+      await expect(page.locator("#poster-ppeNotes")).toHaveValue(
+        "P280 สวมถุงมือ",
+      );
+      await expect(page.locator("#poster-storage")).toHaveValue(
+        "P220 เก็บให้ห่างจากเสื้อผ้าและวัสดุติดไฟได้",
+      );
+    }
+    await page.getByTestId("poster-edit-ingredients").click();
+    await page
+      .getByLabel("ข้อความบนโปสเตอร์: ส่วนประกอบ / สารเคมีอันตราย", {
+        exact: true,
+      })
+      .fill("Test ingredient · CAS 67-64-1 · 1–10%");
+    await page.getByRole("button", { name: "เสร็จ", exact: true }).click();
+    await page.getByTestId("poster-edit-fire").click();
+    await page
+      .getByLabel("ข้อความบนโปสเตอร์: การดับเพลิง", { exact: true })
+      .fill("ข้อความที่จะลบ");
+    await page
+      .getByRole("button", { name: "ล้างข้อความ", exact: true })
+      .click();
+    await page.getByRole("button", { name: "เสร็จ", exact: true }).click();
+    await expect(page.locator("#poster-fire")).toHaveValue("");
+    await page
+      .getByRole("button", { name: "บันทึกเป็น Rev ใหม่", exact: true })
+      .click();
+    await expect(
+      page.getByText("บันทึก Rev1 แล้ว", { exact: false }),
+    ).toBeVisible();
+    await page.reload();
+    await page.getByTestId("poster-edit-firstAid").click();
+    await expect(inline).toHaveValue(
+      "เข้าตา: ล้างตาทันที\nข้อความที่ผู้ใช้เพิ่ม",
+    );
+    await page.screenshot({
+      path: info.outputPath(`${layout}-inline.png`),
+      fullPage: true,
+    });
+    await inline.press("Escape");
+    const download = page.waitForEvent("download");
+    await page
+      .getByRole("button", { name: "ดาวน์โหลด PDF", exact: true })
+      .click();
+    await (await download).saveAs(info.outputPath(`${layout}-inline.pdf`));
+    const version = (await state(page.request)).latest;
+    expect(version.snapshot.draft.fire).toBe("");
+    expect(version.snapshot.draft.ingredients).toContain("1–10%");
+    expect((await (await page.request.get(root)).json()).data).toEqual(before);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByTestId("poster-edit-firstAid").click();
+    await expect(inline).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: info.outputPath(`${layout}-mobile-inline.png`),
+      fullPage: true,
+    });
+    await inline.fill("แก้จากมือถือ");
+    await page.getByRole("button", { name: "เสร็จ", exact: true }).click();
+    await page
+      .getByRole("button", { name: "บันทึกเป็น Rev ใหม่", exact: true })
+      .click();
+    await expect(
+      page.getByText("บันทึก Rev2 แล้ว", { exact: false }),
+    ).toBeVisible();
+  });
+}

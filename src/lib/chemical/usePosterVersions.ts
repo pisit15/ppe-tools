@@ -26,7 +26,9 @@ export function usePosterVersions(
 ) {
   const url = `/api/chemical/substances/${substance.id}`;
   const defaultTemplate =
-    templates.find((t) => t.config.layout === "summary") || templates[0];
+    templates.find((t) => t.id === settings?.default_poster_template_id) ||
+    templates.find((t) => t.config.layout === "summary") ||
+    templates[0];
   const initial = history.latest?.snapshot || {
     schema: 1 as const,
     template: templateSnapshot(defaultTemplate),
@@ -35,6 +37,9 @@ export function usePosterVersions(
   };
   const [snapshot, setSnapshot] = useState<PosterSnapshot>(initial),
     [source, setSource] = useState(substance);
+  const [defaultTemplateId, setDefaultTemplateId] = useState(
+    settings?.default_poster_template_id || "",
+  );
   const [title, setTitle] = useState(history.latest?.title || ""),
     [selected, setSelected] = useState<PosterVersion | null>(history.latest);
   const [versions, setVersions] = useState(history.versions),
@@ -182,6 +187,34 @@ export function usePosterVersions(
       );
     });
   }
+  function saveDefaultTemplate() {
+    return perform(async () => {
+      const id = snapshot.template.id;
+      if (
+        !templates.some(
+          (t) => t.id === id && t.revision === snapshot.template.revision,
+        )
+      )
+        throw new Error(
+          "กรุณาเลือกแม่แบบที่เปิดใช้งานในรายการก่อนตั้งค่าเริ่มต้น",
+        );
+      const { data } = await posterRead<{ data: ChemCompanySettings }>(
+        `/api/chemical/settings`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            company_id: source.company_id,
+            default_poster_template_id: id,
+          }),
+        },
+      );
+      setDefaultTemplateId(data.default_poster_template_id || "");
+      setMessage(
+        "ตั้งแม่แบบเริ่มต้นของบริษัทแล้ว ใช้กับโปสเตอร์ที่ยังไม่มี Rev บันทึกไว้",
+      );
+    });
+  }
   function loadMore() {
     return perform(async () => {
       const older = await posterRead<PosterHistory>(
@@ -196,6 +229,8 @@ export function usePosterVersions(
   }
   return {
     snapshot,
+    defaultTemplateId,
+    saveDefaultTemplate,
     setSnapshot,
     source,
     title,

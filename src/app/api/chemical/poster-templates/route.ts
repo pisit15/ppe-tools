@@ -23,7 +23,9 @@ export async function GET(request: NextRequest) {
       .order("name");
     if (!manage) {
       assertCompany(actor, company);
-      q = q.in("company_id", ["all", company]).eq("is_visible", true);
+      // Published templates are shared; company_id records the template's origin.
+      // Substance records and saved poster versions remain company scoped.
+      q = q.eq("is_visible", true);
     }
     const { data, error } = await q;
     if (error) throw error;

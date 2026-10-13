@@ -142,3 +142,28 @@ test("AMT enlarges three GHS symbols to 18 mm and keeps up to nine clear of QR a
   }
   assert.equal(amtGhsLayout(9, 106, true), null);
 });
+
+test("inline AMT edits materialize routed text once and deleted P statements never reappear", () => {
+  const {
+    editPosterText,
+    editablePosterDraft,
+  } = require("../src/lib/chemical/poster-editing.ts");
+  const input = {
+    template: { config: { layout: "amt" } },
+    draft: {
+      ...blank,
+      precautions: "P310 โทรหาแพทย์\nP280 สวมถุงมือ\nP220 ห่างวัสดุติดไฟ",
+    },
+  };
+  const original = JSON.stringify(input);
+  assert.match(editablePosterDraft(input).firstAid, /P310/);
+  const edited = editPosterText(input, "firstAid", "");
+  assert.equal(amtSections(edited.draft).firstAid, "");
+  assert.equal(edited.draft.precautions, "");
+  assert.equal(edited.draft.ppeNotes, "P280 สวมถุงมือ");
+  assert.equal(edited.draft.storage, "P220 ห่างวัสดุติดไฟ");
+  assert.equal(JSON.stringify(input), original);
+  const again = editPosterText(edited, "ingredients", "ingredient");
+  assert.equal(amtSections(again.draft).firstAid, "");
+  assert.equal(again.draft.ingredients, "ingredient");
+});

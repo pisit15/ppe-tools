@@ -222,6 +222,7 @@ export type ChemSubstance = {
 export type ChemEmergencyContact = { label: string; phone: string };
 
 export type ChemCompanySettings = {
+  default_poster_template_id?: string | null;
   sds_review_years?: number | null;
   sds_review_policy?: string | null;
   company_id: string;

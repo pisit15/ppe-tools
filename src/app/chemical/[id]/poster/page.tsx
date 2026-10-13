@@ -16,6 +16,7 @@ import {
   posterRead,
   usePosterVersions,
 } from "@/lib/chemical/usePosterVersions";
+import { editPosterText } from "@/lib/chemical/poster-editing";
 import { readPosterImage } from "@/lib/chemical/poster-pdf";
 import { publicSdsUrl } from "@/lib/chemical/label";
 import { GHS_PICTOGRAMS } from "@/lib/chemical/ghs";
@@ -313,6 +314,25 @@ function PosterEditor({ substance, history, templates, settings }: Loaded) {
                 </option>
               ))}
             </select>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={
+                  !currentTemplate ||
+                  state.defaultTemplateId === currentTemplate.id
+                }
+                onClick={() => void state.saveDefaultTemplate()}
+                className="border border-purple-200 text-purple-800 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+              >
+                {state.defaultTemplateId === currentTemplate?.id
+                  ? "แม่แบบเริ่มต้นของบริษัท"
+                  : "ใช้เป็นแม่แบบเริ่มต้นของบริษัท"}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-gray-600">
+              ทุกบริษัทเลือกแม่แบบที่เปิดใช้ได้ ·
+              ค่าเริ่มต้นใช้กับโปสเตอร์ที่ยังไม่มี Rev บันทึกไว้
+            </p>
             {snapshot.template.config.layout === "amt" && (
               <p className="mt-3 text-sm text-gray-600">
                 แบบ AMT 7 หมวด · แยกข้อควรระวังตามรหัส P ไปยังหมวดที่เกี่ยวข้อง
@@ -481,7 +501,12 @@ function PosterEditor({ substance, history, templates, settings }: Loaded) {
         </fieldset>
         <div className="xl:sticky xl:top-4">
           <PosterPreview
+            key={`${snapshot.template.id}-${state.selected?.id || "new"}`}
             snapshot={snapshot}
+            disabled={pending}
+            onTextChange={(field, value) =>
+              state.setSnapshot((s) => editPosterText(s, field, value))
+            }
             sdsUrl={
               state.source.sds_url || state.source.sds_file_path
                 ? publicSdsUrl(state.source.id)

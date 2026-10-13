@@ -136,7 +136,6 @@ export async function POST(request: NextRequest, context: Context) {
       const t = result.data;
       if (
         !t ||
-        !["all", substance.company_id].includes(t.company_id) ||
         t.revision !== snapshot.template.revision ||
         JSON.stringify(
           validatePosterSnapshot({ ...snapshot, template: t }).template,

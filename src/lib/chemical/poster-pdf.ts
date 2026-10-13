@@ -1,4 +1,4 @@
-import type { PosterSnapshot, PosterSection } from "./poster";
+import type { PosterSnapshot, PosterSection, PosterTextField } from "./poster";
 import { ghsPictogram } from "./ghs";
 import { amtSections } from "./poster-sections";
 import { amtGhsLayout, AMT_SDS_QR } from "./poster-ghs-layout";
@@ -7,7 +7,16 @@ import { LABEL_PPE, ppeFile } from "./ppe";
 const FONT = "ChemicalLabelThai",
   MM = 300 / 25.4,
   PT = 25.4 / 72;
+export interface PosterEditRegion {
+  id: string;
+  fields: PosterTextField[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 export interface RenderedPoster {
+  editRegions: PosterEditRegion[];
   image: string;
   width: number;
   height: number;
@@ -93,6 +102,32 @@ export async function renderPoster(
   ctx.fillRect(0, 0, width, height);
   ctx.textBaseline = "alphabetic";
   const problems: string[] = [];
+  const editRegions: PosterEditRegion[] = [];
+  function edit(
+    fields: PosterTextField[],
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) {
+    editRegions.push({
+      id: `${fields.join("-")}-${x}`,
+      fields,
+      x,
+      y,
+      width,
+      height: Math.max(3, height),
+    });
+  }
+  function sectionFields(key: PosterSection): PosterTextField[] {
+    if (key === "ppe") return ["ppeNotes"];
+    if (key === "storage" && c.layout !== "summary")
+      return ["storage", "storageClass"];
+    if (key === "spill" && aab) return ["spill", "emergency"];
+    if (key === "physical" && c.layout === "summary")
+      return ["physical", "formula"];
+    return [key];
+  }
   function rect(
     x: number,
     y: number,
@@ -179,6 +214,7 @@ export async function renderPoster(
     h: number,
     color = "#eef2f7",
   ) {
+    edit(sectionFields(key), x, y + 6, w, h - 6);
     rect(x, y, w, h);
     rect(x, y, w, 6, color);
     txt(
@@ -292,6 +328,7 @@ export async function renderPoster(
         );
     });
     const notesY = y + 8 + Math.ceil(ppes.length / cols) * rowH;
+    edit(["ppeNotes"], x + 2, notesY, w - 4, h - (notesY - y) - 1);
     if (d.ppeNotes)
       txt(
         d.ppeNotes,
@@ -315,7 +352,16 @@ export async function renderPoster(
       ["Approved", d.approved],
     ];
     const rh = h / rows.length;
+    const fields: PosterTextField[] = [
+      "department",
+      "documentRevision",
+      "effectiveDate",
+      "issued",
+      "checked",
+      "approved",
+    ];
     rows.forEach(([label, value], i) => {
+      edit([fields[i]], x + w * 0.43, y + i * rh, w * 0.57, rh);
       rect(x, y + i * rh, w * 0.43, rh);
       rect(x + w * 0.43, y + i * rh, w * 0.57, rh);
       txt(label, x + 1, y + i * rh + 0.4, w * 0.43 - 2, rh - 0.6, 7);
@@ -372,6 +418,7 @@ export async function renderPoster(
       w: number,
       h: number,
     ) {
+      edit(sectionFields(key), x, y, w, h);
       // Ruled rows echo the original form without reducing text to fixed input lines.
       ctx!.strokeStyle = "#a3a3a3";
       ctx!.lineWidth = 0.13;
@@ -394,6 +441,7 @@ export async function renderPoster(
         c.headings[key],
       );
     }
+    edit(["company"], 9, 6, 192, 6);
     txt(d.company, 9, 6, 192, 6, 10, true, "#111", "ชื่อบริษัท");
     if (logo) image(logo, 12, 17, 29, 11);
     else txt(c.brand, 12, 18, 29, 10, 16, true, c.accent, "ตราบริษัท");
@@ -423,6 +471,9 @@ export async function renderPoster(
       ctx.stroke();
     }
     txt("ชื่อทางการค้า", 13, 45, 59, 5, 10, true);
+    edit(["name"], 13, 52, 59, 12);
+    edit(["chemicalName", "cas", "un", "formula"], 13, 65, 59, 12);
+    edit(["ingredients"], 13, 87, 59, ghs.length ? 17 : 22);
     txt(d.name, 13, 52, 59, 12, 12, true, "#bc1670", "ชื่อผลิตภัณฑ์");
     const identity = [
       d.chemicalName,
@@ -515,6 +566,7 @@ export async function renderPoster(
         );
     });
     const notesY = ppeY + 9 + Math.ceil(ppes.length / 5) * rowH;
+    edit(["ppeNotes"], 81, notesY, 118, 110 - notesY);
     if (content.ppeNotes || !ppes.length)
       txt(
         content.ppeNotes,
@@ -604,6 +656,7 @@ export async function renderPoster(
     });
     amtBand("fire", 241, "#edb1c4", 9, 124);
     amtBody("fire", content.fire, 9, 249, 124, 24);
+    edit(["emergency"], 11, 274, 120, 8);
     if (d.emergency)
       txt(
         `ฉุกเฉิน: ${d.emergency}`,
@@ -625,13 +678,25 @@ export async function renderPoster(
       ["CHECKED BY", d.checked],
       ["APPROVED BY", d.approved],
     ];
+    const fields: PosterTextField[] = [
+      "documentRevision",
+      "documentCode",
+      "effectiveDate",
+      "issued",
+      "checked",
+      "approved",
+    ];
     rows.forEach(([key, value], i) => {
       const y = 225 + i * 8;
+      edit([fields[i]], 163, y, 38, 8);
       rect(134, y, 29, 8, "#f4ca58");
       rect(163, y, 38, 8);
       txt(key, 135, y + 1.6, 27, 6, 7, false, "#111", key);
       txt(value, 164, y + 1, 36, 6.7, 7, false, "#111", key);
     });
+    edit(["department", "supplier", "sdsDate"], 11, 282, 188, 5);
+    edit(["formRevision"], 9, 290, 95, 5);
+    edit(["formCode"], 111, 290, 90, 5);
     const footer = [
       d.department,
       d.supplier && `ผู้จำหน่าย: ${d.supplier}`,
@@ -670,6 +735,11 @@ export async function renderPoster(
       );
     if (d.formCode) rightText(d.formCode, 111, 290, 90, 5, 7, "รหัสแบบฟอร์ม");
   } else if (aab) {
+    edit(["documentCode", "documentRevision", "effectiveDate"], 135, 2, 155, 5);
+    edit(["company"], 43, 18, 212, 6);
+    edit(["name"], 74, 26, 145, 8);
+    edit(["documentCode"], 219, 26, 71, 8);
+    edit(["formCode", "formRevision"], 172, 203, 118, 5);
     rightText(docLine, 135, 2, 155, 5, 7, "รหัสเอกสาร / Rev. / วันที่มีผล");
     rect(7, 8, 283, 18);
     if (logo) image(logo, 10, 10, 28, 14);
@@ -705,6 +775,13 @@ export async function renderPoster(
       ["UN No.", d.un],
       ["สูตรเคมี", d.formula],
     ].forEach(([k, v], i) => {
+      edit(
+        [(["cas", "un", "formula"] as PosterTextField[])[i]],
+        30,
+        79 + i * 6,
+        42,
+        6,
+      );
       rect(7, 79 + i * 6, 67, 6);
       txt(k, 9, 80 + i * 6, 20, 4.5, 7);
       txt(v, 30, 80 + i * 6, 42, 4.5, 7, false, "#111", k);
@@ -756,6 +833,20 @@ export async function renderPoster(
   } else {
     rect(7, 7, 196, 28, c.accent, c.accent);
     const left = logo ? 39 : 11;
+    edit(["name"], left, 16, 201 - left, 10);
+    edit(["chemicalName", "cas", "un"], left, 27, 201 - left, 6);
+    edit(["storageClass"], 150, 47, 50, 24);
+    edit(["emergency"], 109, 246, 92, 15);
+    edit(["company", "department", "supplier"], 10, 265, 169, 8);
+    edit(
+      ["documentCode", "documentRevision", "effectiveDate"],
+      10,
+      274,
+      169,
+      4,
+    );
+    edit(["formCode", "formRevision", "sdsDate"], 10, 279, 169, 4);
+    edit(["issued", "checked", "approved"], 10, 284, 169, 5);
     if (logo) image(logo, 10, 10, 25, 20);
     txt(c.title, left, 9, 201 - left, 6, 9, true, "#fff", "ชื่อหัวโปสเตอร์");
     txt(d.name, left, 16, 201 - left, 10, 18, true, "#fff", "ชื่อผลิตภัณฑ์");
@@ -910,6 +1001,7 @@ export async function renderPoster(
   }
   return {
     image: canvas.toDataURL("image/png"),
+    editRegions,
     width,
     height,
     problems: [...new Set(problems)],

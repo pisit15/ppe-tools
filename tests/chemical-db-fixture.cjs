@@ -17,11 +17,11 @@ async function createDb() {
     create table law_documents(id uuid primary key,code text unique,title text,status text,file_url text,external_url text,gazette_url text);
     insert into company_settings values ('amt','AMT'),('aab','AAB');
   `);
-  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql','20261009120114_chemical_sds_provenance.sql','20261009122344_tools_home_cards.sql','20261009163428_chemical_label_versions.sql','20261012041236_chemical_poster_templates_versions.sql','20261012042316_chemical_aab_poster_form_code.sql','20261012055604_chemical_document_code.sql','20261012063421_chemical_amt_poster_template.sql','20261013035232_chemical_mixture_components.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
+  for(const f of ['007_chemical_management.sql','008_chem_company_settings.sql','20261009053527_chemical_integrity.sql','20261009081023_chemical_legal_catalog.sql','20261009084432_chemical_legal_audit_reconciliation.sql','20261009120114_chemical_sds_provenance.sql','20261009122344_tools_home_cards.sql','20261009163428_chemical_label_versions.sql','20261012041236_chemical_poster_templates_versions.sql','20261012042316_chemical_aab_poster_form_code.sql','20261012055604_chemical_document_code.sql','20261012063421_chemical_amt_poster_template.sql','20261013035232_chemical_mixture_components.sql','20261013044810_chemical_poster_default.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',f),'utf8'));
   for (const law of require('./chemical-library-laws.json')) await db.query('insert into law_documents(id,code,title,status,file_url,external_url,gazette_url) values ($1,$2,$3,$4,$5,$6,$7)', [law.id,law.code,law.title,law.status,law.file_url,law.external_url,law.gazette_url]);
   const hash = bcrypt.hashSync('local-test-only',4);
   await db.query("insert into admin_accounts(username,password,role,display_name) values ('audit-admin',$1,'super_admin','Local test admin')",[hash]);
-  await db.query("insert into company_users(username,password,company_id,company_name) values ('audit-amt',$1,'amt','AMT')",[hash]);
+  await db.query("insert into company_users(username,password,company_id,company_name) values ('audit-amt',$1,'amt','AMT'),('audit-aab',$1,'aab','AAB')",[hash]);
   await db.exec(`
     insert into chem_storage_areas(id,company_id,name) values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','amt','คลัง AMT'),('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','aab','คลัง AAB');
     insert into chem_substances(id,company_id,name,storage_class,sds_url,sds_revision_date) values
