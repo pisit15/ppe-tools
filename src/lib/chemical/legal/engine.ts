@@ -1,14 +1,19 @@
 import { LEGAL_CATEGORIES, type LegalCandidate, type LegalCatalog, type LegalCheck, type LegalContext, type LegalObligation } from './types';
 
-/** Accept only an intact CAS identifier with a valid check digit. Never repair spreadsheet numbers. */
+/** Validate intact CAS/check digit; ignore zero padding without guessing missing digits. */
 export function normalizeCas(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const cas = value.trim().replace(/[‐‑‒–−]/g, '-');
   if (!/^\d{2,7}-\d{2}-\d$/.test(cas)) return null;
   const digits = cas.replace(/-/g, '');
   const sum = [...digits.slice(0, -1)].reverse().reduce((total, digit, i) => total + Number(digit) * (i + 1), 0);
-  return sum % 10 === Number(digits.at(-1)) ? cas : null;
+  return sum % 10 === Number(digits.at(-1)) ? cas.replace(/^0+(?=\d{2,}-)/, '') : null;
 }
+/** Only active, verified CAS matches count; generic group guidance does not. */
+export function hasVerifiedLegalMatch(counts: LegalCheck['counts'] | null | undefined): boolean {
+  return !!counts && LEGAL_CATEGORIES.some(category => counts[category]?.verified > 0);
+}
+
 export function looksLikeCas(value: string) { return /^[\d\s‐‑‒–−-]+$/.test(value.trim()); }
 const norm = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -32,7 +37,9 @@ export function searchLegalCatalog(catalog: LegalCatalog, query: string): { cand
   return { candidates: candidates.slice(0, 40), total: candidates.length, invalidCas: false };
 }
 export function checkLegalCatalog(catalog: LegalCatalog, cas: string): LegalCheck {
-  if (!normalizeCas(cas)) throw new Error('Invalid CAS');
+  const canonical = normalizeCas(cas);
+  if (!canonical) throw new Error('Invalid CAS');
+  cas = canonical;
   const entries = catalog.entries.filter(entry => entry.cas_numbers.includes(cas));
   const counts = Object.fromEntries(LEGAL_CATEGORIES.map(category => {
     const rows = entries.filter(entry => entry.category === category);

@@ -20,16 +20,16 @@ export async function GET(request: NextRequest) {
     const substanceId = params.get('substance_id');
     if (substanceId) {
       if (company === 'all') throw new AccessError('เลือกบริษัทก่อนตรวจรายการในทะเบียน', 400);
-      const { data, error } = await getSupabaseServer().from('chem_substances').select('id,company_id,name,cas_no,updated_at,is_demo,is_active').eq('company_id', company).eq('id', substanceId).eq('is_active', true).maybeSingle();
+      const { data, error } = await getSupabaseServer().from('chem_substances').select('id,company_id,name,cas_no,sds_file_path,sds_url,updated_at,is_demo,is_active').eq('company_id', company).eq('id', substanceId).eq('is_active', true).maybeSingle();
       if (error) throw error;
       if (!data) throw new AccessError('ไม่พบรายการในบริษัทที่เลือก', 404);
       const cas = normalizeCas(data.cas_no);
-      return NextResponse.json({ ...summary, substance: data, check: cas ? checkLegalCatalog(catalog, cas) : null, identityWarning: cas ? null : 'รายการนี้ไม่มี CAS เดี่ยวที่ตรวจรูปแบบได้ โปรดตรวจองค์ประกอบใน SDS และใช้เมนูค้นหาสารอื่นทีละองค์ประกอบ' });
+      return NextResponse.json({ ...summary, substance: { ...data, has_sds: !!(data.sds_file_path || data.sds_url) }, check: cas ? checkLegalCatalog(catalog, cas) : null, identityWarning: cas ? null : 'รายการนี้ไม่มี CAS เดี่ยวที่ตรวจรูปแบบได้ โปรดตรวจองค์ประกอบใน SDS และใช้เมนูค้นหาสารอื่นทีละองค์ประกอบ' });
     }
     if (params.get('mode') === 'register') {
-      let query = getSupabaseServer().from('chem_substances').select('id,company_id,name,cas_no,updated_at').eq('is_active', true).eq('is_demo', false).order('name').order('id');
+      let query = getSupabaseServer().from('chem_substances').select('id,company_id,name,cas_no,sds_file_path,sds_url,updated_at').eq('is_active', true).eq('is_demo', false).order('name').order('id');
       if (company !== 'all') query = query.eq('company_id', company);
-      const data: { id: string; company_id: string; name: string; cas_no: string | null; updated_at: string }[] = [];
+      const data: { id: string; company_id: string; name: string; cas_no: string | null; sds_file_path: string | null; sds_url: string | null; updated_at: string }[] = [];
       for (let offset = 0; ; offset += 500) {
         const batch = await query.range(offset, offset + 499);
         if (batch.error) throw batch.error;
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       }
       const register = data.map(row => {
         const cas = normalizeCas(row.cas_no);
-        return { ...row, valid_cas: cas, counts: cas ? checkLegalCatalog(catalog, cas).counts : null };
+        return { ...row, has_sds: !!(row.sds_file_path || row.sds_url), valid_cas: cas, counts: cas ? checkLegalCatalog(catalog, cas).counts : null };
       });
       return NextResponse.json({ ...summary, register });
     }

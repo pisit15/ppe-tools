@@ -132,3 +132,28 @@ test('failed catalog load is not an empty result and retry loads complete catalo
   expect(data.check.entries.some(e => e.id === 'labour-1379')).toBe(true);
   await page.screenshot({ path: 'test-results/chemical-legal-sources.png', fullPage: true });
 });
+
+test('register filters active verified matches and exposes original SDS in list and details',async({page})=>{
+ await login(page.request);
+ const created=await page.request.post('/api/chemical/substances',{data:{company_id:'amt',name:'Padded formaldehyde',cas_no:'000050-00-0',sds_url:'https://example.com/padded-sds.pdf'}});
+ expect(created.status()).toBe(201);const padded=(await created.json()).data;
+ const unknown=await page.request.post('/api/chemical/substances',{data:{company_id:'amt',name:'No catalog match',cas_no:'99999-99-5'}});expect(unknown.status()).toBe(201);
+ await page.goto('/chemical/legal?company_id=amt');
+ await expect(page.getByRole('link',{name:'เปิด SDS ฉบับจริงของ Padded formaldehyde (แท็บใหม่)',exact:true})).toHaveAttribute('href',`/sds/${padded.id}`);
+ await expect(page.getByRole('row').filter({hasText:'No catalog match'})).toBeVisible();
+ await page.getByRole('checkbox',{name:'เฉพาะรายการที่พบเงื่อนไขตามกฎหมาย',exact:true}).check();
+ await expect(page.getByRole('row').filter({hasText:'No catalog match'})).toHaveCount(0);
+ await expect(page.getByRole('row').filter({hasText:'Padded formaldehyde'})).toBeVisible();
+ await page.getByLabel('กรองทะเบียนเพื่อตรวจกฎหมาย').fill('Padded');
+ await expect(page.getByText(/แสดง 1 จาก \d+ รายการ/)).toBeVisible();
+ await page.screenshot({path:'test-results/chemical-legal-filter-desktop.png',fullPage:true});
+ await page.getByRole('row').filter({hasText:'Padded formaldehyde'}).getByRole('link',{name:'ดูข้อกฎหมาย',exact:true}).click();
+ await expect(page.getByText('จับคู่ด้วย CAS 50-00-0',{exact:true})).toBeVisible();
+ await expect(page.getByText('CAS ในทะเบียน: 000050-00-0',{exact:true})).toBeVisible();
+ await expect(page.getByRole('link',{name:'เปิด SDS ฉบับจริงของ Padded formaldehyde (แท็บใหม่)',exact:true})).toHaveAttribute('href',`/sds/${padded.id}`);
+ const stored=(await (await page.request.get(`/api/chemical/substances/${padded.id}`)).json()).data;
+ expect(stored.cas_no).toBe('000050-00-0');
+ await page.setViewportSize({width:390,height:844});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await page.screenshot({path:'test-results/chemical-legal-sds-mobile.png',fullPage:false});
+});

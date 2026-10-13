@@ -16,7 +16,7 @@ function load(file) {
   m._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, filename);
   return m.exports;
 }
-const { normalizeCas, searchLegalCatalog, checkLegalCatalog, parseLegalContext, evaluateObligations } = load('src/lib/chemical/legal/engine.ts');
+const { normalizeCas, hasVerifiedLegalMatch, searchLegalCatalog, checkLegalCatalog, parseLegalContext, evaluateObligations } = load('src/lib/chemical/legal/engine.ts');
 const { EMPTY_LEGAL_CONTEXT } = load('src/lib/chemical/legal/types.ts');
 
 test('prior audit becomes usable reference data while actual conflicts and missing subsidiary rows stay explicit', () => {
@@ -151,4 +151,21 @@ test('library edits, repealed documents and missing library links remain explici
   assert.equal(missing.library_status, 'missing');
   assert.equal(sourceReferenceUrl(missing), '');
   assert.equal(attachLibrarySources([source], [], true)[0].library_status, 'unavailable');
+});
+
+
+test('verified-match filter excludes generic, pending and historical-only results', () => {
+  const blank = () => Object.fromEntries(['hazard','reporting','labour','health','exposure'].map(c => [c,{verified:0,pending:0,historical:0}]));
+  assert.equal(hasVerifiedLegalMatch(null),false);
+  assert.equal(hasVerifiedLegalMatch(blank()),false);
+  const pending=blank();pending.labour.pending=2;pending.exposure.historical=4;
+  assert.equal(hasVerifiedLegalMatch(pending),false);
+  pending.exposure.verified=1;assert.equal(hasVerifiedLegalMatch(pending),true);
+});
+
+test('zero-padded CAS matches the same audited entries without guessing digits', () => {
+  assert.equal(normalizeCas('000050-00-0'),'50-00-0');
+  assert.equal(normalizeCas('000050-00-1'),null);
+  assert.deepEqual(checkLegalCatalog(catalog,'000050-00-0'),checkLegalCatalog(catalog,'50-00-0'));
+  assert.equal(hasVerifiedLegalMatch(checkLegalCatalog(catalog,'000050-00-0').counts),true);
 });

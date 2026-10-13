@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, FileText, Link2, Printer, Pencil, Trash2, FlaskConical, Scale, Tag } from 'lucide-react';
+import { Plus, Search, Printer, Pencil, Trash2, FlaskConical, Scale, Tag } from 'lucide-react';
 import type { ChemStorageArea, ChemSubstance } from '@/lib/types';
 import { GHS_PICTOGRAMS } from '@/lib/chemical/ghs';
 import { STORAGE_CLASSES } from '@/lib/chemical/storage-classes';
@@ -13,6 +13,7 @@ import { matchesQuality } from '@/lib/chemical/data-quality';
 import { GhsIcons, StorageClassChip, SignalWordBadge, Toast, VIZ, inputCls } from './components/ui';
 
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { SdsLink } from './components/SdsLink';
 import { SdsImportInfo } from './components/SdsImportInfo';
 
 type QualityFilter = '' | 'missing_sds' | 'missing_date' | 'no_class';
@@ -89,17 +90,6 @@ function ScopedRegister() {
     { label: 'SDS ยังไม่ระบุวันที่', filter: 'missing_date', color: '#92400e', value: items.filter(i => matchesQuality(i, 'missing_date')).length },
     { label: 'ยังไม่ระบุประเภทจัดเก็บ', filter: 'no_class', color: '#92400e', value: items.filter(i => !i.storage_class).length },
   ];
-
-  const openSds = async (i: ChemSubstance) => {
-    if (i.sds_url && !i.sds_file_path) { window.open(i.sds_url, '_blank', 'noopener'); return; }
-    if (!i.sds_file_path) return;
-    try {
-      const r = await fetch(`/api/chemical/sds?path=${encodeURIComponent(i.sds_file_path)}`);
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error);
-      window.open(d.url, '_blank', 'noopener');
-    } catch (e) { setToast({ type: 'error', msg: e instanceof Error ? e.message : 'เปิดไฟล์ไม่สำเร็จ' }); }
-  };
 
   const changeDemo = async (item: ChemSubstance) => {
     if (!window.confirm((item.is_demo ? 'นำกลับทะเบียนจริง: ' : 'ย้ายไปข้อมูลสาธิต (เก็บข้อมูลเดิมไว้): ') + item.name + '?')) return;
@@ -226,10 +216,9 @@ function ScopedRegister() {
                       <td className="px-3 py-2.5 text-xs text-gray-700 whitespace-nowrap">{i.quantity != null ? `${i.quantity.toLocaleString('th-TH')} ${i.unit || ''}` : '—'}</td>
                       <td className="px-3 py-2.5">
                         {(i.sds_file_path || i.sds_url) ? (
-                          <button onClick={() => openSds(i)} className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 hover:underline" title={i.sds_file_name || i.sds_url || ''}>
-                            {i.sds_file_path ? <FileText size={14} /> : <Link2 size={14} />} เปิด
+                          <div><SdsLink id={i.id} name={i.name} compact />
                             {!i.sds_revision_date && <span className="ml-1 text-xs px-1 rounded bg-amber-100 text-amber-900">ไม่มีวันที่</span>}
-                          </button>
+                          </div>
                         ) : <span className="text-xs" style={{ color: VIZ.accent }}>ไม่มี</span>}
                         {(i.sds_file_path || i.sds_url) && <SdsImportInfo value={i.sds_import} compact />}
                       </td>
