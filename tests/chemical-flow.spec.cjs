@@ -170,3 +170,46 @@ test('AI extraction errors preserve the form and allow retry, including gateway 
  await expect(page.getByLabel('ชื่อสารเคมี / ชื่อทางการค้า *',{exact:true})).toHaveValue('Keep my input');
  await expect(page.getByLabel('ปฐมพยาบาล — เข้าตา',{exact:true})).toHaveValue('ล้างด้วยน้ำ');
 });
+
+test('chemical sidebar keeps account actions in view while the register scrolls',async({page})=>{
+ await login(page.request);
+ // Enough rows to reproduce a long register without touching production data.
+ await page.route('**/api/chemical/substances?company_id=amt*',async route=>{
+   const response=await route.fetch();
+   const body=await response.json();
+   body.data=Array.from({length:20},(_,i)=>({...body.data[0],id:`fixture-${i}`,name:`Long register ${i+1}`}));
+   await route.fulfill({response,json:body});
+ });
+ await page.setViewportSize({width:1440,height:800});
+ await page.goto('/chemical?company_id=amt');
+ await expect(page.getByText('Long register 1',{exact:true})).toBeVisible();
+ const actions=[page.getByRole('button',{name:'ออกจากระบบ',exact:true}),page.getByRole('link',{name:'กลับหน้าหลัก',exact:true})];
+ const inViewport=async()=>{
+   for(const action of actions){
+     await expect(action).toBeInViewport({ratio:1});
+     const box=await action.boundingBox();
+     expect(box.y).toBeGreaterThanOrEqual(0);
+     expect(box.y+box.height).toBeLessThanOrEqual(page.viewportSize().height);
+   }
+ };
+ await inViewport();
+ await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
+ await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBeGreaterThan(500);
+ await inViewport();
+ await page.screenshot({path:'.verification/chemical-sidebar-desktop.png',animations:'disabled'});
+ await page.getByRole('button',{name:'ย่อเมนู',exact:true}).click();
+ await inViewport();
+ await page.getByRole('button',{name:'ขยายเมนู',exact:true}).click();
+ await page.setViewportSize({width:1024,height:480});
+ await inViewport();
+ await page.getByRole('link',{name:'ตั้งค่า / เบอร์ฉุกเฉิน',exact:true}).scrollIntoViewIfNeeded();
+ await expect(page.getByRole('link',{name:'ตั้งค่า / เบอร์ฉุกเฉิน',exact:true})).toBeInViewport({ratio:1});
+ await inViewport();
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'เปิดเมนู Chemical'}).click();
+ await inViewport();
+ await page.screenshot({path:'.verification/chemical-sidebar-mobile.png',animations:'disabled'});
+ await page.getByRole('button',{name:'ปิดเมนู Chemical'}).click();
+ await expect(page.getByRole('button',{name:'เปิดเมนู Chemical'})).toBeInViewport({ratio:1});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});

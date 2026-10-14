@@ -133,10 +133,10 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     <aside
       className={`${
         mode === 'chemical' ? (isOpen ? 'w-full md:w-64' : 'w-full md:w-20') : (isOpen ? 'w-64' : 'w-20')
-      } ${bgColor} text-white transition-colors duration-300 shrink-0 ${mode === 'chemical' ? 'md:min-h-screen' : 'min-h-screen'} flex flex-col`}
+      } ${bgColor} text-white transition-colors duration-300 shrink-0 ${isPurple ? `sticky top-0 z-30 max-h-dvh md:h-dvh md:self-start ${mobileOpen ? 'h-dvh' : ''}` : 'min-h-screen'} flex flex-col`}
     >
       {/* Header */}
-      <div className={`flex items-center justify-between p-4 border-b ${borderColor}`}>
+      <div className={`flex shrink-0 items-center justify-between p-4 border-b ${borderColor}`}>
         {isOpen ? (
           <div className="flex items-center gap-2 min-w-0">
             <div className="bg-white rounded-md p-1 flex items-center justify-center shrink-0">
@@ -161,10 +161,10 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
         </button>
         {isPurple && <button className="md:hidden p-2 rounded-lg" aria-label={mobileOpen ? 'ปิดเมนู Chemical' : 'เปิดเมนู Chemical'} aria-expanded={mobileOpen} onClick={() => setMobileOpen(v => !v)}>{mobileOpen ? <X size={20} /> : <Menu size={20} />}</button>}
       </div>
-      <div className={isPurple ? (mobileOpen ? 'flex' : 'hidden') + ' md:flex flex-col flex-1' : 'contents'}>
+      <div className={isPurple ? (mobileOpen ? 'flex' : 'hidden') + ' md:flex flex-col flex-1 min-h-0 overflow-hidden' : 'contents'}>
       {/* Company Selector / Display */}
       {isOpen && user && (
-        <div className={`p-4 border-b ${borderColor}`}>
+        <div className={`shrink-0 p-4 border-b ${borderColor}`}>
           <label className={`text-xs ${mutedText} block mb-1`}>
             {isAdmin ? 'เลือกบริษัท (Admin)' : 'บริษัท'}
           </label>
@@ -212,7 +212,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 min-h-0 p-4 space-y-1 overflow-y-auto overscroll-contain">
         {navItems.map((item) => (
           <Link
             key={item.href}
@@ -233,7 +233,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
 
       {/* Logout */}
       {user && (
-        <div className={`px-4 pb-2`}>
+        <div className="shrink-0 px-4 pb-2">
           <button
             aria-label="ออกจากระบบ"
             onClick={handleLogout}
@@ -246,7 +246,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
       )}
 
       {/* Back to Home */}
-      <div className={`px-4 pb-4 border-t ${borderColor} pt-3`}>
+      <div className={`shrink-0 px-4 pb-4 border-t ${borderColor} pt-3`}>
         <Link
           href="/"
           aria-label="กลับหน้าหลัก"
@@ -259,7 +259,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
 
       {/* Footer */}
       {isOpen && (
-        <div className={`p-4 border-t ${borderColor} text-xs ${mutedText}`}>
+        <div className={`shrink-0 p-4 border-t ${borderColor} text-xs ${mutedText}`}>
           <p className="mb-1">EA SHE Tools</p>
           <p>tools.eashe.org</p>
         </div>
