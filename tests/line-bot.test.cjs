@@ -108,7 +108,7 @@ test('flex cards: valid shape, capped rows, small payload, quick reply on last m
   const empty=summaryCard([],'AAB');assert.match(JSON.stringify(empty),/ยังไม่มีรายการ PPE/);
   const ok=lowCard([{company_id:'a',name:'x',min_stock:1,current_stock:5}],'A');assert.match(JSON.stringify(ok),/ไม่มีรายการ/);
   const q=withQuickReply([text('a'),text('b')]);
-  assert.equal(q[0].quickReply,undefined);assert.equal(q[1].quickReply.items.length,7);
+  assert.equal(q[0].quickReply,undefined);assert.equal(q[1].quickReply.items.length,8);
   for(const it of q[1].quickReply.items) assert.ok(it.action.label.length<=20);
 });
 
@@ -208,7 +208,7 @@ test('menu card and search help',()=>{
   const m=menuCard(false,HELP_TEXT);const ms=JSON.stringify(m);
   assert.equal(m.type,'flex');
   const texts=[...ms.matchAll(/"type":"message","label":"([^"]+)","text":"([^"]+)"/g)].map(x=>x[2]);
-  assert.deepEqual(texts,['รายการ PPE','PPE คงเหลือ','PPE ใกล้หมด','สถิติอุบัติเหตุ','การจัดการขยะ','ค้นหา PPE','ค้นหากฎหมาย','บัญชี']);
+  assert.deepEqual(texts,['รายการ PPE','PPE คงเหลือ','PPE ใกล้หมด','ค้นหา PPE','สถิติอุบัติเหตุ','การจัดการขยะ','สารเคมี','ค้นหากฎหมาย','หมวดกฎหมาย','บัญชี']);
   for(const t of texts) assert.notEqual(parseCommand(t).kind,'ppe_search',`menu button "${t}" should not fall through to search`);
   assert.doesNotMatch(ms,/admin:/);assert.match(JSON.stringify(menuCard(true,HELP_TEXT)),/admin:/);
   assert.equal(parseCommand('ค้นหา PPE').kind,'search_help');
@@ -331,5 +331,67 @@ test('law search v2: synonyms, ranking, clause excerpts, topics and suggestions'
   for(const x of sug) assert.ok([...x.label].length<=20);
   const msg={type:'text',text:'x',quickReply:quickReplyOf(sug)};
   assert.equal(withQuickReply([msg])[0].quickReply.items[0].action.text,'กฎหมาย รถยก');
-  assert.equal(withQuickReply([{type:'text',text:'y'}])[0].quickReply.items.length,7);
+  assert.equal(withQuickReply([{type:'text',text:'y'}])[0].quickReply.items.length,8);
+});
+
+test('chemicals: parsing, search, hazard words, SDS review, list and detail cards',()=>{
+  const K=require('../src/lib/line/chemCards.ts');
+  const {parseCommand}=require('../src/lib/line/commands.ts');
+  const {decodePostback,encodePostback}=require('../src/lib/line/browse.ts');
+  assert.deepEqual(parseCommand('สารเคมี'),{kind:'chem_search',query:'',page:1});
+  assert.deepEqual(parseCommand('สารเคมี ทินเนอร์'),{kind:'chem_search',query:'ทินเนอร์',page:1});
+  assert.deepEqual(parseCommand('สารเคมีไวไฟ'),{kind:'chem_search',query:'ไวไฟ',page:1});
+  assert.deepEqual(parseCommand('SDS acetone หน้า 2'),{kind:'chem_search',query:'acetone',page:2});
+  assert.deepEqual(parseCommand('sds'),{kind:'chem_search',query:'',page:1});
+  assert.equal(parseCommand('เคมีภัณฑ์').kind,'ppe_search','"เคมี" needs a space before the query');
+  assert.equal(parseCommand('กฎหมาย สารเคมี').kind,'law_search');
+  const id='11111111-2222-4333-8444-555555555555';
+  assert.deepEqual(decodePostback(encodePostback({a:'chem',c:'aab',id})),{a:'chem',c:'aab',id});
+  assert.equal(decodePostback('a=chem&c=aab&id=../x'),null);
+  const base={company_id:'aab',ghs_pictograms:[],h_codes:[],ppe_required:[],first_aid:{},components:[],review_status:'unreviewed',sds_file_path:'aab/x.pdf'};
+  const rows=[
+    {...base,id,name:'Thinner AAA',chemical_name:'Toluene',cas_no:'108-88-3',un_no:'1294',supplier:'TOA',signal_word:'Danger',ghs_pictograms:['GHS02','GHS07','GHS08'],h_codes:['H225','h304'],storage_class:'3A',ppe_required:['ถุงมือไนไตรล์','แว่นตา'],first_aid:{eye:'ล้างน้ำ 15 นาที',inhalation:'ออกไปที่อากาศบริสุทธิ์'},fire_fighting:'ใช้โฟม',sds_revision_date:'2018-01-10',chem_storage_areas:{id:'a',name:'ห้องเก็บสารไวไฟ'}},
+    {...base,id:'22222222-2222-4333-8444-555555555555',name:'Sulfuric acid 98%',cas_no:'7664-93-9',signal_word:'Danger',ghs_pictograms:['GHS05'],components:[{name:'Sulphuric acid',cas_no:'7664-93-9'}],sds_revision_date:'2025-01-01'},
+    {...base,id:'33333333-2222-4333-8444-555555555555',company_id:'amt',name:'Grease EP2',signal_word:'None',sds_file_path:null,sds_url:null},
+  ];
+  const names=xs=>xs.map(x=>x.name);
+  assert.deepEqual(names(K.searchChemicals(rows,'thinner')),['Thinner AAA']);
+  assert.deepEqual(names(K.searchChemicals(rows,'108 88 3')),['Thinner AAA'],'CAS without dashes');
+  assert.deepEqual(names(K.searchChemicals(rows,'un1294')),['Thinner AAA']);
+  assert.deepEqual(names(K.searchChemicals(rows,'ไวไฟ')),['Thinner AAA'],'hazard word → GHS02');
+  assert.deepEqual(names(K.searchChemicals(rows,'กัดกร่อน')),['Sulfuric acid 98%']);
+  assert.deepEqual(names(K.searchChemicals(rows,'อันตราย')),['Sulfuric acid 98%','Thinner AAA']);
+  assert.deepEqual(names(K.searchChemicals(rows,'sulphuric')),['Sulfuric acid 98%'],'component names are searched');
+  assert.deepEqual(names(K.searchChemicals(rows,'ห้องเก็บ')),['Thinner AAA'],'storage area is searched');
+  assert.deepEqual(names(K.searchChemicals(rows,'amt')),['Grease EP2']);
+  assert.deepEqual(names(K.searchChemicals(rows,'ไวไฟ toluene')),['Thinner AAA']);
+  assert.deepEqual(names(K.searchChemicals(rows,'ไวไฟ sulfuric')),[]);
+  assert.deepEqual(names(K.searchChemicals(rows,'ทินเนอร์')),['Thinner AAA'],'Thai word finds English trade name');
+  assert.deepEqual(names(K.searchChemicals(rows,'กรด')),['Sulfuric acid 98%']);
+  assert.ok(!K.tokenTerms('alcohol').includes('ipa'),'short aliases only when typed');assert.ok(K.tokenTerms('ipa').includes('isopropyl'));
+  const policies={aab:{company_id:'aab',sds_review_years:5,sds_review_policy:'ทบทวนทุก 5 ปี'}};
+  const today=new Date('2026-10-14T03:00:00Z');
+  assert.deepEqual(names(K.searchChemicals(rows,'ครบทบทวน',policies,today)),['Thinner AAA']);
+  // summary
+  const sum=JSON.stringify(K.chemSummaryCard(rows,'AAB',policies,today));
+  assert.match(sum,/"text":"สารเคมี อันตราย"/);assert.match(sum,/SDS ครบรอบทบทวน/);
+  assert.doesNotMatch(JSON.stringify(K.chemSummaryCard(rows,'AAB',{},today)),/ครบรอบทบทวน/,'no policy → no due tile');
+  // list
+  const list=JSON.stringify(K.chemListCard(rows,'ทดสอบ',1,'ทุกบริษัท',true));
+  assert.match(list,/พบ 3 รายการ/);assert.match(list,/"data":"a=chem&c=aab&id=11111111/);assert.match(list,/AMT/);
+  assert.match(list,/https:\/\/tools\.eashe\.org\/ghs\/GHS02\.png/);
+  const many=Array.from({length:23},(_,i)=>({...rows[0],id:`${String(i).padStart(8,'0')}-2222-4333-8444-555555555555`,name:`Chem ${i}`}));
+  const p2=JSON.stringify(K.chemListCard(many,'chem',2,'AAB',false));
+  assert.match(p2,/"text":"สารเคมี chem หน้า 3"/);assert.match(p2,/"text":"สารเคมี chem หน้า 1"/);
+  assert.ok(JSON.stringify(K.chemListCard(many,'chem',1,'AAB',false)).length<25000);
+  assert.match(JSON.stringify(K.chemListCard([],'xyz',1,'AAB',false)),/ไม่พบ/);
+  // detail
+  const d=JSON.stringify(K.chemDetailCard(rows[0],'AAB',policies.aab,today));
+  for(const re of [/คำสัญญาณ: อันตราย/,/H225 ของเหลวและไอไวไฟสูง/,/H304/,/ถุงมือไนไตรล์ · แว่นตา/,/👁️ เข้าตา/,/ล้างน้ำ 15 นาที/,/🔥 ไฟไหม้/,/3A ของเหลวไวไฟ/,/ห้องเก็บสารไวไฟ/,/10\/1\/2561/,/ครบรอบทบทวน/,/ยังไม่ผ่านการตรวจทาน/,/https:\/\/tools\.eashe\.org\/sds\/11111111-2222-4333-8444-555555555555/,/ระคายเคือง/])
+    assert.match(d,re);
+  assert.doesNotMatch(d,/สูดดม".*สูดดม/,'no duplicate first-aid rows');
+  const noSds=JSON.stringify(K.chemDetailCard(rows[2],'AMT'));
+  assert.doesNotMatch(noSds,/เปิด SDS/);assert.match(noSds,/ไม่มีรูปสัญลักษณ์ GHS/);
+  for(const m of [K.chemSummaryCard(rows,'AAB'),K.chemListCard(rows,'x',1,'AAB',true),K.chemDetailCard(rows[0],'AAB')])
+    for(const x of JSON.stringify(m).matchAll(/"label":"([^"]*)"/g)) assert.ok([...x[1]].length<=20,`label too long: ${x[1]}`);
 });

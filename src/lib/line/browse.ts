@@ -19,7 +19,9 @@ export type Postback =
   // Waste: overview for a company/year, month records, admin company picker.
   | { a: 'wst'; c: string; y: number }
   | { a: 'wstm'; c: string; y: number; m: number }
-  | { a: 'wstpick'; c: string; y: number };
+  | { a: 'wstpick'; c: string; y: number }
+  // Chemicals: one substance's SDS card.
+  | { a: 'chem'; c: string; id: string };
 
 export function encodePostback(p: Postback): string {
   return new URLSearchParams(Object.entries(p).map(([k, v]) => [k, String(v)])).toString();
@@ -40,7 +42,7 @@ export function decodePostback(data: string): Postback | null {
     if (!SAFE.test(t) || !Number.isInteger(p) || p < 0 || p > 50) return null;
     return { a, c, t, p };
   }
-  if (a === 'item' || a === 'incd') {
+  if (a === 'item' || a === 'incd' || a === 'chem') {
     const id = q.get('id') || '';
     return UUID.test(id) ? { a, c, id } : null;
   }
