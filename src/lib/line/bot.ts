@@ -11,6 +11,7 @@ import { endMonthFor, incidentCompanyPicker, incidentDetailCard, monthListCard, 
 import type { StockRow } from './ppeFormat';
 import { lowCard, menuCard, overviewCard, quickReplyOf, searchCard, SEARCH_HELP, summaryCard, text, withQuickReply, type LineMessage } from './flex';
 import { categoryCard, companyPickerCard, decodePostback, itemCard, listCarousel, type LastMove } from './browse';
+import { CHEM_EXAMPLES, CHEM_SELECT, chemDetailCard, chemListCard, chemSummaryCard, searchChemicals, type ChemPolicy, type ChemRow } from './chemCards';
 
 export type Reply = string | LineMessage;
 
@@ -340,6 +341,58 @@ export async function lawTopic(db: SupabaseClient, label: string, page: number):
   return [{ ...card, quickReply: quickReplyOf([{ label: '📚 ทุกหมวด', text: 'หมวดกฎหมาย' }, ...others.map(t => ({ label: `${t.icon} ${t.label}`, text: `หมวดกฎหมาย ${t.label}` })), { label: 'เมนู', text: 'เมนู' }]) }];
 }
 
+/* ---------- Chemicals / SDS ---------- */
+
+async function chemRows(db: SupabaseClient, company: string | null): Promise<ChemRow[]> {
+  const rows: ChemRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    let q = db.from('chem_substances').select(CHEM_SELECT).eq('is_active', true).eq('is_demo', false).order('name').range(from, from + 999);
+    if (company) q = q.eq('company_id', company);
+    const { data, error } = await q;
+    if (error) throw error;
+    rows.push(...((data || []) as unknown as ChemRow[]));
+    if (!data || data.length < 1000) break;
+  }
+  return rows;
+}
+
+async function chemPolicies(db: SupabaseClient, company: string | null): Promise<Record<string, ChemPolicy>> {
+  let q = db.from('chem_company_settings').select('company_id, sds_review_years, sds_review_policy');
+  if (company) q = q.eq('company_id', company);
+  const { data, error } = await q;
+  if (error) throw error;
+  return Object.fromEntries(((data || []) as ChemPolicy[]).map(p => [p.company_id, p]));
+}
+
+const chemQuick = () => quickReplyOf([...CHEM_EXAMPLES.map(q => ({ label: `🧪 ${q}`, text: `สารเคมี ${q}` })), { label: 'เมนู', text: 'เมนู' }]);
+
+/** Search the chemical registry in the account's scope (admins: every company). */
+async function chemSearch(db: SupabaseClient, account: LinkedAccount, query: string, page: number): Promise<LineMessage[]> {
+  const { company } = scopeFor(account);
+  const [rows, policies, names] = await Promise.all([chemRows(db, company), chemPolicies(db, company), companyNames(db, company ? [company] : undefined)]);
+  const scopeName = company ? names[company] || company.toUpperCase() : 'ทุกบริษัท';
+  const q = query.trim();
+  if (!q) return [{ ...chemSummaryCard(rows, scopeName, policies), quickReply: chemQuick() }];
+  const hits = q === 'ทั้งหมด' ? searchChemicals(rows, '', policies) : searchChemicals(rows, q, policies);
+  if (hits.length === 1) {
+    const s = hits[0];
+    return [{ ...chemDetailCard(s, company ? scopeName : s.company_id.toUpperCase(), policies[s.company_id]), quickReply: chemQuick() }];
+  }
+  return [{ ...chemListCard(hits, q === 'ทั้งหมด' ? '' : q, page, scopeName, !company), quickReply: chemQuick() }];
+}
+
+/** One substance from a list tap; the account's company scope is re-checked here. */
+async function chemDetail(db: SupabaseClient, account: LinkedAccount, id: string): Promise<LineMessage[]> {
+  let q = db.from('chem_substances').select(CHEM_SELECT).eq('id', id).eq('is_active', true).eq('is_demo', false);
+  if (!account.isGroupAdmin) q = q.eq('company_id', account.companyId);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw error;
+  if (!data) return [text('ไม่พบสารเคมีนี้ อาจถูกลบหรือไม่อยู่ในบริษัทของคุณ')];
+  const s = data as unknown as ChemRow;
+  const [policies, names] = await Promise.all([chemPolicies(db, s.company_id), companyNames(db, [s.company_id])]);
+  return [{ ...chemDetailCard(s, names[s.company_id] || s.company_id.toUpperCase(), policies[s.company_id]), quickReply: chemQuick() }];
+}
+
 const toMessages = (replies: Reply[], quick: boolean): LineMessage[] => {
   const msgs = replies.map(r => (typeof r === 'string' ? text(r) : r));
   return quick ? withQuickReply(msgs) : msgs;
@@ -353,6 +406,8 @@ async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAcc
         return [menuCard(account.isGroupAdmin, HELP_TEXT)];
       case 'law_search':
         return await lawSearch(db, cmd.query, cmd.page);
+      case 'chem_search':
+        return await chemSearch(db, account, cmd.query, cmd.page);
       case 'law_topics':
         return await lawTopics(db);
       case 'law_topic':
@@ -393,6 +448,7 @@ export async function handlePostback(db: SupabaseClient, lineUserId: string, dat
   const company = account.isGroupAdmin ? pb.c : account.companyId;
 
   try {
+    if (pb.a === 'chem') return toMessages(await chemDetail(db, account, pb.id), true);
     if (pb.a === 'inc') return toMessages(await incidentStats(db, account, company, pb.y), true);
     if (pb.a === 'incm') return toMessages(await incidentMonthList(db, company, pb.y, pb.m), true);
     if (pb.a === 'incd') return toMessages(await incidentDetail(db, account, pb.id), true);

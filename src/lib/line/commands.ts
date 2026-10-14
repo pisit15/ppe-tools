@@ -6,6 +6,7 @@ export type Command =
   | { kind: 'law_search'; query: string; page: number }
   | { kind: 'law_topics' }
   | { kind: 'law_topic'; topic: string; page: number }
+  | { kind: 'chem_search'; query: string; page: number }
   | { kind: 'ppe_summary'; company?: string }
   | { kind: 'ppe_browse'; company?: string }
   | { kind: 'ppe_low'; company?: string }
@@ -40,6 +41,13 @@ export function parseCommand(input: string): Command {
   if (!text || ['help', 'เมนู', 'menu', 'ช่วยเหลือ', '?', 'วิธีใช้'].includes(lower)) return { kind: 'help' };
   if (['ยกเลิกการเชื่อม', 'ยกเลิกเชื่อม', 'unlink'].includes(lower)) return { kind: 'unlink' };
   if (['ฉันคือใคร', 'บัญชี', 'whoami'].includes(lower)) return { kind: 'whoami' };
+
+  // Chemical registry / SDS: "สารเคมี", "สารเคมี ทินเนอร์", "SDS acetone หน้า 2".
+  const chem = text.match(/^(?:ค้นหา\s*)?(?:สารเคมี\s*|(?:sds|เคมี|chemical)(?:\s+|$))(.*)$/i);
+  if (chem) {
+    const { rest, page } = splitPage((chem[1] || '').trim());
+    return { kind: 'chem_search', query: rest.slice(0, 60), page };
+  }
 
   // Legal library by topic: "หมวดกฎหมาย", "หมวดกฎหมาย ไฟฟ้า หน้า 2", "กฎหมาย หมวด".
   const topic = text.match(/^(?:หมวดกฎหมาย|กฎหมาย\s*หมวด)(?:\s+(.*))?$/i);
@@ -100,5 +108,6 @@ export const HELP_TEXT = [
   '• การจัดการขยะ — ปริมาณ รีไซเคิล/กำจัด รายเดือน และชนิดของเสีย (ต่อท้ายปีได้)',
   '• กฎหมาย + คำค้น — ค้นคลังกฎหมาย SHE พร้อมลิงก์ เช่น กฎหมาย นั่งร้าน',
   '• หมวดกฎหมาย — เลือกดูกฎหมายตามหมวด',
+  '• สารเคมี + ชื่อ/CAS — ดูอันตราย PPE ปฐมพยาบาล และเปิด SDS เช่น สารเคมี ทินเนอร์',
   '• ยกเลิกการเชื่อม — เลิกผูกบัญชี LINE นี้',
 ].join('\n');
