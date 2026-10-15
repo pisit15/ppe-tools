@@ -1,0 +1,47 @@
+[
+  {
+    "code": "003",
+    "source": "AHS-003 AMITA General Work Permit Rev.D.pdf",
+    "sha256": "019a09d4afae5920a1cb783862cd00503ba229ebad97b7b66832953fc13c1fc3"
+  },
+  {
+    "code": "004",
+    "source": "AHS-004 ใบอนุญาตปฏิบัติงานในที่สูง Rev.D.pdf",
+    "sha256": "9833d1b8e6ac08075eb2edfaf94cf64097088421241ce3ecfa2f74d0a14d0718"
+  },
+  {
+    "code": "005",
+    "source": "AHS-005_ใบอนุญาตขอทำงานที่ก่อให้เกิดความร้อนหรือประกายไฟ (Hot Work Permit)_Rev.D 1.pdf",
+    "sha256": "9eb5fd1620738975c865023ecb17cbe34f36f97f28d163adce0fab05e890ca56"
+  },
+  {
+    "code": "006",
+    "source": "AHS-006_ใบอนุญาตทำงานในที่อับอากาศ (Confined space )_Rev.A.pdf",
+    "sha256": "49dd941ccd9a642808a59f4bf8123ee3fe65d5f083d90d8be91ae6c5732325b3"
+  },
+  {
+    "code": "013",
+    "source": "AHS-013 ใบอนุญาตปฏิบัติงานยกที่มีความเสี่ยงสูง.pdf",
+    "sha256": "b16be4f32f98d0915cc440256bf48ef7d51571e6cfcd3e2a329807aa1d176c95"
+  },
+  {
+    "code": "014",
+    "source": "AHS-014 ใบอนุญาตปฏิบัติงานขุดเจาะ Rev.C.pdf",
+    "sha256": "c05b1e133f017fc1af2270a5ed1638f2be1d8fd44d294625779b05d62c7dcb41"
+  },
+  {
+    "code": "015",
+    "source": "AHS-015 ใบอนุญาตงานรื้อถอน Rev.C.pdf",
+    "sha256": "74441e8c7542b88b619b47399888efb3c99748c04f47ffa7ed6bec6e68b26e57"
+  },
+  {
+    "code": "016",
+    "source": "AHS-016 ใบอนุญาติปฎิบัติงานไฟฟ้าที่อันตรายสูง.pdf",
+    "sha256": "14122941b8bd70eb030062b9ba535065ef90aa29a9e6a9922a605268bf36cf90"
+  },
+  {
+    "code": "029",
+    "source": "AHS-029 ใบอนุญาตปฏิบัติงานตัดต่อระบบท่อ Rev.B.pdf",
+    "sha256": "ebff92ce7e23ad6167ba04c2d9cff6d8bc0cbf48f2ae002b22ff8917f1de574c"
+  }
+]

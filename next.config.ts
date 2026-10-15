@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  outputFileTracingIncludes: { '/api/permit/[...path]': ['./data/permit-templates/*.pdf'] },
 };
 
 export default nextConfig;

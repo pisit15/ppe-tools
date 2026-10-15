@@ -1,0 +1,59 @@
+WORK PERMIT — implementation and rollout notes
+
+Entry: /permit (existing EA SHE Tools application)
+Branch: codex/work-permit
+
+IMPLEMENTED
+- Dedicated contractor accounts and cookie; existing staff use Tools login.
+- Contractor starts_at/expires_at and active status checked on every API request.
+- Contractor sees only own permits in assigned company. No access to PPE/Chemical from permit cookie.
+- Admin creates contractor accounts, suspends them and assigns existing internal accounts to signer roles.
+- Company-scoped, versioned template editor; AMITA 9-template seed import starts inactive.
+- General and specialist forms in one work package; server-owned template snapshot.
+- Draft/edit, submit, ordered approval, site-owner start, suspend/resume, inspection, ordered closure, cancellation.
+- Extension/revision creates a separate request linked to the original and requires new signatures.
+- Signature drawing or image upload, explicit confirmation, actor/time/document SHA-256.
+- Returned requests retain the prior signed snapshot in the audit event and mark old signatures superseded.
+- Optimistic concurrency on every permit update; append-only audit and immutable final documents.
+- Small PDF/PNG/JPG attachments, authenticated source PDF viewing, printable digital document and authenticated QR verification.
+- Responsive Thai UI, company selector, status filtering and search over latest 100 records.
+
+ROLLOUT (not automatically applied to production)
+1. Review and apply supabase/migrations/20261015063802_work_permit.sql.
+2. Existing environment: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+   SUPABASE_SERVICE_ROLE_KEY, TOOLS_SESSION_SECRET. Service key must remain server-only.
+3. Build and deploy this checkout to the existing tools.eashe.org project. No new hosting project is needed.
+4. Admin opens /permit, selects AMT, imports the 9 templates, reviews them against original PDFs,
+   adjusts field lists and revisions as needed, then activates approved templates.
+5. Assign separate internal accounts for area owner and safety. Add project manager when relevant.
+6. Create time-limited contractor accounts and distribute credentials through the company's process.
+
+DOCUMENT REVIEW REQUIRED
+- Imported digital checklists are summarized editable transcriptions, not exact facsimiles.
+- AHS-005 supplied PDF contains Rev.D on page 1 and Rev.B on page 2.
+- AHS-006 CO/H2S labels and units in the original table require owner review.
+- No numeric gas limits are interpreted or auto-approved by this application.
+- AMITA source PDFs and SHA-256 source manifest are under data/permit-templates.
+- Original PDFs are served behind permit authorization; not placed in public/.
+
+CURRENT LIMITS / NEXT IMPLEMENTATION
+- Print/PDF uses the digital permit layout with signatures; exact coordinate overlay on original paper PDFs is not implemented.
+- On-site checks and gas readings use text entries, not structured hourly measurement tables.
+- Overtime/extension is a new linked request, not a separate same-document overtime approval workflow.
+- Attachments are limited to 8 files, 350 KB each, stored in private permit JSON. Move to private object storage before increasing size.
+- Dashboard shows latest 100 requests. Server-side history pagination and aggregate reporting are pending.
+- No automated reminder delivery or area/time conflict detection yet.
+- Contractors do not share each other's permits even when they have the same contractor company name.
+- Production migration, deployment, and company acceptance of templates are not part of local test evidence.
+
+VALIDATION
+node --test tests/permit.test.cjs
+node node_modules/typescript/bin/tsc --noEmit --incremental false
+node node_modules/@playwright/test/cli.js test --config playwright.permit.config.cjs
+node tests/chemical-build.cjs
+
+Isolated local preview: node tests/permit-preview.cjs
+URL http://127.0.0.1:4320/permit?company_id=amt
+Test staff: audit-admin, audit-amt, permit-owner, permit-safety
+Test password: local-test-only (synthetic database only; never use for production).
+No live database credentials or real accounts are needed for these tests.

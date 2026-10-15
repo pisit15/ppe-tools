@@ -36,15 +36,17 @@ async function createDb() {
   return db;
 }
 function ident(v) { if(!/^[a-z_][a-z0-9_]*$/.test(v)) throw new Error('Unsupported identifier'); return '"' + v + '"'; }
-async function startFixture(port=4311) {
-  let db = await createDb();
+async function startFixture(port=4311, options={}) {
+  async function initializedDb(){const db=await createDb();if(options.setup)await options.setup(db);return db;}
+  let db = await initializedDb();
   const objects = new Set();
   let failSdsReceipt = false;
   const server = http.createServer(async(req,res)=>{
     const json=(status,data)=>{res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify(data));};
     try {
       const url = new URL(req.url,'http://127.0.0.1');
-      if(url.pathname === '/__test/reset' && req.method === 'POST') { await db.close(); db = await createDb(); objects.clear(); failSdsReceipt = false; return json(200,{ok:true}); }
+      if(url.pathname === '/__test/reset' && req.method === 'POST') { await db.close(); db = await initializedDb(); objects.clear(); failSdsReceipt = false; return json(200,{ok:true}); }
+      if(options.handle && await options.handle({req,res,url,db,json}))return;
       if(url.pathname === '/__test/fail-sds-receipt' && req.method === 'POST') { failSdsReceipt = true; return json(200,{ok:true}); }
       if(url.pathname === '/__test/sds-state') return json(200,{objects:[...objects],receipts:(await db.query('select * from chem_sds_uploads')).rows});
       if(url.pathname === '/__test/state') return json(200,(await db.query('select * from chem_substances order by name')).rows);
@@ -72,6 +74,10 @@ async function startFixture(port=4311) {
         return json(200,[]);
       }
       if(!url.pathname.startsWith('/rest/v1/')) return json(404,{message:'Not found'});
+      if(options.setup && url.pathname==='/rest/v1/rpc/wp_login_attempt' && req.method==='POST') {
+        let raw='';for await(const chunk of req)raw+=chunk;
+        return json(200,(await db.query('select wp_login_attempt($1) as allowed',[JSON.parse(raw).p_key])).rows[0].allowed);
+      }
       if(['/rest/v1/rpc/chem_save_label_version','/rest/v1/rpc/chem_save_poster_version'].includes(url.pathname) && req.method === 'POST') {
         let raw=''; for await(const chunk of req) raw+=chunk;
         const b=JSON.parse(raw);
@@ -94,9 +100,11 @@ async function startFixture(port=4311) {
         const limit=Number(url.searchParams.get('limit')||1000); const offset=Number(url.searchParams.get('offset')||0);
         if(!Number.isInteger(limit)||!Number.isInteger(offset)||limit<0||offset<0)throw new Error('Invalid paging');
         rows=(await db.query('select * from '+table+where+order+' limit '+limit+' offset '+offset,params)).rows;
+      } else if(req.method==='DELETE') {
+        rows=(await db.query('delete from '+table+where+' returning *',params)).rows;
       } else {
         let raw='';for await(const c of req)raw+=c;const body=JSON.parse(raw);const entries=Object.entries(Array.isArray(body)?body[0]:body);
-        const value=(k,v)=>v !== null && ['components','first_aid','emergency_contacts','snapshot','config','updated_by','coverage','gaps','details','sds_import','importer'].includes(k)?JSON.stringify(v):v;
+        const value=(k,v)=>v !== null && ['data','components','first_aid','emergency_contacts','snapshot','config','updated_by','coverage','gaps','details','sds_import','importer'].includes(k)?JSON.stringify(v):v;
         if(req.method==='POST'){
           const cols=entries.map(([k])=>ident(k)).join(',');const values=entries.map(([k,v])=>{params.push(value(k,v));return '$'+params.length;}).join(',');
           const conflict=url.searchParams.get('on_conflict');const upsert=conflict?' on conflict ('+ident(conflict)+') do update set '+entries.filter(([k])=>k!==conflict).map(([k])=>ident(k)+'=excluded.'+ident(k)).join(','):'';

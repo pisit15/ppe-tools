@@ -36,7 +36,7 @@ export const PROJECTS: Project[] = [
     icon: 'clipboard',
     color: 'from-orange-500 to-red-600',
     href: '/permit',
-    ready: false,
+    ready: true,
   },
   {
     id: 'inspection',

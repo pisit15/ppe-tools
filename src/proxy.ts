@@ -9,6 +9,7 @@
 // every API route re-verifies the session AND the account server-side.
 import { NextResponse, type NextRequest } from 'next/server';
 import { SA_COOKIE, verifySessionToken } from '@/lib/superAdminSession';
+import { requireToolsActor, apiError } from '@/lib/toolsSession';
 
 const ADMIN_HOST_PREFIX = 'admin.';
 
@@ -59,6 +60,12 @@ export default async function proxy(request: NextRequest) {
   // The console must not be reachable from tools.eashe.org.
   if (!local && (pathname.startsWith('/superadmin') || pathname.startsWith('/api/superadmin'))) {
     return new NextResponse('Not Found', { status: 404 });
+  }
+
+  // Legacy PPE handlers use privileged database access. They must require a
+  // current staff account; a dedicated Work Permit contractor cookie is not one.
+  if (pathname.startsWith('/api/ppe/')) {
+    try { await requireToolsActor(request); } catch (error) { return apiError(error); }
   }
 
   return NextResponse.next();
