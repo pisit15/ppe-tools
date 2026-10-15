@@ -144,6 +144,7 @@ test("full permit workflow, authorization, signatures, template versions and PDF
   expect((await employee.request.get('/api/ppe/products?company_id=amt')).status()).toBe(401);
   expect((await api(employee.request, 'contractors')).r.status()).toBe(403);
   expect((await api(employee.request, 'permits/' + id)).r.status()).toBe(403);
+  expect((await employee.request.get(`/api/permit/permits/${id}/pdf?company_id=amt`)).status()).toBe(403);
   const employeePermit = await api(employee.request, 'permits', 'post', {data: {...permit.data, contractorName: 'spoofed'}});
   expect(employeePermit.r.status(), JSON.stringify(employeePermit.body)).toBe(201);
   expect(employeePermit.body.data.data.contractorName).toBe('FMT');
@@ -232,6 +233,16 @@ test("full permit workflow, authorization, signatures, template versions and PDF
     "ปิดงานแล้ว",
   );
   await expect(worker.locator(".wp-signature")).toHaveCount(7);
+  const pdfLink = worker.getByRole('link', {name:'พิมพ์ตามแม่แบบ / PDF',exact:true});
+  await expect(pdfLink).toBeVisible();
+  const pdfResponse = await worker.request.get(await pdfLink.getAttribute('href'));
+  expect(pdfResponse.status(), await pdfResponse.text()).toBe(200);
+  expect(pdfResponse.headers()['content-type']).toBe('application/pdf');
+  expect(pdfResponse.headers()['cache-control']).toBe('private, no-store');
+  expect((await pdfResponse.body()).subarray(0,5).toString()).toBe('%PDF-');
+  const anonymous = await browser.newContext({baseURL:'http://127.0.0.1:4320'});
+  expect((await anonymous.request.get(await pdfLink.getAttribute('href'))).status()).toBe(401);
+  await anonymous.close();
   fs.mkdirSync(path.join(__dirname, "../output/permit"), { recursive: true });
   await worker.screenshot({
     path: path.join(__dirname, "../output/permit/permit-document.png"),

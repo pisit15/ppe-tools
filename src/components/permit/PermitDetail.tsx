@@ -11,6 +11,7 @@ import {
 } from "@/lib/permit/types";
 import { dateTime, permitApi } from "./api";
 import SignatureInput from "./SignatureInput";
+import { supportsOriginalPdf } from "@/lib/permit/catalog";
 const actionLabels: Record<string, string> = {
   submit: "ลงนามส่งคำขอ",
   approve: "ลงนามอนุมัติ",
@@ -154,8 +155,13 @@ export default function PermitDetail({
             กลับรายการ
           </button>
           <button className="wp-secondary" onClick={() => window.print()}>
-            พิมพ์ / บันทึก PDF
+            พิมพ์สรุปข้อมูล
           </button>
+          {supportsOriginalPdf(p) && (
+            <a className="wp-primary" href={`/api/permit/permits/${p.id}/pdf?company_id=${encodeURIComponent(company)}`} target="_blank" rel="noopener noreferrer">
+              พิมพ์ตามแม่แบบ / PDF
+            </a>
+          )}
         </div>
       </div>
       <article className="wp-panel wp-document">

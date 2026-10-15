@@ -1,4 +1,4 @@
-import type { PermitTemplate, TemplateField } from "./types";
+import type { Permit, PermitTemplate, TemplateField } from "./types";
 const check = (labels: string[]): TemplateField[] =>
   labels.map((label, i) => ({
     id: `check_${i + 1}`,
@@ -226,3 +226,10 @@ export const PERMIT_SEEDS: Omit<PermitTemplate, "id" | "created_at">[] =
       roles: ["area_owner", "safety"],
     },
   }));
+
+export function supportsOriginalPdf(p: Permit): boolean {
+  return p.company_id === "amt" && p.data.forms.length > 0 && p.data.forms.every(f => {
+    const seed = PERMIT_SEEDS.find(s => s.source_code === f.template.source_code);
+    return seed && seed.revision === f.template.revision;
+  });
+}

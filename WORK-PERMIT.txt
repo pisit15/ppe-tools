@@ -37,7 +37,8 @@ DOCUMENT REVIEW REQUIRED
 - Original PDFs are served behind permit authorization; not placed in public/.
 
 CURRENT LIMITS / NEXT IMPLEMENTATION
-- Print/PDF uses the digital permit layout with signatures; exact coordinate overlay on original paper PDFs is not implemented.
+- Original-template PDF export overlays recorded job details and workflow signatures on all supplied AMITA PDF pages, preserving original revision/layout. The original-template action is limited to matching AMT source revisions; other templates retain digital summary printing.
+- Digital checklists are broader than some paper rows. Individual paper checkboxes, gas measurement cells, and roles without an exact recorded equivalent remain blank; complete answers, long values, signer identities/hashes and events are printed in labelled annexes. No safety results are inferred.
 - On-site checks and gas readings use text entries, not structured hourly measurement tables.
 - Overtime/extension is a new linked request, not a separate same-document overtime approval workflow.
 - Attachments are limited to 8 files, 350 KB each, stored in private permit JSON. Move to private object storage before increasing size.
@@ -48,6 +49,7 @@ CURRENT LIMITS / NEXT IMPLEMENTATION
 
 VALIDATION
 node --test tests/permit.test.cjs
+node --test tests/permit-pdf.test.cjs
 node node_modules/typescript/bin/tsc --noEmit --incremental false
 node node_modules/@playwright/test/cli.js test --config playwright.permit.config.cjs
 node tests/chemical-build.cjs

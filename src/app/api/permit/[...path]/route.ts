@@ -70,7 +70,8 @@ async function handle(req: NextRequest, context: Context) {
       sources: ["GET"],
       permits: ["GET", "POST", "PUT"],
     };
-    if (!methods[resource]?.includes(method) || parts.length > 2)
+    const pdfRequest = resource === "permits" && parts.length === 3 && parts[2] === "pdf" && method === "GET";
+    if (!methods[resource]?.includes(method) || (parts.length > 2 && !pdfRequest))
       throw new AccessError("ไม่รองรับคำขอนี้", 405);
     if (resource === "session" && method === "DELETE") {
       assertSameOrigin(req);
@@ -448,6 +449,17 @@ async function handle(req: NextRequest, context: Context) {
       if (!r.data) throw new AccessError("ไม่พบใบอนุญาต", 404);
       existing = r.data as Permit;
       canReadPermit(actor, existing);
+    }
+    if (existing && method === "GET" && parts[2] === "pdf") {
+      const { renderPermitPdf, supportsOriginalPdf } = await import("@/lib/permit/pdf");
+      if (!supportsOriginalPdf(existing)) throw new AccessError("แม่แบบหรือ Revision นี้ยังไม่มีผังพิมพ์ตรงต้นฉบับ กรุณาใช้พิมพ์สรุปข้อมูล", 400);
+      const bytes = await renderPermitPdf(existing);
+      return new NextResponse(Buffer.from(bytes), { headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="Work-Permit-${existing.id}-v${existing.version}.pdf"`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      }});
     }
     if (existing && method === "GET") return response({ data: existing });
     const b = await jsonBody(req);
