@@ -89,7 +89,9 @@ export async function permitActor(request: NextRequest): Promise<PermitActor> {
       companyId: r.company_id,
       admin: false,
       contractor: true,
-      contractorName: r.contractor_name,
+      requesterType: r.requester_type,
+      department: r.department,
+      contractorName: r.requester_type === "employee" ? r.department : r.contractor_name,
       expiresAt: r.expires_at,
       roles: [],
     };

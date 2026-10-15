@@ -12,6 +12,8 @@ type Contractor = {
   username: string;
   display_name: string;
   contractor_name: string;
+  requester_type: "employee" | "contractor";
+  department: string;
   starts_at: string;
   expires_at: string;
   active: boolean;
@@ -43,6 +45,8 @@ export default function PermitSettings({
     password: "",
     display_name: "",
     contractor_name: "",
+    requester_type: "employee" as "employee" | "contractor",
+    department: "",
     starts_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
   });
@@ -390,7 +394,7 @@ export default function PermitSettings({
       ) : (
         <>
           <section className="wp-panel">
-            <h3>สร้างบัญชีผู้รับเหมาชั่วคราว</h3>
+            <h3>สร้างบัญชีผู้ขออนุญาตทำงาน</h3>
             <p className="wp-muted">
               เข้าถึงเฉพาะ Work Permit และใบอนุญาตที่ตนสร้าง ·
               รหัสผ่านแสดงเฉพาะตอนกำหนด ไม่ส่งอีเมลอัตโนมัติ
@@ -410,6 +414,12 @@ export default function PermitSettings({
                 });
               }}
             >
+              <label>ประเภทผู้ขออนุญาต
+                <select value={account.requester_type} onChange={e => setAccount({...account, requester_type: e.target.value as "employee" | "contractor"})}>
+                  <option value="employee">พนักงานบริษัท / แผนกอื่น</option>
+                  <option value="contractor">ผู้รับเหมา</option>
+                </select>
+              </label>
               <div className="wp-form-grid">
                 {(
                   [
@@ -423,7 +433,7 @@ export default function PermitSettings({
                     {
                       {
                         display_name: "ชื่อผู้ใช้งานจริง",
-                        contractor_name: "บริษัทผู้รับเหมา",
+                        contractor_name: account.requester_type === "employee" ? "แผนก (เช่น FMT)" : "บริษัทผู้รับเหมา",
                         username: "ชื่อเข้าสู่ระบบ",
                         password: "รหัสผ่าน (อย่างน้อย 12 ตัว)",
                       }[k]
@@ -432,9 +442,9 @@ export default function PermitSettings({
                       autoComplete="off"
                       type={k === "password" ? "password" : "text"}
                       required
-                      value={account[k]}
+                      value={k === "contractor_name" && account.requester_type === "employee" ? account.department : account[k]}
                       onChange={(e) =>
-                        setAccount({ ...account, [k]: e.target.value })
+                        setAccount({ ...account, [k === "contractor_name" && account.requester_type === "employee" ? "department" : k]: e.target.value })
                       }
                     />
                   </label>
@@ -458,14 +468,14 @@ export default function PermitSettings({
                 ))}
               </div>
               <button className="wp-primary" disabled={busy}>
-                สร้างบัญชีชั่วคราว
+                สร้างบัญชีผู้ขออนุญาต
               </button>
             </form>
           </section>
           <section className="wp-panel">
-            <h3>บัญชีผู้รับเหมา ({accounts.length})</h3>
+            <h3>บัญชีผู้ขออนุญาต ({accounts.length})</h3>
             {!accounts.length && (
-              <p className="wp-muted">ยังไม่มีบัญชีผู้รับเหมา</p>
+              <p className="wp-muted">ยังไม่มีบัญชีผู้ขออนุญาต</p>
             )}
             {accounts.map((a) => (
               <div className="wp-account-row" key={a.id}>
@@ -474,7 +484,7 @@ export default function PermitSettings({
                     {a.display_name} · {a.username}
                   </b>
                   <p>
-                    {a.contractor_name} · หมดอายุ {dateTime(a.expires_at)}
+                    {a.requester_type === "employee" ? `พนักงาน · ${a.department}` : `ผู้รับเหมา · ${a.contractor_name}`} · หมดอายุ {dateTime(a.expires_at)}
                   </p>
                   <span className="wp-muted">
                     {!a.active
@@ -507,7 +517,7 @@ export default function PermitSettings({
           <section className="wp-panel">
             <h3>กำหนดผู้มีสิทธิ์ลงนาม</h3>
             <p className="wp-muted">
-              ใช้บัญชีบุคลากรภายในที่มีอยู่ ผู้รับเหมาไม่มีสิทธิ์อนุมัติ
+              ใช้บัญชีผู้มีสิทธิ์ลงนามที่กำหนดไว้ บัญชีผู้ขออนุญาตไม่มีสิทธิ์อนุมัติ
             </p>
             <form
               className="wp-form-grid"

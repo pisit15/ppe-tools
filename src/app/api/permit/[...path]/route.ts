@@ -47,6 +47,8 @@ const safeContractor = (r: Record<string, unknown>) => ({
   username: r.username,
   display_name: r.display_name,
   contractor_name: r.contractor_name,
+  requester_type: r.requester_type,
+  department: r.department,
   starts_at: r.starts_at,
   expires_at: r.expires_at,
   active: r.active,
@@ -257,6 +259,11 @@ async function handle(req: NextRequest, context: Context) {
         if (!data) throw new AccessError("ไม่พบบัญชี", 404);
         return response({ data: safeContractor(data) });
       }
+      const requesterType = b.requester_type ?? "contractor";
+      if (!["employee", "contractor"].includes(String(requesterType)))
+        throw new AccessError("ประเภทผู้ขออนุญาตไม่ถูกต้อง", 400);
+      const department = requesterType === "employee" ? text(b.department, "แผนก", 200) : "";
+      const contractorName = requesterType === "contractor" ? text(b.contractor_name, "บริษัทผู้รับเหมา", 200) : "";
       const username = text(b.username, "ชื่อผู้ใช้", 60).toLowerCase();
       if (!/^[a-z0-9][a-z0-9._-]{2,59}$/.test(username))
         throw new AccessError(
@@ -285,7 +292,9 @@ async function handle(req: NextRequest, context: Context) {
           username,
           password_hash: await bcrypt.hash(password, 12),
           display_name: text(b.display_name, "ชื่อผู้ใช้จริง", 150),
-          contractor_name: text(b.contractor_name, "บริษัทผู้รับเหมา", 200),
+          requester_type: requesterType,
+          department,
+          contractor_name: contractorName,
           starts_at: new Date(start).toISOString(),
           expires_at: new Date(end).toISOString(),
         })

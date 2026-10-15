@@ -6,6 +6,9 @@ export type PermitActor = {
   companyId: string;
   admin: boolean;
   contractor: boolean;
+  // Legacy contractor flag means a permit-only requester, including employees.
+  requesterType?: "employee" | "contractor";
+  department?: string;
   contractorName?: string;
   expiresAt?: string;
   roles: PermitRole[];

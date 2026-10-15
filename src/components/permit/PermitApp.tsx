@@ -196,7 +196,7 @@ export default function PermitApp() {
                 setLoginCompanies([]);
               }}
             >
-              บุคลากรภายใน
+              ผู้ดูแลระบบ SHE
             </button>
             <button
               className={mode === "contractor" ? "active" : ""}
@@ -205,7 +205,7 @@ export default function PermitApp() {
                 setLoginCompanies([]);
               }}
             >
-              ผู้รับเหมา
+              ผู้ขออนุญาตทำงาน
             </button>
           </div>
           <form onSubmit={login}>
@@ -256,8 +256,8 @@ export default function PermitApp() {
           </form>
           <p className="wp-muted">
             {mode === "contractor"
-              ? "ใช้บัญชีชั่วคราวที่ผู้ประสานงานจัดให้"
-              : "ใช้บัญชีเดียวกับระบบ EA SHE Tools"}
+              ? "พนักงานแผนกอื่นหรือผู้รับเหมา ใช้บัญชี Work Permit ที่ผู้ดูแลจัดให้"
+              : "จป.วิชาชีพ / เจ้าหน้าที่สิ่งแวดล้อม ใช้บัญชี EA SHE Tools"}
           </p>
         </div>
       </div>
@@ -317,7 +317,7 @@ export default function PermitApp() {
           <ShieldCheck size={20} />
           <p>
             {actor.contractor
-              ? "บัญชีผู้รับเหมาชั่วคราว"
+              ? "บัญชีผู้ขออนุญาตทำงาน"
               : "พื้นที่ทำงานของบริษัท"}
             <strong>{company.toUpperCase()}</strong>
           </p>
@@ -508,7 +508,7 @@ export default function PermitApp() {
                     <Search size={18} />
                     <input
                       aria-label="ค้นหาใบอนุญาต"
-                      placeholder="ค้นหาชื่องาน พื้นที่ หรือผู้รับเหมา"
+                      placeholder="ค้นหาชื่องาน พื้นที่ แผนก หรือบริษัทผู้รับเหมา"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                     />

@@ -71,7 +71,7 @@ test("full permit workflow, authorization, signatures, template versions and PDF
   const ctx = await browser.newContext({ baseURL: "http://127.0.0.1:4320" });
   const worker = await ctx.newPage();
   await worker.goto("/permit");
-  await worker.getByRole("button", { name: "ผู้รับเหมา", exact: true }).click();
+  await worker.getByRole("button", { name: "ผู้ขออนุญาตทำงาน", exact: true }).click();
   await worker.getByLabel("ชื่อผู้ใช้", { exact: true }).fill(account.username);
   await worker.getByLabel("รหัสผ่าน", { exact: true }).fill(account.password);
   await worker
@@ -131,6 +131,23 @@ test("full permit workflow, authorization, signatures, template versions and PDF
   ).toBeVisible();
   let permit = (await api(worker.request, "permits")).body.data[0];
   const id = permit.id;
+  // Internal employees use the same restricted requester portal, not Tools access.
+  const employeeAccount = {...account, username: 'fmt-test', requester_type: 'employee', department: 'FMT', contractor_name: ''};
+  expect((await api(page.request, 'contractors', 'post', {...employeeAccount, department: ''})).r.status()).toBe(400);
+  expect((await api(page.request, 'contractors', 'post', employeeAccount)).r.status()).toBe(201);
+  const employee = await browser.newContext({baseURL: 'http://127.0.0.1:4320'});
+  expect((await api(employee.request, 'session', 'post', employeeAccount)).r.status()).toBe(200);
+  const employeeActor = (await api(employee.request, 'session')).body.actor;
+  expect(employeeActor.requesterType).toBe('employee');
+  expect(employeeActor.department).toBe('FMT');
+  expect(employeeActor.admin).toBe(false);
+  expect((await employee.request.get('/api/ppe/products?company_id=amt')).status()).toBe(401);
+  expect((await api(employee.request, 'contractors')).r.status()).toBe(403);
+  expect((await api(employee.request, 'permits/' + id)).r.status()).toBe(403);
+  const employeePermit = await api(employee.request, 'permits', 'post', {data: {...permit.data, contractorName: 'spoofed'}});
+  expect(employeePermit.r.status(), JSON.stringify(employeePermit.body)).toBe(201);
+  expect(employeePermit.body.data.data.contractorName).toBe('FMT');
+  await employee.close();
   await worker
     .getByRole("button", { name: "ลงนามส่งคำขอ", exact: true })
     .click();
