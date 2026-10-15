@@ -33,7 +33,6 @@ test('company document codes save through form, sort naturally both ways with bl
   await page.goto('/chemical?company_id=amt');
   const sort = page.getByRole('button', { name: /^รหัส \/ เลขเอกสาร/ });
   const codes = page.locator('tbody tr td:first-child');
-  await sort.click();
   await expect(page.locator('thead th').first()).toHaveAttribute('aria-sort', 'ascending');
   await expect(codes).toHaveText(['SDS-001', 'SDS-2', 'SDS-10', '—']);
   await sort.click();
@@ -94,7 +93,7 @@ test('changing document-code order resets pagination and sorts the full filtered
   await expect(page.getByText('หน้า 2/2', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /^รหัส \/ เลขเอกสาร/ }).click();
   await expect(page.getByText('หน้า 1/2', { exact: true })).toBeVisible();
-  await expect(page.locator('tbody tr td:first-child')).toHaveText(Array.from({ length: 30 }, (_, i) => `DOC-${i+1}`));
+  await expect(page.locator('tbody tr td:first-child')).toHaveText(Array.from({ length: 30 }, (_, i) => `DOC-${32-i}`));
   await page.getByRole('button', { name: 'ถัดไป →', exact: true }).click();
-  await expect(page.locator('tbody tr td:first-child')).toHaveText(['DOC-31', 'DOC-32']);
+  await expect(page.locator('tbody tr td:first-child')).toHaveText(['DOC-2', 'DOC-1']);
 });

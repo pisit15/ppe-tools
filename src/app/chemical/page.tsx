@@ -43,7 +43,7 @@ function ScopedRegister() {
   const [classFilter, setClassFilter] = useState('');
   const [pictoFilter, setPictoFilter] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortKey, setSortKey] = useState<SortKey>('document_code');
   const [sortAsc, setSortAsc] = useState(true);
   const [page, setPage] = useState(1);
   const [confirmDelete, setConfirmDelete] = useState<ChemSubstance | null>(null);
