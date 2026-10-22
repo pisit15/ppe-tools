@@ -7,9 +7,13 @@ import { AccessError, requireToolsActor, type ToolsActor } from '@/lib/toolsSess
  * - personal SHE accounts in tools_users
  * - personal accounts in company_users (shared company logins whose username equals the
  *   company id, e.g. "amt" used at PPE stores, are excluded)
+ * - accounts limited by allowed_modules must list 'procurement'
  */
 export function isProcurementMember(actor: ToolsActor) {
   if (actor.isAdmin) return true;
+  // Per-module access (allowed_modules): null/empty = all modules; a restricted account needs 'procurement'.
+  const modules = actor.row.allowed_modules;
+  if (Array.isArray(modules) && modules.length > 0 && !modules.includes('procurement')) return false;
   if (actor.accountTable === 'tools_users') return true;
   return actor.accountTable === 'company_users' && actor.username.trim().toLowerCase() !== actor.companyId.trim().toLowerCase();
 }
