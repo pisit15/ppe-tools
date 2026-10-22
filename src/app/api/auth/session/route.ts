@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
       companyName: a.isAdmin ? 'EA SHE Admin' : String(a.row.company_name || a.companyId.toUpperCase()),
       displayName: a.displayName, nickname: String(a.row.nickname || ''), position: String(a.row.position || ''),
       role: a.isAdmin ? 'admin' : 'user', token: a.isAdmin ? issueAdminToken(a.username) : undefined,
+      allowedModules: a.isAdmin ? null : ((a.row.allowed_modules as string[] | null) ?? null),
     } });
   } catch (e) { return apiError(e); }
 }
