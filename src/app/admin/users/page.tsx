@@ -261,7 +261,7 @@ export default function AdminUsersPage() {
                         <span className="flex flex-wrap gap-1 justify-center">
                           {u.allowed_modules.map(m => (
                             <span key={m} className="px-2 py-1 rounded-md text-xs font-semibold" style={{ backgroundColor: `${VIZ.primary}15`, color: VIZ.primary }}>
-                              {m === 'ppe' ? 'PPE' : m === 'she' ? 'SHE' : m}
+                              {m === 'ppe' ? 'PPE' : m === 'she' ? 'SHE' : m === 'chemical' ? 'CHEM' : m}
                             </span>
                           ))}
                         </span>
@@ -384,6 +384,9 @@ function UserModal({
   const [modShe, setModShe] = useState(
     editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('she') : true
   );
+  const [modChem, setModChem] = useState(
+    editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('chemical') : true
+  );
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -412,7 +415,7 @@ function UserModal({
       onError('กรุณาตั้งรหัสผ่าน');
       return;
     }
-    if (!modPpe && !modShe) {
+    if (!modPpe && !modShe && !modChem) {
       onError('ต้องเลือกระบบที่เข้าได้อย่างน้อย 1 ระบบ');
       return;
     }
@@ -428,7 +431,13 @@ function UserModal({
           display_name: displayName,
           is_active: isActive,
           allowed_modules:
-            modPpe && modShe ? null : [...(modPpe ? ['ppe'] : []), ...(modShe ? ['she'] : [])],
+            modPpe && modShe && modChem
+              ? null
+              : [
+                  ...(modPpe ? ['ppe'] : []),
+                  ...(modShe ? ['she'] : []),
+                  ...(modChem ? ['chemical'] : []),
+                ],
           ...(password ? { password } : {}),
         }),
       });
@@ -575,6 +584,15 @@ function UserModal({
                   className="w-4 h-4"
                 />
                 <span className="text-sm text-gray-700">SHE Workforce</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={modChem}
+                  onChange={e => setModChem(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">Chemical</span>
               </label>
             </div>
           </div>

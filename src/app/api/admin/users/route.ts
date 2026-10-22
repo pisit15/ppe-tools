@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 
 const SAFE_COLUMNS = 'id, company_id, username, display_name, is_active, allowed_modules, created_at, updated_at';
 
-const VALID_MODULES = ['ppe', 'she'];
+const VALID_MODULES = ['ppe', 'she', 'chemical'];
 
 // null = ทุกระบบ; array = เฉพาะระบบที่ระบุ (ต้องมีอย่างน้อย 1)
 function sanitizeModules(input: unknown): string[] | null | 'invalid' {

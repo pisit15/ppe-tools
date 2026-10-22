@@ -59,10 +59,11 @@ export const PROJECTS: Project[] = [
 ];
 
 // Module-level access control
-export type ModuleId = 'ppe' | 'she';
+export type ModuleId = 'ppe' | 'she' | 'chemical';
 export const MODULE_LABELS: Record<ModuleId, string> = {
   ppe: 'PPE Inventory',
   she: 'SHE Workforce',
+  chemical: 'Chemical Management',
 };
 
 // User type returned from auth

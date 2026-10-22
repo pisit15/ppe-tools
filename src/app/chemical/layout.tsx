@@ -6,6 +6,8 @@ import { Suspense, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import { useAuth } from '@/components/AuthProvider';
 import ChemicalLoginPage from '@/components/ChemicalLoginPage';
+import ModuleAccessDenied from '@/components/ModuleAccessDenied';
+import { canAccessModule } from '@/lib/companies';
 
 export default function ChemicalLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -22,6 +24,11 @@ export default function ChemicalLayout({ children }: { children: React.ReactNode
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600" />
       </div>
     );
+  }
+
+  // Module-level access control (allowed_modules on the user account)
+  if (!canAccessModule(user, 'chemical')) {
+    return <ModuleAccessDenied moduleName="Chemical Management" />;
   }
 
   return (
