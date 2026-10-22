@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
 import { AccessError, apiError } from '@/lib/toolsSession';
-import { requireProcurementAdmin } from '@/lib/procurement/access';
+import { requireProcurementImporter, spendImportTicket } from '@/lib/procurement/access';
 import { fetchAll, invalidateDataset } from '@/lib/procurement/data';
 import { PROC_KEY, PROC_TABLES, type ProcTable } from '@/lib/procurement/types';
 
@@ -38,7 +38,7 @@ function cleanRows(table: ProcTable, rows: unknown) {
 //       { action: 'finalize', keys: { [table]: number[] }, source } — removes rows not in the new snapshot
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireProcurementAdmin(request);
+    const actor = await requireProcurementImporter(request);
     const body = (await request.json()) as Record<string, unknown>;
     const db = getSupabaseServer();
 
@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
       for (const table of [...PROC_TABLES].reverse().filter(t => tables.includes(t))) {
         const list = keys[table];
         if (!Array.isArray(list) || !list.every(Number.isSafeInteger)) throw bad(`คีย์ของ ${table} ไม่ถูกต้อง`);
+        if (!list.length) throw bad(`ชุดข้อมูลใหม่ของ ${table} ว่าง — ยกเลิกเพื่อไม่ให้ลบข้อมูลทั้งหมด`);
         const keep = new Set(list as number[]);
         const key = PROC_KEY[table];
         const existing = await fetchAll<Record<string, number>>(table, key, key);
@@ -73,8 +74,9 @@ export async function POST(request: NextRequest) {
         counts[table] = keep.size;
       }
       const source = typeof body.source === 'string' ? body.source.slice(0, 200) : 'import';
-      const { error } = await db.from('proc_sync_runs').insert({ source, counts, imported_by: actor.username });
+      const { error } = await db.from('proc_sync_runs').insert({ source, counts, imported_by: actor.name });
       if (error) throw error;
+      await spendImportTicket(actor.ticketId);
       invalidateDataset();
       return NextResponse.json({ ok: true, deleted, counts });
     }
