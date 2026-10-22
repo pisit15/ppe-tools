@@ -58,6 +58,13 @@ export const PROJECTS: Project[] = [
   },
 ];
 
+// Module-level access control
+export type ModuleId = 'ppe' | 'she';
+export const MODULE_LABELS: Record<ModuleId, string> = {
+  ppe: 'PPE Inventory',
+  she: 'SHE Workforce',
+};
+
 // User type returned from auth
 export type AuthUser = {
   id: string;
@@ -69,4 +76,13 @@ export type AuthUser = {
   position: string;
   role: 'admin' | 'user';
   token?: string; // admin API token, present only for admin logins
+  // null/undefined = ทุกระบบ (default เดิม); ['ppe'] = เข้าได้เฉพาะ PPE Inventory
+  allowedModules?: string[] | null;
 };
+
+export function canAccessModule(user: AuthUser | null, moduleId: ModuleId): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (!user.allowedModules || user.allowedModules.length === 0) return true;
+  return user.allowedModules.includes(moduleId);
+}

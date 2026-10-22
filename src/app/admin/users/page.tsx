@@ -29,6 +29,7 @@ type CompanyUser = {
   username: string;
   display_name: string;
   is_active: boolean;
+  allowed_modules: string[] | null; // null = ทุกระบบ
   created_at: string;
   updated_at: string;
 };
@@ -220,6 +221,7 @@ export default function AdminUsersPage() {
                 <th className="px-4 py-3 font-semibold">บริษัท</th>
                 <th className="px-4 py-3 font-semibold">ชื่อผู้ใช้</th>
                 <th className="px-4 py-3 font-semibold">ชื่อแสดง</th>
+                <th className="px-4 py-3 font-semibold text-center">ระบบที่เข้าได้</th>
                 <th className="px-4 py-3 font-semibold text-center">สถานะ</th>
                 <th className="px-4 py-3 font-semibold text-center">แก้ไข</th>
               </tr>
@@ -227,13 +229,13 @@ export default function AdminUsersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
                     กำลังโหลด...
                   </td>
                 </tr>
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
                     ไม่พบผู้ใช้
                   </td>
                 </tr>
@@ -250,6 +252,21 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-4 py-3 font-medium" style={{ color: VIZ.text }}>{u.username}</td>
                     <td className="px-4 py-3" style={{ color: VIZ.lightText }}>{u.display_name || '—'}</td>
+                    <td className="px-4 py-3 text-center">
+                      {!u.allowed_modules ? (
+                        <span className="px-2 py-1 rounded-md text-xs font-semibold" style={{ backgroundColor: VIZ.bg, color: VIZ.text }}>
+                          ทุกระบบ
+                        </span>
+                      ) : (
+                        <span className="flex flex-wrap gap-1 justify-center">
+                          {u.allowed_modules.map(m => (
+                            <span key={m} className="px-2 py-1 rounded-md text-xs font-semibold" style={{ backgroundColor: `${VIZ.primary}15`, color: VIZ.primary }}>
+                              {m === 'ppe' ? 'PPE' : m === 'she' ? 'SHE' : m}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <span
                         className="px-2 py-1 rounded-full text-xs font-semibold"
@@ -360,6 +377,13 @@ function UserModal({
   const [displayName, setDisplayName] = useState(editUser?.display_name || '');
   const [password, setPassword] = useState('');
   const [isActive, setIsActive] = useState(editUser ? editUser.is_active : true);
+  // null (ทุกระบบ) = ติ๊กทั้งคู่
+  const [modPpe, setModPpe] = useState(
+    editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('ppe') : true
+  );
+  const [modShe, setModShe] = useState(
+    editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('she') : true
+  );
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -388,6 +412,10 @@ function UserModal({
       onError('กรุณาตั้งรหัสผ่าน');
       return;
     }
+    if (!modPpe && !modShe) {
+      onError('ต้องเลือกระบบที่เข้าได้อย่างน้อย 1 ระบบ');
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch('/api/admin/users', {
@@ -399,6 +427,8 @@ function UserModal({
           username: username.trim(),
           display_name: displayName,
           is_active: isActive,
+          allowed_modules:
+            modPpe && modShe ? null : [...(modPpe ? ['ppe'] : []), ...(modShe ? ['she'] : [])],
           ...(password ? { password } : {}),
         }),
       });
@@ -523,6 +553,30 @@ function UserModal({
                 จดหรือคัดลอกรหัสนี้ไว้ — บันทึกแล้วจะแสดงอีกไม่ได้
               </p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">ระบบที่เข้าได้</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={modPpe}
+                  onChange={e => setModPpe(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">PPE Inventory</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={modShe}
+                  onChange={e => setModShe(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">SHE Workforce</span>
+              </label>
+            </div>
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer select-none">

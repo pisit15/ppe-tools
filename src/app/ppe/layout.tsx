@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import { useAuth } from '@/components/AuthProvider';
 import PPELoginPage from '@/components/PPELoginPage';
+import ModuleAccessDenied from '@/components/ModuleAccessDenied';
+import { canAccessModule } from '@/lib/companies';
 
 export default function PPELayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -21,6 +23,11 @@ export default function PPELayout({ children }: { children: React.ReactNode }) {
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
+  }
+
+  // Module-level access control (allowed_modules on the user account)
+  if (!canAccessModule(user, 'ppe')) {
+    return <ModuleAccessDenied moduleName="PPE Inventory" />;
   }
 
   return (

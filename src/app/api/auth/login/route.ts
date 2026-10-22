@@ -171,6 +171,7 @@ export async function POST(request: NextRequest) {
         nickname: (userData.nickname as string) || '',
         position: (userData.position as string) || '',
         role: 'user',
+        allowedModules: (userData.allowed_modules as string[] | null) ?? null,
       },
     }, userData, accountTable);
   } catch (err) {

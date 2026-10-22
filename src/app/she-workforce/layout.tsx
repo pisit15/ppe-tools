@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import { useAuth } from '@/components/AuthProvider';
 import SHELoginPage from '@/components/SHELoginPage';
+import ModuleAccessDenied from '@/components/ModuleAccessDenied';
+import { canAccessModule } from '@/lib/companies';
 
 export default function SHEWorkforceLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -21,6 +23,11 @@ export default function SHEWorkforceLayout({ children }: { children: React.React
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" />
       </div>
     );
+  }
+
+  // Module-level access control (allowed_modules on the user account)
+  if (!canAccessModule(user, 'she')) {
+    return <ModuleAccessDenied moduleName="SHE Workforce" />;
   }
 
   return (

@@ -7,7 +7,19 @@ import bcrypt from 'bcryptjs';
 // Requires a valid admin token (issued at admin login) in the
 // Authorization: Bearer header — the user tables are service-role only.
 
-const SAFE_COLUMNS = 'id, company_id, username, display_name, is_active, created_at, updated_at';
+const SAFE_COLUMNS = 'id, company_id, username, display_name, is_active, allowed_modules, created_at, updated_at';
+
+const VALID_MODULES = ['ppe', 'she'];
+
+// null = ทุกระบบ; array = เฉพาะระบบที่ระบุ (ต้องมีอย่างน้อย 1)
+function sanitizeModules(input: unknown): string[] | null | 'invalid' {
+  if (input === null || input === undefined) return null;
+  if (!Array.isArray(input)) return 'invalid';
+  const mods = input.filter((m): m is string => typeof m === 'string' && VALID_MODULES.includes(m));
+  if (mods.length === 0) return 'invalid';
+  if (VALID_MODULES.every((m) => mods.includes(m))) return null; // ครบทุกระบบ = null
+  return mods;
+}
 
 function getDb() {
   try {
@@ -64,6 +76,7 @@ export async function POST(request: NextRequest) {
       password?: string;
       display_name?: string;
       is_active?: boolean;
+      allowed_modules?: string[] | null;
     };
 
     const companyId = (body.company_id || '').trim();
@@ -79,6 +92,14 @@ export async function POST(request: NextRequest) {
     if (password.length < 6) {
       return NextResponse.json(
         { error: 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร' },
+        { status: 400 }
+      );
+    }
+
+    const modules = sanitizeModules(body.allowed_modules);
+    if (modules === 'invalid') {
+      return NextResponse.json(
+        { error: 'ต้องเลือกระบบที่เข้าได้อย่างน้อย 1 ระบบ' },
         { status: 400 }
       );
     }
@@ -100,6 +121,7 @@ export async function POST(request: NextRequest) {
           password: bcrypt.hashSync(password, 10),
           display_name: (body.display_name || '').trim(),
           is_active: body.is_active !== false,
+          allowed_modules: modules,
         },
       ])
       .select(SAFE_COLUMNS);
@@ -122,6 +144,7 @@ export async function PATCH(request: NextRequest) {
       password?: string;
       display_name?: string;
       is_active?: boolean;
+      allowed_modules?: string[] | null;
     };
 
     if (!body.id) {
@@ -143,6 +166,16 @@ export async function PATCH(request: NextRequest) {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.display_name !== undefined) updates.display_name = body.display_name.trim();
     if (body.is_active !== undefined) updates.is_active = body.is_active;
+    if (body.allowed_modules !== undefined) {
+      const modules = sanitizeModules(body.allowed_modules);
+      if (modules === 'invalid') {
+        return NextResponse.json(
+          { error: 'ต้องเลือกระบบที่เข้าได้อย่างน้อย 1 ระบบ' },
+          { status: 400 }
+        );
+      }
+      updates.allowed_modules = modules;
+    }
 
     const newCompany = body.company_id?.trim() || (current.company_id as string);
     const newUsername = body.username?.trim() || (current.username as string);
