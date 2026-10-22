@@ -1,0 +1,86 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseServer } from '@/lib/supabase';
+import { AccessError, apiError } from '@/lib/toolsSession';
+import { requireProcurementAdmin } from '@/lib/procurement/access';
+import { fetchAll, invalidateDataset } from '@/lib/procurement/data';
+import { PROC_KEY, PROC_TABLES, type ProcTable } from '@/lib/procurement/types';
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
+const COLUMNS: Record<ProcTable, string[]> = {
+  proc_pr: ['odoo_id', 'pr_no', 'requester', 'request_date', 'company', 'operating_unit', 'request_type', 'state', 'title', 'description', 'estimated_cost', 'po_amount', 'po_count', 'po_list', 'vendors', 'n_lines', 'n_attachments', 'drive_folder_id'],
+  proc_pr_lines: ['odoo_id', 'pr_odoo_id', 'pr_no', 'name', 'product', 'qty', 'uom', 'est_unit_price', 'analytic_account', 'date_required', 'specifications'],
+  proc_po_lines: ['odoo_id', 'po_no', 'pr_odoo_id', 'pr_no', 'requester', 'vendor', 'product', 'item', 'qty', 'uom', 'unit_price', 'subtotal', 'currency', 'order_date', 'po_state'],
+  proc_quotes: ['id', 'pr_no', 'requester', 'file_path', 'doc_type', 'vendor', 'vendor_group', 'quote_no', 'quote_date', 'customer', 'currency', 'subtotal', 'discount', 'vat', 'total', 'notes', 'n_items', 'duplicate_file'],
+  proc_quote_items: ['id', 'quote_id', 'pr_no', 'vendor_group', 'quote_date', 'name', 'spec', 'qty', 'unit', 'unit_price', 'amount', 'duplicate_file', 'check_note'],
+};
+const MAX_ROWS = 1000;
+
+const isTable = (t: unknown): t is ProcTable => typeof t === 'string' && (PROC_TABLES as string[]).includes(t);
+const bad = (msg: string) => new AccessError(msg, 400);
+
+function cleanRows(table: ProcTable, rows: unknown) {
+  if (!Array.isArray(rows) || rows.length < 1 || rows.length > MAX_ROWS) throw bad(`ส่งได้ครั้งละ 1–${MAX_ROWS} แถว`);
+  const cols = COLUMNS[table];
+  const key = PROC_KEY[table];
+  return rows.map(r => {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) throw bad('รูปแบบแถวข้อมูลไม่ถูกต้อง');
+    const row = r as Record<string, unknown>;
+    if (!Number.isSafeInteger(row[key])) throw bad(`แถวข้อมูลไม่มี ${key}`);
+    const extra = Object.keys(row).filter(k => !cols.includes(k));
+    if (extra.length) throw bad(`คอลัมน์ไม่รู้จัก: ${extra.slice(0, 3).join(', ')}`);
+    return row;
+  });
+}
+
+// Body: { action: 'upsert', table, rows }  — parents first (proc_pr, proc_quotes before their lines)
+//       { action: 'finalize', keys: { [table]: number[] }, source } — removes rows not in the new snapshot
+export async function POST(request: NextRequest) {
+  try {
+    const actor = await requireProcurementAdmin(request);
+    const body = (await request.json()) as Record<string, unknown>;
+    const db = getSupabaseServer();
+
+    if (body.action === 'upsert') {
+      if (!isTable(body.table)) throw bad('ตารางไม่ถูกต้อง');
+      const rows = cleanRows(body.table, body.rows);
+      const { error } = await db.from(body.table).upsert(rows, { onConflict: PROC_KEY[body.table] });
+      if (error) throw error;
+      return NextResponse.json({ ok: true, upserted: rows.length });
+    }
+
+    if (body.action === 'finalize') {
+      const keys = body.keys as Record<string, unknown> | undefined;
+      if (!keys || typeof keys !== 'object') throw bad('ไม่มีรายการคีย์');
+      const tables = Object.keys(keys);
+      if (!tables.length || !tables.every(isTable)) throw bad('ตารางไม่ถูกต้อง');
+      const deleted: Record<string, number> = {};
+      const counts: Record<string, number> = {};
+      // children before parents
+      for (const table of [...PROC_TABLES].reverse().filter(t => tables.includes(t))) {
+        const list = keys[table];
+        if (!Array.isArray(list) || !list.every(Number.isSafeInteger)) throw bad(`คีย์ของ ${table} ไม่ถูกต้อง`);
+        const keep = new Set(list as number[]);
+        const key = PROC_KEY[table];
+        const existing = await fetchAll<Record<string, number>>(table, key, key);
+        const stale = existing.map(r => r[key]).filter(k => !keep.has(k));
+        for (let i = 0; i < stale.length; i += 200) {
+          const { error } = await db.from(table).delete().in(key, stale.slice(i, i + 200));
+          if (error) throw error;
+        }
+        deleted[table] = stale.length;
+        counts[table] = keep.size;
+      }
+      const source = typeof body.source === 'string' ? body.source.slice(0, 200) : 'import';
+      const { error } = await db.from('proc_sync_runs').insert({ source, counts, imported_by: actor.username });
+      if (error) throw error;
+      invalidateDataset();
+      return NextResponse.json({ ok: true, deleted, counts });
+    }
+
+    throw bad('action ไม่ถูกต้อง');
+  } catch (error) {
+    return apiError(error);
+  }
+}

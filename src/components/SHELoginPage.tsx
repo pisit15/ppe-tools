@@ -5,7 +5,7 @@ import { Briefcase, Lock, User, ArrowRight, ArrowLeft, Building2 } from 'lucide-
 import { useAuth, LoginCompanyOption } from '@/components/AuthProvider';
 import Link from 'next/link';
 
-export default function SHELoginPage({ onLoginSuccess }: { onLoginSuccess: () => void }) {
+export default function SHELoginPage({ onLoginSuccess, title = 'SHE Workforce', subtitle = 'เข้าสู่ระบบเพื่อจัดการบุคลากรด้านความปลอดภัย' }: { onLoginSuccess: () => void; title?: string; subtitle?: string }) {
   const { login, isLoading } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -82,9 +82,9 @@ export default function SHELoginPage({ onLoginSuccess }: { onLoginSuccess: () =>
               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
                 <Briefcase className="text-white" size={28} />
               </div>
-              <h2 className="text-2xl font-bold text-white">SHE Workforce</h2>
+              <h2 className="text-2xl font-bold text-white">{title}</h2>
               <p className="text-teal-100 text-sm mt-1">
-                เข้าสู่ระบบเพื่อจัดการบุคลากรด้านความปลอดภัย
+                {subtitle}
               </p>
             </div>
 

@@ -56,6 +56,15 @@ export const PROJECTS: Project[] = [
     href: '/she-workforce',
     ready: true,
   },
+  {
+    id: 'procurement',
+    name: 'PR & Supplier Price',
+    description: 'ค้นหาราคาสินค้า/บริการที่ทีม SHE เคยซื้อและเคยได้ใบเสนอราคา เทียบผู้ขาย และดู PR ย้อนหลัง',
+    icon: 'cart',
+    color: 'from-sky-600 to-indigo-700',
+    href: '/procurement',
+    ready: true,
+  },
 ];
 
 // Module-level access control
