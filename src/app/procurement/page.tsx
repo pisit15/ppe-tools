@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Check, Search } from 'lucide-react';
 import type { PriceGroup, PricePoint, ProcMeta, SearchResult, VendorPriceStat } from '@/lib/procurement/types';
@@ -37,6 +37,16 @@ export default function PriceSearchPage() {
   const setPeriod = (value: PeriodSel) => setParams({ y: value === 'all' ? '' : String(value), group: '' });
   const url = q ? `/api/procurement/search?${new URLSearchParams({ q, ...(unit ? { unit } : {}), ...(group ? { group } : {}), ...(dup ? { dup: '1' } : {}), ...yq })}` : null;
   const { data, error, loading } = useJson<Resp>(url);
+  // Open a qualified group immediately; keep unlike products out of the same chart.
+  // The explicit "all" value lets users opt back into the ungrouped document list.
+  useEffect(() => {
+    if (group || !data) return;
+    const first = data.groups.find(item => item.ready);
+    if (!first) return;
+    const next = new URLSearchParams(window.location.search);
+    next.set('group', first.id);
+    window.history.replaceState(null, '', `/procurement?${next}`);
+  }, [data, group]);
   const { data: idle, error: idleError, loading: idleLoading } = useJson<Idle>(q ? null : `/api/procurement/search?${new URLSearchParams({ q: '', ...yq })}`);
   const meta = data?.meta ?? idle?.meta;
   const sel = validPeriod(requested, meta);
@@ -89,10 +99,11 @@ function GroupPicker({ groups, selected, onSelect }: { groups: PriceGroup[]; sel
       <div><h3 className="font-semibold">{chosen ? 'กลุ่มรายการที่เลือก' : 'เลือกกลุ่มรายการเพื่อดูราคา'}</h3>{!chosen && <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>แยกตามชื่อ รายละเอียด หน่วย สกุลเงิน และฐานราคา โดยไม่แปลงจำนวนต่อบรรจุภัณฑ์</p>}</div>
       {chosen && <div className="flex flex-wrap items-center gap-4 text-sm">
         <button type="button" aria-expanded={showChoices} aria-controls="price-group-options" onClick={() => setExpanded(value => !value)} className="font-medium" style={{ color: VIZ.primary }}>{showChoices ? 'ปิดตัวเลือกกลุ่ม' : 'เปลี่ยนกลุ่มรายการ'}</button>
-        <button type="button" onClick={() => onSelect('')} className="underline underline-offset-4" style={{ color: VIZ.lightText }}>ดูทุกรายการ</button>
+        <button type="button" onClick={() => onSelect('all')} className="underline underline-offset-4" style={{ color: VIZ.lightText }}>ดูทุกรายการ</button>
       </div>}
     </div>
     {chosen && <div className="mt-3">
+      <p className="mb-2 text-xs" style={{ color: VIZ.primary }}>กราฟด้านล่างแสดงเฉพาะกลุ่มนี้ · เปลี่ยนกลุ่มรายการเพื่อดูกราฟอื่น</p>
       <p className="text-sm font-medium">{chosen.item || 'ไม่ระบุชื่อรายการ'}</p>
       {chosen.detail && chosen.detail !== chosen.item && <p className="mt-1 line-clamp-2 text-xs leading-relaxed" title={chosen.detail} style={{ color: VIZ.lightText }}>{chosen.detail}</p>}
       <p className="mt-2 text-xs" style={{ color: VIZ.lightText }}>{chosen.unit || 'ไม่ระบุหน่วย'} · {chosen.currency || 'ไม่ระบุสกุลเงิน'} · {taxLabel(chosen.tax_basis)} · {unitPriceBasisLabel(chosen.price_basis)} · {int(chosen.count)} รายการ · {int(chosen.vendors)} ผู้ขาย</p>
