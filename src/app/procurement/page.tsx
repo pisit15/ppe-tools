@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Check, Search } from 'lucide-react';
 import type { PriceGroup, PricePoint, ProcMeta, SearchResult, VendorPriceStat } from '@/lib/procurement/types';
 import { canonicalUnit, taxLabel, unitPriceBasisLabel } from '@/lib/procurement/comparability';
@@ -20,7 +20,6 @@ const EXAMPLES = ['อบรม รถยก', 'กำจัด ขยะ', 'ถ
 type Idle = { meta: ProcMeta; top?: { label: string; prs: number }[] };
 
 export default function PriceSearchPage() {
-  const router = useRouter();
   const params = useSearchParams();
   const q = (params.get('q') || '').trim().slice(0, 200);
   const unit = params.get('unit') || '';
@@ -29,9 +28,10 @@ export default function PriceSearchPage() {
   const { sel: requested } = usePeriod();
   const yq: Record<string, string> = requested !== 'all' ? { y: String(requested) } : {};
   const setParams = (next: Record<string, string>) => {
-    const sp = new URLSearchParams(params.toString());
+    const sp = new URLSearchParams(window.location.search);
     for (const [k, v] of Object.entries(next)) { if (v) sp.set(k, v); else sp.delete(k); }
-    router.push(`/procurement${sp.size ? `?${sp}` : ''}`, { scroll: false });
+    // This page loads results through its API; query changes need no server navigation.
+    window.history.pushState(null, '', `/procurement${sp.size ? `?${sp}` : ''}`);
   };
   const search = (value: string) => setParams({ q: value.trim(), unit: '', group: '' });
   const setPeriod = (value: PeriodSel) => setParams({ y: value === 'all' ? '' : String(value), group: '' });
