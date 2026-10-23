@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Suspense, useState } from 'react';
-import { ArrowLeft, Building2, FileText, LogOut, Search, Upload } from 'lucide-react';
+import { ArrowLeft, BarChart3, Building2, FileText, LogOut, Search, Upload } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import SHELoginPage from '@/components/SHELoginPage';
 import { Loading, VIZ } from './_components/ui';
@@ -12,6 +12,7 @@ const NAV = [
   { href: '/procurement', label: 'ค้นหาราคา', icon: Search },
   { href: '/procurement/vendors', label: 'ผู้ขาย', icon: Building2 },
   { href: '/procurement/pr', label: 'รายการ PR', icon: FileText },
+  { href: '/procurement/summary', label: 'สรุปรายคน', icon: BarChart3 },
 ];
 
 export default function ProcurementLayout({ children }: { children: React.ReactNode }) {
