@@ -1,0 +1,70 @@
+@font-face{font-family:'Procurement Thai';src:url('/fonts/NotoSansThai.ttf') format('truetype');font-weight:100 900;font-display:swap}
+.workspace{--proc-ink:#18332f;--proc-muted:#526762;--proc-line:#dce5e0;--proc-green:#176448;color-scheme:light;min-height:100dvh;background:#f5f7f5;color:var(--proc-ink);font-family:'Procurement Thai',Arial,sans-serif;font-size:14px;line-height:1.65}
+.workspace *{box-sizing:border-box}
+.workspace :is(button,a,input,select,summary):focus-visible{outline:3px solid #419b77;outline-offset:3px}
+.workspace button:not(:disabled),.workspace summary{cursor:pointer}
+.workspace button:disabled{cursor:not-allowed}
+.workspace h2{font-size:clamp(22px,2vw,28px);line-height:1.4;letter-spacing:-.025em;font-weight:600}
+.workspace h3{line-height:1.5}
+.workspace table{line-height:1.6}
+.workspace th{font-size:12px;color:#526762}
+.workspace td{padding-top:12px;padding-bottom:12px}
+.workspace tbody tr:hover{background-color:#f6f9f7}
+.workspace :global(.tabular-nums){font-variant-numeric:tabular-nums}
+.workspace :global(.text-xs){font-size:12px}
+.workspace :global(.overflow-x-auto){overscroll-behavior-x:contain}
+.skip{position:absolute;top:-100px;left:20px;z-index:60;padding:10px 16px;border-radius:6px;background:#176448;color:white}
+.skip:focus{top:12px}
+.topbar{min-height:76px;padding:14px 28px;background:white;border-bottom:1px solid var(--proc-line);display:flex;align-items:center;justify-content:space-between;gap:20px}
+.brand{display:flex;gap:14px;align-items:center;text-decoration:none;color:var(--proc-ink)}
+.brand img{width:44px;height:36px;object-fit:contain}
+.brandName{display:block;font-weight:600;font-size:17px;letter-spacing:-.025em}
+.brandSub{display:block;color:var(--proc-muted);font-size:12px}
+.account{display:flex;align-items:center;gap:16px}
+.identity{text-align:right;font-size:13px}
+.role{color:var(--proc-muted);font-size:12px}
+.logout{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--proc-line);border-radius:6px;padding:7px 10px;background:white;font-size:12px}
+.logout:hover{background:#f1f6f3}
+.shell{display:grid;grid-template-columns:218px minmax(0,1fr);max-width:1680px;margin:0 auto}
+.sidebar{background:white;border-right:1px solid var(--proc-line);padding:28px 16px;min-height:calc(100dvh - 76px)}
+.navLabel{margin:0 12px 12px;color:var(--proc-muted);font-size:11px;letter-spacing:.08em}
+.navigation{display:flex;flex-direction:column;gap:5px}
+.navLink{display:flex;align-items:center;gap:10px;border-radius:6px;padding:11px 12px;color:var(--proc-muted);text-decoration:none;font-weight:500}
+.navLink:hover{background:#f3f7f4;color:var(--proc-green)}
+.active{background:#e9f3ec;color:#155739}
+.navLink svg{flex:none}
+.adminNav{border-top:1px solid var(--proc-line);margin-top:24px;padding-top:20px}
+.back{display:flex;align-items:center;gap:8px;margin:28px 12px 0;color:var(--proc-muted);font-size:12px}
+.main{width:100%;min-width:0;padding:28px 32px 48px}
+.context{display:flex;align-items:center;gap:8px;color:var(--proc-muted);font-size:12px;margin-bottom:24px}
+.context span:last-child{color:var(--proc-ink)}
+.loginMain{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 420px;gap:80px;padding:80px 32px;align-items:center}
+.intro h1{font-size:clamp(30px,3.5vw,42px);line-height:1.35;letter-spacing:-.035em;font-weight:600;margin:16px 0}
+.intro>p{color:var(--proc-muted);max-width:420px;font-size:16px}
+.eyebrow{color:var(--proc-green);font-size:12px;letter-spacing:.12em;font-weight:600}
+.features{border-top:1px solid var(--proc-line);margin-top:32px;padding-top:24px;display:grid;gap:18px}
+.feature{display:flex;align-items:center;gap:12px;color:var(--proc-muted)}
+.feature svg{color:var(--proc-green);flex:none}
+.loginCard{border:1px solid var(--proc-line);border-radius:12px;background:white;padding:32px;box-shadow:0 6px 24px #18332f05}
+.loginCard h2{font-size:24px;margin:0 0 8px}
+.loginHint{font-size:13px;color:var(--proc-muted);margin-bottom:24px}
+.field{display:block;margin:20px 0}
+.field>span,.field>label{display:block;margin-bottom:8px;font-weight:500}
+.field input{width:100%;border:1px solid #b8c9bf;border-radius:6px;min-height:46px;padding:10px 12px;background:white;color:var(--proc-ink);font-size:16px}
+.password{position:relative}
+.password input{padding-right:76px}
+.reveal{position:absolute;top:2px;right:4px;min-height:42px;padding:0 8px;display:inline-flex;align-items:center;gap:5px;color:var(--proc-muted);font-size:12px}
+.submit{display:flex;gap:8px;justify-content:center;align-items:center;width:100%;min-height:46px;margin-top:24px;border:1px solid #176448;border-radius:6px;background:#176448;color:white;font-weight:500}
+.submit:hover{background:#114d37}
+.submit:disabled{opacity:.6}
+.loginError{padding:12px;border-radius:6px;background:#fff2f0;border:1px solid #f0c6bf;color:#a2332a;font-size:13px}
+.help{margin-top:22px;color:var(--proc-muted);font-size:12px}
+.company{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:12px;border:1px solid var(--proc-line);border-radius:6px;margin-top:10px}
+.company:hover{background:#edf6f0}
+.company:disabled{opacity:.6}
+.cancel{display:block;margin:20px auto 0;color:var(--proc-muted);font-size:13px}
+@media(min-width:1700px){.shell{border-left:1px solid var(--proc-line);border-right:1px solid var(--proc-line)}}
+@media(max-width:1100px){.shell{grid-template-columns:188px minmax(0,1fr)}.main{padding:24px}.sidebar{padding-inline:10px}.loginMain{gap:40px}}
+@media(max-width:800px){.shell{display:block}.sidebar{min-height:0;padding:12px 16px;border-right:0;border-bottom:1px solid var(--proc-line)}.navLabel,.back{display:none}.navigation{flex-direction:row;flex-wrap:wrap;gap:4px}.navLink{padding:9px 10px;font-size:13px}.adminNav{border:0;margin:0;padding:0}.sidebar>nav{display:flex;flex-wrap:wrap}.main{padding:22px 16px 40px}.topbar{padding:14px 16px;gap:12px}.account{gap:10px}.identity{display:none}.context{margin-bottom:18px}.loginMain{grid-template-columns:1fr;max-width:480px;padding:32px 20px;gap:28px}.intro h1{font-size:28px;margin:8px 0}.intro>p{font-size:14px}.features{display:none}.loginCard{padding:24px}}
+@media(pointer:coarse){.workspace :is(button,select),.navLink{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.workspace *{scroll-behavior:auto;animation:none!important;transition:none!important}}

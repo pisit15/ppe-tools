@@ -63,7 +63,10 @@ export const PROC_KEY: Record<ProcTable, 'odoo_id' | 'id'> = {
   proc_pr: 'odoo_id', proc_pr_lines: 'odoo_id', proc_po_lines: 'odoo_id', proc_quotes: 'id', proc_quote_items: 'id',
 };
 
-/** One price observation: a PO line (paid) or a quotation line (offered). */
+export type TaxBasis = 'ex_vat' | 'inc_vat' | 'unknown';
+export type UnitPriceBasis = PriceBasis | 'unit' | 'unknown';
+
+/** One price observation: a PO line (ordered) or a quotation line (offered). */
 export type PricePoint = {
   source: 'po' | 'quote';
   id: number;
@@ -79,6 +82,10 @@ export type PricePoint = {
   detail: string;
   qty: number | null;
   unit: string;
+  /** Original unit is preserved above; canonical aliases are used only for grouping. */
+  currency?: string;
+  price_basis?: UnitPriceBasis;
+  tax_basis?: TaxBasis;
   unit_price: number;
   ref: string; // PO number or quotation number
   duplicate: boolean;
@@ -98,8 +105,25 @@ export type SearchResult = {
   units: { unit: string; count: number }[];
   points: PricePoint[];
   total: number; // matches before the display limit
+  match_total: number; // all matches before selecting a comparison group
+  groups: PriceGroup[];
+  selected_group: string | null;
+  comparison_ready: boolean;
+  comparison_message: string;
+  summary: PriceSearchSummary | null;
   vendors: VendorPriceStat[];
   truncated: boolean;
+};
+
+/** Matching recorded descriptions are a review aid, not verified technical equivalence. */
+export type PriceGroup = {
+  id: string; item: string; detail: string; unit: string; original_units: string[];
+  currency: string; price_basis: UnitPriceBasis; tax_basis: TaxBasis;
+  count: number; vendors: number; ready: boolean; issues: string[];
+};
+export type PriceSearchSummary = {
+  po_count: number; quote_count: number; vendor_count: number;
+  last_po: PricePoint | null; po_min: number | null; po_max: number | null; po_median: number | null;
 };
 
 export type VendorSummary = {

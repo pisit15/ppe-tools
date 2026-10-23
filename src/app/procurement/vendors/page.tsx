@@ -8,7 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { PR_STATE_LABEL, type CatStat, type VendorDetailResp, type VendorRow, type VendorsResp } from '@/lib/procurement/types';
 import { SPEND_CATS, SPEND_CAT_LABEL, isSpendCat, type SpendCat } from '@/lib/procurement/categories';
 import { be, pctChange, periodInfo, thaiDay, type PeriodSel } from '@/lib/procurement/period';
-import { PriceChart } from '../_components/PriceChart';
+import { taxLabel, unitPriceBasisLabel } from '@/lib/procurement/comparability';
 import {
   Card, ErrorBox, Kpi, Loading, MetaLine, PAGE_SIZE, Pager, PrLink, SortHeader, SourceBadge, VIZ, VendorLink,
   baht, inputClass, int, shortVendor, sortRows, thaiDate, useJson, withPeriod, type SortState,
@@ -35,6 +35,7 @@ export default function VendorsPage() {
 
 function VendorOverview() {
   const { params, set } = useUrlParams();
+  const tab = params.get('view') === 'analytics' ? 'analytics' : 'directory';
   const rawCat = params.get('cat');
   const cat: SpendCat | null = isSpendCat(rawCat) ? rawCat : null;
   const { sel: requested, setSel } = usePeriod();
@@ -47,9 +48,27 @@ function VendorOverview() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-bold">ผู้ขายและยอดใช้จ่าย</h2>
-        <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>เงินไปที่ผู้ขายรายไหน หมวดไหน เปลี่ยนไปอย่างไรจากปีก่อน — ใช้วางแผนต่อรองราคา ทำสัญญาระยะยาว หรือหาผู้ขายสำรอง</p>
+        <h2 className="text-2xl font-semibold tracking-tight">ผู้ขาย</h2>
+        <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>ค้นหาผู้ขาย ตรวจประวัติเอกสาร และวิเคราะห์มูลค่าตามใบสั่งซื้อ</p>
         <div className="mt-1"><MetaLine meta={data?.meta} /></div>
+      </div>
+      <div role="tablist" aria-label="มุมมองผู้ขาย" className="flex gap-1 border-b border-slate-200">
+        {([{ id: 'directory', label: 'รายชื่อผู้ขาย' }, { id: 'analytics', label: 'วิเคราะห์ยอด PO' }] as const).map((item, i) => (
+          <button key={item.id} id={`vendor-tab-${item.id}`} type="button" role="tab" aria-selected={tab === item.id}
+            aria-controls={`vendor-panel-${item.id}`} tabIndex={tab === item.id ? 0 : -1}
+            onClick={() => set({ view: item.id === 'directory' ? null : item.id })}
+            onKeyDown={event => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+              event.preventDefault();
+              const next = event.key === 'Home' ? 0 : event.key === 'End' ? 1 : 1 - i;
+              (event.currentTarget.parentElement?.children[next] as HTMLButtonElement | undefined)?.focus();
+              set({ view: next === 0 ? null : 'analytics' });
+            }}
+            className="border-b-2 px-4 py-3 text-sm font-medium"
+            style={{ borderColor: tab === item.id ? VIZ.primary : 'transparent', color: tab === item.id ? VIZ.primary : VIZ.lightText }}>
+            {item.label}
+          </button>
+        ))}
       </div>
       <PeriodBar meta={data?.meta} sel={sel} onChange={setSel} measure="po">
         {cat && <FilterPill label={`หมวด: ${SPEND_CAT_LABEL[cat]}`} onClear={() => setCat(null)} />}
@@ -58,8 +77,19 @@ function VendorOverview() {
       {error && <ErrorBox error={error} />}
       {loading && !data && <Loading />}
       {data && (
-        <div className="space-y-4 transition-opacity" style={{ opacity: loading ? 0.5 : 1 }} aria-busy={loading}>
-          <Overview data={data} sel={data.sel} cat={data.cat} onYear={setSel} onCat={setCat} />
+        <div id={`vendor-panel-${tab}`} role="tabpanel" aria-labelledby={`vendor-tab-${tab}`} className="space-y-4 transition-opacity" style={{ opacity: loading ? 0.5 : 1 }} aria-busy={loading}>
+          {tab === 'directory' ? <>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm" style={{ color: VIZ.lightText }}>พบ {int(data.vendors.length)} ราย · มี PO {int(data.totals.vendors)} ราย · {int(data.totals.quotes)} ใบเสนอราคา</p>
+              <label className="flex items-center gap-2 whitespace-nowrap text-sm">หมวดสินค้า
+                <select value={cat ?? ''} onChange={event => setCat(event.target.value || null)} className={inputClass}>
+                  <option value="">ทุกหมวด</option>
+                  {SPEND_CATS.map(category => <option key={category.id} value={category.id}>{category.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <VendorTable key={`${data.sel}:${data.cat ?? 'all'}`} vendors={data.vendors} years={data.years} sel={data.sel} hasPrev={data.totals.prev !== null} />
+          </> : <Overview data={data} sel={data.sel} cat={data.cat} onYear={setSel} onCat={setCat} />}
         </div>
       )}
     </div>
@@ -85,7 +115,7 @@ function Overview({ data, sel, cat, onYear, onCat }: {
     headline = `${SPEND_CAT_LABEL[cat]} ${name}: ยอด PO ${shortBaht(t.amount)} บาท${change ? ` — ${change}` : ''}`;
     sub = top ? `ผู้ขาย ${int(t.vendors)} ราย · รายใหญ่สุด ${shortVendor(top.vendor)} ${share(top.po_amount, t.amount)}%` : 'ไม่มี PO ในหมวดนี้ช่วงนี้';
   } else if (sel === 'all') {
-    headline = `${years.length} ปี (${be(years[0])}–${be(years[years.length - 1])}) ยอด PO รวม ${shortBaht(t.amount)} บาท จากผู้ขาย ${int(t.vendors)} ราย`;
+    headline = years.length ? `${years.length} ปี (${be(years[0])}–${be(years[years.length - 1])}) ยอด PO รวม ${shortBaht(t.amount)} บาท จากผู้ขาย ${int(t.vendors)} ราย` : 'ยังไม่มีข้อมูล PO ในช่วงนี้';
     if (topCat && share(topCat.amount, catTotal) >= 40) sub = `${topCat.cat === 'other' ? 'หมวดอื่น ๆ' : SPEND_CAT_LABEL[topCat.cat]} คิดเป็น ${share(topCat.amount, catTotal)}% ของทั้งหมด — กดชื่อหมวดในตารางเพื่อดูผู้ขายของหมวดนั้น`;
   } else {
     headline = `${name} ยอด PO ${shortBaht(t.amount)} บาท${change ? ` — ${change}` : ''}`;
@@ -141,7 +171,6 @@ function Overview({ data, sel, cat, onYear, onCat }: {
         )}
 
       <TopVendors rows={withPo} total={t.amount} sel={sel} cat={cat} hasPrev={hasPrev} prevLabel={prevLabel} />
-      <VendorTable vendors={vendors} years={years} sel={sel} hasPrev={hasPrev} />
       <p className="text-xs" style={{ color: VIZ.lightText }}>
         หมวดอ่านจากรหัสสินค้าในบรรทัด PO ของ Odoo ({SPEND_CATS.map(c => `${c.label} = ${c.codes}`).join(' · ')}) · ใบเสนอราคาไม่มีรหัสสินค้า จึงนับเข้าหมวดตาม PR ที่ซื้อจริง ·
         ใบเสนอราคาที่ไม่มีวันที่ นับตามวันที่เปิด PR · ยอด PO ไม่รวม PO ที่ยกเลิก
@@ -269,6 +298,7 @@ function VendorTable({ vendors, years, sel, hasPrev }: { vendors: VendorRow[]; y
             ))}
           </tbody>
         </table>
+        {view.length === 0 && <p className="px-6 py-12 text-center text-sm" style={{ color: VIZ.lightText }}>ไม่พบผู้ขายที่ตรงกับคำค้นหาหรือตัวกรองนี้</p>}
       </div>
       <div className="px-4 pb-4"><Pager page={page} total={rows.length} onPage={setPage} /></div>
     </Card>
@@ -297,7 +327,7 @@ function VendorDetail({ name }: { name: string }) {
     <div className="space-y-4">
       {back}
       <div>
-        <h2 className="text-xl font-bold">{overall.vendor}</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">{overall.vendor}</h2>
         {data.names.length > 1 && <p className="mt-1 text-xs" style={{ color: VIZ.lightText }}>ชื่อที่พบในเอกสาร: {data.names.join(' · ')}</p>}
         <p className="mt-1 text-xs" style={{ color: VIZ.lightText }}>ได้ PO ครั้งแรก {thaiDate(overall.first_po)} · รวมทุกปี {shortBaht(overall.po_amount)} บาท จาก {int(overall.po_count)} PO</p>
       </div>
@@ -323,7 +353,7 @@ function VendorDetail({ name }: { name: string }) {
         <Card>
           <ChartTitle title={overall.yearly[peak] > 0 ? `ยอด PO สูงสุดปี ${be(years[peak])} (${shortBaht(overall.yearly[peak])} บาท)` : 'ยอด PO รายปี'}
             sub={`กดปีเพื่อดูเฉพาะปีนั้น${meta.years.includes(Number(meta.as_of.slice(0, 4))) ? ` · ปี ${be(Number(meta.as_of.slice(0, 4)))} ถึง ${thaiDay(meta.as_of, false)}` : ''}`} />
-          <RankBars ariaLabel="ยอด PO รายปี" selected={sel === 'all' ? null : String(sel)} onSelect={k => setSel(Number(k) === sel ? 'all' : Number(k))}
+          <RankBars ariaLabel="ยอด PO รายปี" selected={sel === 'all' ? null : String(sel)} onSelect={k => { setSel(Number(k) === sel ? 'all' : Number(k)); setPage(0); }}
             rows={[...years].reverse().map(yr => {
               const val = overall.yearly[years.indexOf(yr)] ?? 0;
               return { key: String(yr), label: `ปี ${be(yr)}`, value: val, display: shortBaht(val) };
@@ -338,10 +368,12 @@ function VendorDetail({ name }: { name: string }) {
         )}
       </div>
 
-      {points.length > 0 && <Card><ChartTitle title="ราคาต่อหน่วยที่เคยซื้อ/เสนอ" sub={`${pname} · คลิกจุดเพื่อเปิด PR`} /><PriceChart points={points} /></Card>}
       {points.length > 0 && (
         <Card className="!p-0 overflow-hidden">
-          <h3 className="px-4 pt-4 font-semibold md:px-6">รายการราคา ({int(points.length)})</h3>
+          <div className="px-4 pt-4 md:px-6">
+            <ChartTitle title={`รายการตามเอกสาร (${int(points.length)})`} sub="แสดงราคาตาม PO และใบเสนอราคาแต่ละรายการ · สินค้าต่างสเปกหรือหน่วยยังเปรียบเทียบราคากันไม่ได้" />
+            <Link href={withPeriod('/procurement', y)} className="text-sm font-medium hover:underline" style={{ color: VIZ.primary }}>ค้นหาสินค้าเพื่อเลือกกลุ่มที่เปรียบเทียบกันได้ →</Link>
+          </div>
           <div className="overflow-x-auto">
             <table className="mt-2 w-full text-sm">
               <thead style={{ background: VIZ.bg }}><tr>
@@ -356,7 +388,10 @@ function VendorDetail({ name }: { name: string }) {
                     <td className="px-3 py-2"><SourceBadge source={p.source} /></td>
                     <td className="px-3 py-2 min-w-[16rem]"><p className="line-clamp-3" title={p.item}>{p.item}</p>{p.detail && p.detail !== p.item && <p className="text-xs" style={{ color: VIZ.lightText }}>{p.detail}</p>}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{p.qty === null ? '–' : int(p.qty)} {p.unit}</td>
-                    <td className="px-3 py-2 text-right font-medium tabular-nums">{baht(p.unit_price)}</td>
+                    <td className="px-3 py-2 text-right font-medium tabular-nums">{baht(p.unit_price)}
+                      <p className="mt-1 whitespace-nowrap text-xs font-normal" style={{ color: VIZ.lightText }}>{p.currency || 'ไม่ระบุสกุลเงิน'} · {taxLabel(p.tax_basis || 'unknown')}</p>
+                      <p className="mt-1 whitespace-nowrap text-xs font-normal" style={{ color: VIZ.lightText }}>{unitPriceBasisLabel(p.price_basis || 'unknown')}</p>
+                    </td>
                     <td className="px-3 py-2"><PrLink no={p.pr_no} by={p.requester} /></td>
                   </tr>
                 ))}

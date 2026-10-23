@@ -51,7 +51,7 @@ export function normalizeSync(sync: RawSync, poLines: RawPoLine[], quotes: RawQu
       odoo_id: l.id, po_no: l.order_id[1], pr_odoo_id: owner.prId, pr_no: owner.prNo, requester: owner.who,
       vendor: partner(l.partner_id), product: ref(l.product_id), item: ws(l.name).slice(0, 500), qty: l.product_qty || 0,
       uom: ref(l.product_uom), unit_price: l.price_unit || 0, subtotal: l.price_subtotal || 0,
-      currency: ref(l.currency_id) || 'THB', order_date: day(l.date_order), po_state: l.state || '',
+      currency: ref(l.currency_id), order_date: day(l.date_order), po_state: l.state || '',
     });
   }
 
@@ -60,7 +60,7 @@ export function normalizeSync(sync: RawSync, poLines: RawPoLine[], quotes: RawQu
       rows.proc_quotes.push({
         id: q.quote_id, pr_no: q.pr, requester: q.person, file_path: q.file, doc_type: q.doc_type || '',
         vendor: ws(q.vendor), vendor_group: ws(q.vendor_group || q.vendor), quote_no: q.quote_no, quote_date: day(q.date),
-        customer: q.customer, currency: q.currency || 'THB', subtotal: num(q.subtotal), discount: num(q.discount),
+        customer: q.customer, currency: ws(q.currency), subtotal: num(q.subtotal), discount: num(q.discount),
         vat: num(q.vat), total: num(q.total), notes: q.notes, n_items: q.n_items || 0, duplicate_file: !!q.duplicate_file,
         price_basis: basis(q.price_basis),
       });

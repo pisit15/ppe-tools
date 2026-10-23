@@ -1,5 +1,6 @@
 // Pure analysis helpers (no I/O) — shared by API routes and tests.
 import type { PricePoint, ProcPoLine, ProcPr, ProcQuote, ProcQuoteItem, SearchResult, VendorPriceStat, VendorSummary } from './types';
+import { canonicalCurrency, canonicalUnit, priceGroups } from './comparability';
 
 /** Vendor names differ between Odoo partners and quotation headers; compare on a stripped key. */
 export function vendorKey(name: string) {
@@ -118,7 +119,10 @@ export function pricePoints(po: ProcPoLine[], items: ProcQuoteItem[], quotes: Ma
   for (const l of po) {
     if (!(l.unit_price > 0) || l.po_state === 'cancel') continue;
     out.push({ source: 'po', id: l.odoo_id, pr_no: l.pr_no, requester: l.requester, vendor: l.vendor, vendor_key: vendorId(l.vendor), date: l.order_date, period_date: l.order_date, item: l.item || l.product,
-      detail: l.product, qty: l.qty, unit: l.uom || '', unit_price: Number(l.unit_price), ref: l.po_no, duplicate: false });
+      detail: l.product, qty: l.qty, unit: l.uom || '', unit_price: Number(l.unit_price), ref: l.po_no, duplicate: false,
+      currency: canonicalCurrency(l.currency), price_basis: 'unit',
+      // Odoo price_subtotal is untaxed. Do not assume price_unit has that basis when tax/discount changes it.
+      tax_basis: l.qty > 0 && Number.isFinite(l.subtotal) && Math.abs(l.qty * l.unit_price - l.subtotal) < 0.011 ? 'ex_vat' : 'unknown' });
   }
   for (const it of items) {
     if (it.unit_price === null || !(it.unit_price > 0)) continue;
@@ -128,14 +132,15 @@ export function pricePoints(po: ProcPoLine[], items: ProcQuoteItem[], quotes: Ma
     out.push({ source: 'quote', id: it.id, pr_no: it.pr_no, requester: q?.requester ?? '', vendor, vendor_key: vendorId(vendor), date,
       period_date: date ?? prDate.get(prKey(it.pr_no, q?.requester ?? '')) ?? null,
       item: it.name, detail: it.spec || '', qty: it.qty, unit: it.unit || '', unit_price: Number(it.unit_price),
-      ref: q?.quote_no || (q?.doc_type === 'comparison_table' ? 'ตารางเทียบราคา' : ''), duplicate: it.duplicate_file });
+      ref: q?.quote_no || (q?.doc_type === 'comparison_table' ? 'ตารางเทียบราคา' : ''), duplicate: it.duplicate_file,
+      currency: canonicalCurrency(q?.currency), price_basis: q?.price_basis || 'unknown', tax_basis: 'unknown' });
   }
   return out;
 }
 
-export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string; includeDuplicates?: boolean; limit?: number }): SearchResult {
+export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string; group?: string; includeDuplicates?: boolean; limit?: number }): SearchResult {
   const terms = queryTerms(q);
-  const limit = opts.limit ?? 600;
+  const limit = Math.max(0, opts.limit ?? 600);
   const text = (p: PricePoint) => `${p.item} ${p.detail} ${p.vendor} ${p.ref} ${p.pr_no}`;
   let hits: PricePoint[] = terms.length ? all.filter(p => matches(text(p), terms)) : [];
   let relaxed = false;
@@ -146,12 +151,24 @@ export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string
   }
   if (!opts.includeDuplicates) hits = hits.filter(p => !p.duplicate);
   const unitCount = new Map<string, number>();
-  for (const p of hits) unitCount.set(p.unit || '(ไม่ระบุ)', (unitCount.get(p.unit || '(ไม่ระบุ)') || 0) + 1);
-  if (opts.unit) hits = hits.filter(p => (p.unit || '(ไม่ระบุ)') === opts.unit);
+  for (const p of hits) {
+    const unit = canonicalUnit(p.unit) || '(ไม่ระบุ)';
+    unitCount.set(unit, (unitCount.get(unit) || 0) + 1);
+  }
+  const selectedUnit = canonicalUnit(opts.unit || '');
+  if (selectedUnit) hits = hits.filter(p => (canonicalUnit(p.unit) || '(ไม่ระบุ)') === selectedUnit);
   hits.sort((a, b) => cmpDate(b.date, a.date));
 
+  const match_total = hits.length;
+  const comparisonGroups = priceGroups(hits);
+  // Guard even an improbable hash collision: an ambiguous key can never select/merge groups.
+  const selected = comparisonGroups.filter(g => g.group.id === opts.group);
+  const chosen = selected.length === 1 ? selected[0] : null;
+  const comparison_ready = !!chosen?.group.ready;
+  if (opts.group) hits = chosen?.points ?? [];
+
   const groups = new Map<string, { names: Map<string, number>; points: PricePoint[] }>();
-  for (const p of hits) {
+  for (const p of comparison_ready ? hits : []) {
     const k = p.vendor_key || vendorId(p.vendor);
     const g = groups.get(k) ?? { names: new Map<string, number>(), points: [] as PricePoint[] };
     g.names.set(p.vendor, (g.names.get(p.vendor) || 0) + 1);
@@ -171,12 +188,30 @@ export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string
     };
   }).sort((a, b) => b.po_count - a.po_count || a.median_price - b.median_price);
 
+  const po = hits.filter(p => p.source === 'po');
+  const poPrices = po.map(p => p.unit_price);
   return {
     query: q,
     relaxed,
     units: [...unitCount.entries()].map(([unit, count]) => ({ unit, count })).sort((a, b) => b.count - a.count),
     points: hits.slice(0, limit),
     total: hits.length,
+    match_total,
+    groups: comparisonGroups.map(g => g.group),
+    selected_group: chosen?.group.id ?? null,
+    comparison_ready,
+    comparison_message: opts.group && !chosen
+      ? 'กลุ่มที่เลือกไม่อยู่ในผลค้นหาหรือช่วงเวลานี้ กรุณาเลือกกลุ่มใหม่'
+      : chosen && !comparison_ready
+        ? `แสดงเอกสารได้ แต่ยังสรุปเปรียบเทียบราคาไม่ได้: ${chosen.group.issues.join(' · ')}`
+        : chosen
+          ? 'จัดกลุ่มตามชื่อและรายละเอียดที่บันทึกตรงกัน โปรดตรวจสเปก ขนาดบรรจุ และเงื่อนไขในเอกสารก่อนตัดสินใจ'
+          : 'เลือกกลุ่มรายการก่อนดูสถิติราคาและผู้ขาย โดยตรวจชื่อ รายละเอียด หน่วย สกุลเงิน และฐานราคา',
+    summary: comparison_ready ? {
+      po_count: po.length, quote_count: hits.length - po.length, vendor_count: vendors.length,
+      last_po: po[0] || null, po_min: poPrices.length ? Math.min(...poPrices) : null,
+      po_max: poPrices.length ? Math.max(...poPrices) : null, po_median: poPrices.length ? median(poPrices) : null,
+    } : null,
     vendors,
     truncated: hits.length > limit,
   };
