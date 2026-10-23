@@ -5,6 +5,8 @@
 #   Only files listed in manifest.json with a matching SHA-256 are sent, so leftovers from older runs are ignored.
 #   If the site refuses because the new data would remove more than 10% of a table (HTTP 409), nothing is deleted:
 #   an admin checks the files and imports them on the import page (/procurement/import) instead.
+#   Every output line is also written to <Dir>\push_result.txt (overwritten each run), so a caller that stops
+#   waiting can still read the outcome: the last line starts with OK, DRYRUN or ERROR.
 param(
   [string]$Ticket = '',
   [switch]$DryRun,
@@ -13,8 +15,15 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$resultFile = Join-Path $Dir 'push_result.txt'
 
-function Fail([string]$msg, [int]$code = 1) { Write-Output "ERROR $msg"; exit $code }
+function Say([string]$line) {
+  Write-Output $line
+  try { Add-Content -LiteralPath $resultFile -Value $line -Encoding UTF8 } catch { }
+}
+function Fail([string]$msg, [int]$code = 1) { Say "ERROR $msg"; exit $code }
+
+try { Set-Content -LiteralPath $resultFile -Value ("started {0:yyyy-MM-dd HH:mm:ss}" -f (Get-Date)) -Encoding UTF8 } catch { }
 
 if (-not $DryRun -and $Ticket -notmatch '^[A-Za-z0-9_-]{40,128}$') { Fail 'ticket format is invalid' 2 }
 $manifestPath = Join-Path $Dir 'manifest.json'
@@ -47,7 +56,7 @@ function Post([string]$path) {
 $files = @($manifest.files | ForEach-Object { Checked $_.name $_.sha256 })
 $fin = Checked $manifest.finalize.name $manifest.finalize.sha256
 if ($DryRun) {
-  Write-Output ("DRYRUN ok files={0} created={1} counts={2}" -f ($files.Count + 1), $manifest.created_at, ($manifest.counts | ConvertTo-Json -Compress))
+  Say ("DRYRUN ok files={0} created={1} counts={2}" -f ($files.Count + 1), $manifest.created_at, ($manifest.counts | ConvertTo-Json -Compress))
   exit 0
 }
 $upserted = 0
@@ -56,7 +65,7 @@ foreach ($f in $files) {
   $i++
   $r = Post $f
   $upserted += [int]$r.upserted
-  Write-Output ("sent {0}/{1} {2} rows={3}" -f $i, $files.Count, [IO.Path]::GetFileName($f), $r.upserted)
+  Say ("sent {0}/{1} {2} rows={3}" -f $i, $files.Count, [IO.Path]::GetFileName($f), $r.upserted)
 }
 $r = Post $fin
-Write-Output ("OK upserted={0} counts={1} deleted={2}" -f $upserted, ($r.counts | ConvertTo-Json -Compress), ($r.deleted | ConvertTo-Json -Compress))
+Say ("OK upserted={0} counts={1} deleted={2}" -f $upserted, ($r.counts | ConvertTo-Json -Compress), ($r.deleted | ConvertTo-Json -Compress))
