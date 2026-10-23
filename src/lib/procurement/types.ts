@@ -34,11 +34,17 @@ export type ProcPoLine = {
   unit_price: number; subtotal: number; currency: string; order_date: string | null; po_state: string;
 };
 
+/** What a quotation's total covers: a month of a recurring service, a year, or a one-off purchase/job. */
+export type PriceBasis = 'month' | 'year' | 'once';
+export const PRICE_BASES: PriceBasis[] = ['month', 'year', 'once'];
+export const PRICE_BASIS_LABEL: Record<PriceBasis, string> = { month: 'ราคาต่อเดือน', year: 'ราคาต่อปี', once: 'ครั้งเดียว' };
+
 export type ProcQuote = {
   id: number; pr_no: string; requester: string; file_path: string; doc_type: string;
   vendor: string; vendor_group: string; quote_no: string | null; quote_date: string | null;
   customer: string | null; currency: string; subtotal: number | null; discount: number | null;
   vat: number | null; total: number | null; notes: string | null; n_items: number; duplicate_file: boolean;
+  price_basis: PriceBasis | null;
 };
 
 export type ProcQuoteItem = {
@@ -64,6 +70,8 @@ export type PricePoint = {
   pr_no: string;
   requester: string; // PR numbers repeat across companies; pr_no + requester identifies the PR
   vendor: string;
+  /** one key per company (stripped name + Thai/English aliases learned from the data) */
+  vendor_key: string;
   date: string | null;
   /** date used for period filters: the document date, or the PR's request date when the document has none */
   period_date: string | null;
@@ -153,6 +161,7 @@ export type RawQuote = {
   vendor_group: string | null; quote_no: string | null; date: string | null; customer: string | null;
   currency: string | null; subtotal: number | null; discount: number | null; vat: number | null;
   total: number | null; notes: string | null; n_items: number | null; duplicate_file: boolean;
+  price_basis?: string | null;
 };
 export type RawQuoteItem = {
   quote_id: number; pr: string; vendor: string | null; vendor_group: string | null; date: string | null;

@@ -15,7 +15,7 @@ const __defs = {
   "./types": function (module, exports, require) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.PROC_KEY = exports.PROC_TABLES = exports.OPEN_PR_STATES = exports.PR_STATE_LABEL = void 0;
+    exports.PROC_KEY = exports.PROC_TABLES = exports.PRICE_BASIS_LABEL = exports.PRICE_BASES = exports.OPEN_PR_STATES = exports.PR_STATE_LABEL = void 0;
     exports.PR_STATE_LABEL = {
         draft: 'ร่าง',
         to_approve: 'รออนุมัติ',
@@ -24,6 +24,8 @@ const __defs = {
         done: 'เสร็จสิ้น (ออก PO แล้ว)',
     };
     exports.OPEN_PR_STATES = ['draft', 'to_approve', 'approved'];
+    exports.PRICE_BASES = ['month', 'year', 'once'];
+    exports.PRICE_BASIS_LABEL = { month: 'ราคาต่อเดือน', year: 'ราคาต่อปี', once: 'ครั้งเดียว' };
     exports.PROC_TABLES = ['proc_pr', 'proc_pr_lines', 'proc_po_lines', 'proc_quotes', 'proc_quote_items'];
     exports.PROC_KEY = {
         proc_pr: 'odoo_id', proc_pr_lines: 'odoo_id', proc_po_lines: 'odoo_id', proc_quotes: 'id', proc_quote_items: 'id',
@@ -34,6 +36,8 @@ const __defs = {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.normalizeSync = normalizeSync;
+    // Turns the daily Odoo sync files into proc_* rows. Runs in the browser on the import page.
+    const types_1 = require("./types");
     const ref = (x) => (Array.isArray(x) ? x[1] : '');
     // Odoo partners carry a branch code suffix ("บริษัท … จำกัด 00001")
     const partner = (x) => ref(x).replace(/\s\d{5}$/, '').trim();
@@ -42,6 +46,7 @@ const __defs = {
         const s = typeof v === 'string' ? v.slice(0, 10) : '';
         return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
     };
+    const basis = (v) => types_1.PRICE_BASES.includes(v) ? v : null;
     const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
     function normalizeSync(sync, poLines, quotes) {
         const rows = { proc_pr: [], proc_pr_lines: [], proc_po_lines: [], proc_quotes: [], proc_quote_items: [] };
@@ -93,6 +98,7 @@ const __defs = {
                     vendor: ws(q.vendor), vendor_group: ws(q.vendor_group || q.vendor), quote_no: q.quote_no, quote_date: day(q.date),
                     customer: q.customer, currency: q.currency || 'THB', subtotal: num(q.subtotal), discount: num(q.discount),
                     vat: num(q.vat), total: num(q.total), notes: q.notes, n_items: q.n_items || 0, duplicate_file: !!q.duplicate_file,
+                    price_basis: basis(q.price_basis),
                 });
             }
             quotes.items.forEach((it, i) => {

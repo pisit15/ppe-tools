@@ -12,6 +12,71 @@ export function vendorKey(name: string) {
     .replace(/[\s.,()\-_'"&/]+/g, '');
 }
 
+// Bracketed parts that say where/what kind of company, not which company.
+// Also notes that name a different company ("ในเครือของ …", "ออกในนาม …") or an option ("option 1").
+const NOT_A_NAME = /^(ประเทศไทย|สำนักงานใหญ่|มหาชน|thailand|head ?office|hq|สาขา.*|branch.*|[\d\s.-]+)$|^(ในเครือ|ผ่าน|ผู้รับประกัน|บริษัทประกันภัย|ใบเสนอราคา|ออกในนาม|option|ตัวเลือก|ทางเลือก|rev\b|ราคา)/i;
+const MIN_ALIAS = 4;
+
+/** Other names a vendor string carries: each bracketed part and each side of " / ", plus the Latin and Thai halves
+ * of a mixed name ("Thai lab บริษัท ห้องปฏิบัติการไทย จำกัด"). Short or generic parts are ignored. */
+export function vendorAliases(name: string): string[] {
+  const out = new Set<string>();
+  const add = (s: string) => {
+    const t = s.trim();
+    if (!t || NOT_A_NAME.test(t)) return;
+    const k = vendorKey(t);
+    if (k.length < MIN_ALIAS) return;
+    out.add(k);
+    // mixed script: "thailabห้องปฏิบัติการไทย" -> "thailab", "ห้องปฏิบัติการไทย"
+    if (/[a-z]/.test(k) && /[฀-๿]/.test(k)) {
+      for (const part of k.split(/(?<=[a-z0-9])(?=[฀-๿])|(?<=[฀-๿])(?=[a-z])/)) if (part.length >= MIN_ALIAS) out.add(part);
+    }
+  };
+  add(name);
+  for (const m of name.matchAll(/\(([^()]*)\)/g)) add(m[1]);
+  for (const part of name.replace(/\([^()]*\)/g, ' ').split(/\s\/\s/)) add(part);
+  return [...out];
+}
+
+/**
+ * Resolver from any vendor name to one key per company, built from every name in the data: names that share a
+ * stripped name or an alias (Thai/English name in brackets) are the same vendor. Falls back to vendorKey.
+ */
+export function vendorKeyer(names: Iterable<string>) {
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    let r = k;
+    while (parent.has(r) && parent.get(r) !== r) r = parent.get(r)!;
+    let c = k;
+    while (c !== r) { const n = parent.get(c)!; parent.set(c, r); c = n; }
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    if (!parent.has(a)) parent.set(a, a);
+    if (!parent.has(b)) parent.set(b, b);
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb); // smallest key becomes the root: stable across loads
+  };
+  for (const n of new Set(names)) {
+    const main = vendorKey(n);
+    if (!main) continue;
+    union(main, main);
+    for (const a of vendorAliases(n)) union(main, a);
+  }
+  return (name: string) => {
+    const k = vendorKey(name);
+    return (k && parent.has(k) ? find(k) : k) || name;
+  };
+}
+
+let keyer: (name: string) => string = name => vendorKey(name) || name;
+/** The server's dataset loader installs the keyer built from all loaded names (see data.ts). */
+export function setVendorKeyer(fn: (name: string) => string) {
+  keyer = fn;
+}
+/** One key per company for grouping: vendorKey, merged with the aliases known to the loaded data. */
+export const vendorId = (name: string) => keyer(name);
+
 const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
 export function queryTerms(q: string) {
   return q.toLowerCase().split(/\s+/).map(t => t.trim()).filter(Boolean).slice(0, 8);
@@ -52,14 +117,15 @@ export function pricePoints(po: ProcPoLine[], items: ProcQuoteItem[], quotes: Ma
   const out: PricePoint[] = [];
   for (const l of po) {
     if (!(l.unit_price > 0) || l.po_state === 'cancel') continue;
-    out.push({ source: 'po', id: l.odoo_id, pr_no: l.pr_no, requester: l.requester, vendor: l.vendor, date: l.order_date, period_date: l.order_date, item: l.item || l.product,
+    out.push({ source: 'po', id: l.odoo_id, pr_no: l.pr_no, requester: l.requester, vendor: l.vendor, vendor_key: vendorId(l.vendor), date: l.order_date, period_date: l.order_date, item: l.item || l.product,
       detail: l.product, qty: l.qty, unit: l.uom || '', unit_price: Number(l.unit_price), ref: l.po_no, duplicate: false });
   }
   for (const it of items) {
     if (it.unit_price === null || !(it.unit_price > 0)) continue;
     const q = quotes.get(it.quote_id);
     const date = it.quote_date ?? q?.quote_date ?? null;
-    out.push({ source: 'quote', id: it.id, pr_no: it.pr_no, requester: q?.requester ?? '', vendor: it.vendor_group || q?.vendor || '', date,
+    const vendor = it.vendor_group || q?.vendor || '';
+    out.push({ source: 'quote', id: it.id, pr_no: it.pr_no, requester: q?.requester ?? '', vendor, vendor_key: vendorId(vendor), date,
       period_date: date ?? prDate.get(prKey(it.pr_no, q?.requester ?? '')) ?? null,
       item: it.name, detail: it.spec || '', qty: it.qty, unit: it.unit || '', unit_price: Number(it.unit_price),
       ref: q?.quote_no || (q?.doc_type === 'comparison_table' ? 'ตารางเทียบราคา' : ''), duplicate: it.duplicate_file });
@@ -86,7 +152,7 @@ export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string
 
   const groups = new Map<string, { names: Map<string, number>; points: PricePoint[] }>();
   for (const p of hits) {
-    const k = vendorKey(p.vendor) || p.vendor;
+    const k = p.vendor_key || vendorId(p.vendor);
     const g = groups.get(k) ?? { names: new Map<string, number>(), points: [] as PricePoint[] };
     g.names.set(p.vendor, (g.names.get(p.vendor) || 0) + 1);
     g.points.push(p);
@@ -124,13 +190,13 @@ export function vendorSummaries(prs: Pick<ProcPr, 'pr_no' | 'requester'>[], po: 
     if (l.po_state === 'cancel') continue;
     const pk = prKey(l.pr_no, l.requester);
     const s = prVendorKeys.get(pk) ?? new Set();
-    s.add(vendorKey(l.vendor));
+    s.add(vendorId(l.vendor));
     prVendorKeys.set(pk, s);
   }
   type Acc = { names: Map<string, number>; lines: number; pos: Set<string>; amount: number; prs: Set<string>; quotes: number; quotedPrs: Set<string>; dates: string[]; items: Map<string, number> };
   const acc = new Map<string, Acc>();
   const get = (name: string) => {
-    const k = vendorKey(name) || name;
+    const k = vendorId(name);
     let a = acc.get(k);
     if (!a) { a = { names: new Map(), lines: 0, pos: new Set(), amount: 0, prs: new Set(), quotes: 0, quotedPrs: new Set(), dates: [], items: new Map() }; acc.set(k, a); }
     a.names.set(name, (a.names.get(name) || 0) + 1);

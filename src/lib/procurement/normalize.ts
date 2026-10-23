@@ -1,5 +1,5 @@
 // Turns the daily Odoo sync files into proc_* rows. Runs in the browser on the import page.
-import type { OdooRef, ProcRows, RawPoLine, RawQuotes, RawSync } from './types';
+import { PRICE_BASES, type OdooRef, type PriceBasis, type ProcRows, type RawPoLine, type RawQuotes, type RawSync } from './types';
 
 const ref = (x: OdooRef | undefined) => (Array.isArray(x) ? x[1] : '');
 // Odoo partners carry a branch code suffix ("บริษัท … จำกัด 00001")
@@ -9,6 +9,7 @@ const day = (v: unknown) => {
   const s = typeof v === 'string' ? v.slice(0, 10) : '';
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 };
+const basis = (v: unknown): PriceBasis | null => (PRICE_BASES as unknown[]).includes(v) ? (v as PriceBasis) : null;
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 export function normalizeSync(sync: RawSync, poLines: RawPoLine[], quotes: RawQuotes | null): ProcRows {
@@ -61,6 +62,7 @@ export function normalizeSync(sync: RawSync, poLines: RawPoLine[], quotes: RawQu
         vendor: ws(q.vendor), vendor_group: ws(q.vendor_group || q.vendor), quote_no: q.quote_no, quote_date: day(q.date),
         customer: q.customer, currency: q.currency || 'THB', subtotal: num(q.subtotal), discount: num(q.discount),
         vat: num(q.vat), total: num(q.total), notes: q.notes, n_items: q.n_items || 0, duplicate_file: !!q.duplicate_file,
+        price_basis: basis(q.price_basis),
       });
     }
     quotes.items.forEach((it, i) => {

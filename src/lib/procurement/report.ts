@@ -1,5 +1,5 @@
 // Vendor spend reports for a period and spend category. Pure (no I/O): the API routes pass in the cached dataset.
-import { prKey, vendorKey, vendorSummaries } from './analysis';
+import { prKey, vendorId, vendorSummaries } from './analysis';
 import { SPEND_CATS, type SpendCat } from './categories';
 import { inRange, periodInfo, yearRange, type PeriodSel, type Range } from './period';
 import type { CatStat, ProcMeta, ProcPoLine, ProcPrSummary, ProcQuote, VendorRow, VendorSummary, VendorsResp, YearCats } from './types';
@@ -9,7 +9,7 @@ export type ReportInput = {
   prDate: Map<string, string | null>; poCat: Map<number, SpendCat>; prCats: Map<string, Set<SpendCat>>;
 };
 
-const vk = (name: string) => vendorKey(name) || name;
+const vk = (name: string) => vendorId(name);
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
 function slicer(d: ReportInput, cat: SpendCat | null) {

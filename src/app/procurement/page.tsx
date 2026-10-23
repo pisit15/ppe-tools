@@ -127,7 +127,7 @@ function Results({ data, unit, onUnit, period }: { data: Resp; unit: string; onU
     if (!oneUnit) return [];
     const by = new Map<string, { names: Map<string, number>; po: number[]; quotes: number[] }>();
     for (const p of data.points) {
-      const k = vendorKey(p.vendor) || p.vendor || '–';
+      const k = p.vendor_key || vendorKey(p.vendor) || p.vendor || '–';
       const g = by.get(k) ?? { names: new Map<string, number>(), po: [], quotes: [] };
       g.names.set(p.vendor || '–', (g.names.get(p.vendor || '–') || 0) + 1);
       (p.source === 'po' ? g.po : g.quotes).push(p.unit_price);

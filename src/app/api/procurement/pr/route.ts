@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
 import { apiError } from '@/lib/toolsSession';
 import { requireProcurementActor } from '@/lib/procurement/access';
-import { vendorKey } from '@/lib/procurement/analysis';
+import { vendorId } from '@/lib/procurement/analysis';
 import { actorScope, getDataset } from '@/lib/procurement/data';
 import { canSee } from '@/lib/procurement/scope';
 import { AccessError } from '@/lib/toolsSession';
@@ -44,12 +44,15 @@ export async function GET(request: NextRequest) {
       : { data: [] as ProcQuoteItem[], error: null };
     if (items.error) throw items.error;
     const poRows = (po.data ?? []) as ProcPoLine[];
-    const chosen = new Set(poRows.filter(l => l.po_state !== 'cancel').map(l => vendorKey(l.vendor)));
+    const chosen = new Set(poRows.filter(l => l.po_state !== 'cancel').map(l => vendorId(l.vendor)));
     return NextResponse.json({
       pr,
       lines: (lines.data ?? []) as ProcPrLine[],
       po: poRows,
-      quotes: quoteRows.map(q => ({ ...q, selected: chosen.has(vendorKey(q.vendor_group || q.vendor)) })),
+      quotes: quoteRows.map(q => {
+        const vendor_key = vendorId(q.vendor_group || q.vendor);
+        return { ...q, vendor_key, selected: chosen.has(vendor_key) };
+      }),
       items: (items.data ?? []) as ProcQuoteItem[],
     });
   } catch (error) {

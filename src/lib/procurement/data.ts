@@ -1,5 +1,5 @@
 import { getSupabaseServer } from '@/lib/supabase';
-import { prKey, pricePoints } from './analysis';
+import { prKey, pricePoints, setVendorKeyer, vendorKeyer } from './analysis';
 import { categorizePoLines, type SpendCat } from './categories';
 import { dataYears, type Coverage } from './period';
 import { prSites, type ActorScope } from './scope';
@@ -70,6 +70,8 @@ async function load(): Promise<Dataset> {
     const k = prKey(l.pr_no, l.requester);
     prCats.set(k, (prCats.get(k) ?? new Set<SpendCat>()).add(poCat.get(l.odoo_id) ?? 'other'));
   }
+  // Vendors appear under several spellings (Thai/English, with or without brackets): learn the aliases first.
+  setVendorKeyer(vendorKeyer([...po.map(l => l.vendor), ...quotes.flatMap(q => [q.vendor, q.vendor_group]), ...items.map(i => i.vendor_group)].filter(Boolean)));
   const points = pricePoints(po, items, quoteById, prDate);
 
   // Period facts: data as of the import day (Bangkok), years with PR/PO data, first date per measure.

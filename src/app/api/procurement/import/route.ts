@@ -12,7 +12,7 @@ const COLUMNS: Record<ProcTable, string[]> = {
   proc_pr: ['odoo_id', 'pr_no', 'requester', 'request_date', 'company', 'operating_unit', 'request_type', 'state', 'title', 'description', 'estimated_cost', 'po_amount', 'po_count', 'po_list', 'vendors', 'n_lines', 'n_attachments', 'drive_folder_id'],
   proc_pr_lines: ['odoo_id', 'pr_odoo_id', 'pr_no', 'name', 'product', 'qty', 'uom', 'est_unit_price', 'analytic_account', 'date_required', 'specifications'],
   proc_po_lines: ['odoo_id', 'po_no', 'pr_odoo_id', 'pr_no', 'requester', 'vendor', 'product', 'item', 'qty', 'uom', 'unit_price', 'subtotal', 'currency', 'order_date', 'po_state'],
-  proc_quotes: ['id', 'pr_no', 'requester', 'file_path', 'doc_type', 'vendor', 'vendor_group', 'quote_no', 'quote_date', 'customer', 'currency', 'subtotal', 'discount', 'vat', 'total', 'notes', 'n_items', 'duplicate_file'],
+  proc_quotes: ['id', 'pr_no', 'requester', 'file_path', 'doc_type', 'vendor', 'vendor_group', 'quote_no', 'quote_date', 'customer', 'currency', 'subtotal', 'discount', 'vat', 'total', 'notes', 'n_items', 'duplicate_file', 'price_basis'],
   proc_quote_items: ['id', 'quote_id', 'pr_no', 'vendor_group', 'quote_date', 'name', 'spec', 'qty', 'unit', 'unit_price', 'amount', 'duplicate_file', 'check_note'],
 };
 const MAX_ROWS = 1000;
