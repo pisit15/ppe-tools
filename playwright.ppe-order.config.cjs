@@ -1,4 +1,5 @@
 const { defineConfig } = require('@playwright/test');
+const port = process.env.PPE_TEST_PORT || '4320';
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -7,9 +8,9 @@ module.exports = defineConfig({
   expect: { timeout: 15000 },
   workers: 1,
   webServer: {
-    command: 'node node_modules/next/dist/bin/next dev --webpack --hostname 127.0.0.1 --port 4320',
+    command: `node node_modules/next/dist/bin/next dev --webpack --hostname 127.0.0.1 --port ${port}`,
     cwd: __dirname,
-    url: 'http://127.0.0.1:4320/ppe/reports/order?company_id=amt',
+    url: `http://127.0.0.1:${port}/ppe/reports/order?company_id=amt`,
     timeout: 180000,
     reuseExistingServer: false,
     env: {
@@ -21,7 +22,7 @@ module.exports = defineConfig({
     },
   },
   use: {
-    baseURL: 'http://127.0.0.1:4320',
+    baseURL: `http://127.0.0.1:${port}`,
     channel: 'chrome',
     headless: true,
     timezoneId: 'Asia/Bangkok',

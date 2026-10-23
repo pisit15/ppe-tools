@@ -117,8 +117,8 @@ test('dashboard deduplicates stock alerts and its purchase candidates match the 
   await orderLink.click();
   await expect(page.getByRole('heading', { name: 'คำนวณสั่งซื้อ', exact: true })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'เฉพาะที่ต้องสั่งซื้อ (3)' })).toBeChecked();
-  await expect(page.locator('tbody tr')).toHaveCount(3);
-  expect((await page.locator('tbody tr td:nth-child(2)').allTextContents()).sort()).toEqual(['EQUAL', 'LOW', 'USED-ZERO']);
+  await expect(page.getByTestId('order-item')).toHaveCount(3);
+  expect((await page.getByTestId('order-item').evaluateAll(items => items.map(item => item.getAttribute('data-product-code')))).sort()).toEqual(['EQUAL', 'LOW', 'USED-ZERO']);
 });
 
 test('action filters distinguish stock alerts, purchasing policy, and truly unused items', async ({ page }) => {

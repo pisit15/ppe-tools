@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import PPEOrderItem from '@/components/PPEOrderItem';
 import {
   ShoppingCart, Settings2, FileSpreadsheet, Search, ChevronLeft, ChevronRight,
   ChevronDown, ChevronUp, Save,
@@ -368,25 +369,26 @@ export default function OrderCalculationPage() {
   }
 
   return (
-    <div className="space-y-5 p-6">
+    <div className="mx-auto w-full min-w-0 max-w-[1600px] space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl" style={{ backgroundColor: `${VIZ.primary}20` }}>
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="shrink-0 rounded-xl p-3" style={{ backgroundColor: `${VIZ.primary}20` }}>
             <ShoppingCart size={24} style={{ color: VIZ.primary }} />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold" style={{ color: VIZ.text }}>คำนวณสั่งซื้อ</h1>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold sm:text-3xl" style={{ color: VIZ.text }}>คำนวณสั่งซื้อ</h1>
             <p className="text-sm" style={{ color: VIZ.lightText }}>
               Calculation Order จากยอดเบิก 3 เดือนย้อนหลัง — สำหรับส่งฝ่ายจัดซื้อ
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto">
           <select
+            aria-label="ช่วงการใช้งาน"
             value={endMonth}
             onChange={e => setEndMonth(e.target.value)}
-            className="px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-900 bg-white"
+            className="min-h-11 max-w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900"
           >
             {monthOptions.map(k => {
               const [y, m] = k.split('-').map(Number);
@@ -414,7 +416,7 @@ export default function OrderCalculationPage() {
 
       {/* Lead time settings */}
       {showSettings && settings && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-end gap-4">
             {([
               ['Quotation', 'quotation_days'],
@@ -424,8 +426,9 @@ export default function OrderCalculationPage() {
               ['Delivery', 'delivery_days'],
             ] as const).map(([label, key]) => (
               <div key={key}>
-                <label className="block text-xs font-semibold mb-1" style={{ color: VIZ.lightText }}>{label} (วัน)</label>
+                <label htmlFor={`order-lead-${key}`} className="block text-xs font-semibold mb-1" style={{ color: VIZ.lightText }}>{label} (วัน)</label>
                 <input
+                  id={`order-lead-${key}`}
                   type="number"
                   min={0}
                   step={0.5}
@@ -453,7 +456,7 @@ export default function OrderCalculationPage() {
       )}
 
       {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 break-words xl:grid-cols-4">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4" style={{ borderLeft: `4px solid ${VIZ.primary}` }}>
           <p className="text-xs" style={{ color: VIZ.lightText }}>สินค้าทั้งหมด</p>
           <p className="text-2xl font-bold" style={{ color: VIZ.primary }}>{rows.length}</p>
@@ -474,14 +477,15 @@ export default function OrderCalculationPage() {
 
       {/* Controls */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[220px]">
+        <div className="relative min-w-0 basis-64 flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="ค้นหาชื่อสินค้า / Item Code"
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-400"
+            aria-label="ค้นหารายการ"
+            className="min-h-11 w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400"
           />
         </div>
         <label className="flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: VIZ.text }}>
@@ -493,129 +497,52 @@ export default function OrderCalculationPage() {
         </span>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
-        <table className="w-full text-xs whitespace-nowrap">
-          <thead>
-            <tr className="border-b text-left" style={{ backgroundColor: VIZ.bg, color: VIZ.lightText }}>
-              <th className="px-2 py-2 font-semibold">No.</th>
-              <th className="px-2 py-2 font-semibold">Item Code</th>
-              <th className="px-2 py-2 font-semibold">สินค้า</th>
-              <th className="px-2 py-2 font-semibold text-center">{monthLabelTH(months[0])}</th>
-              <th className="px-2 py-2 font-semibold text-center">{monthLabelTH(months[1])}</th>
-              <th className="px-2 py-2 font-semibold text-center">{monthLabelTH(months[2])}</th>
-              <th className="px-2 py-2 font-semibold text-center" style={{ color: VIZ.primary }}>Stock on hand</th>
-              <th className="px-2 py-2 font-semibold text-center">ใช้ 3 เดือน</th>
-              <th className="px-2 py-2 font-semibold text-center">เฉลี่ย/เดือน</th>
-              <th className="px-2 py-2 font-semibold text-center">Safety Stock</th>
-              <th className="px-2 py-2 font-semibold text-center">MIN</th>
-              <th className="px-2 py-2 font-semibold text-center">MAX</th>
-              <th className="px-2 py-2 font-semibold text-center">AVG.</th>
-              <th className="px-2 py-2 font-semibold text-center">Re-order point</th>
-              <th className="px-2 py-2 font-semibold text-center" style={{ color: VIZ.accent }}>ต้องสั่ง</th>
-              <th className="px-2 py-2 font-semibold text-center">สั่งจริง</th>
-              <th className="px-2 py-2 font-semibold">Remark</th>
-              <th className="px-2 py-2 font-semibold text-right">ราคา/หน่วย</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageRows.length === 0 ? (
-              <tr><td colSpan={18} className="px-4 py-10 text-center text-gray-400">ไม่พบรายการ</td></tr>
-            ) : (
-              pageRows.map((r, i) => {
-                const rm = remarks[r.product.id] || { remark: '', qty: '' };
-                const need = r.requiresOrder;
-                return (
-                  <tr key={r.product.id} className="border-b border-gray-50 hover:bg-blue-50/30">
-                    <td className="px-2 py-2 tabular-nums" style={{ color: VIZ.lightText }}>{(pageSafe - 1) * PAGE_SIZE + i + 1}</td>
-                    <td className="px-2 py-2 font-mono" style={{ color: VIZ.lightText }}>{r.product.item_code || '—'}</td>
-                    <td className="px-2 py-2 max-w-[260px] font-medium" style={{ color: VIZ.text }}>
-                      <div className="truncate" title={r.product.name}>{r.product.name}</div>
-                      {r.requiresOrder && (
-                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-800">
-                          <ShoppingCart size={12} aria-hidden="true" /> ต้องสั่งซื้อ
-                        </span>
-                      )}
-                      {!r.canReorder && (
-                        <span className="mt-1 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600">
-                          ไม่สั่งซื้อเพิ่ม
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.usage[0])}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.usage[1])}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.usage[2])}</td>
-                    <td className="px-2 py-2 text-center tabular-nums font-semibold" style={{ color: VIZ.primary }}>{fmt(r.stockOnHand)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.usage3)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.avg3)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.safetyStock)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.minV)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.maxV)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.avgV)}</td>
-                    <td className="px-2 py-2 text-center tabular-nums">{fmt(r.reorderPoint)}</td>
-                    <td className="px-2 py-2 text-center">
-                      {r.canReorder ? <span
-                        className="inline-block px-2 py-0.5 rounded-lg font-bold tabular-nums"
-                        style={need
-                          ? { backgroundColor: `${VIZ.accent}15`, color: VIZ.accent }
-                          : { backgroundColor: `${VIZ.positive}15`, color: VIZ.positive }}
-                      >
-                        {Math.ceil(Math.max(r.needToOrder, 0)).toLocaleString('th-TH')}
-                      </span> : <span className="text-gray-500">—</span>}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      {r.canReorder ? <input
-                        type="number"
-                        min={0}
-                        value={rm.qty}
-                        onChange={e => setRemarks(prev => ({ ...prev, [r.product.id]: { ...rm, qty: e.target.value } }))}
-                        onBlur={() => saveRemark(r.product.id)}
-                        placeholder="—"
-                        className="w-16 px-1.5 py-1 border border-gray-200 rounded-lg text-center text-xs text-gray-900"
-                      /> : <span className="text-gray-500" title="รายการนี้ไม่สั่งซื้อเพิ่ม">—</span>}
-                    </td>
-                    <td className="px-2 py-2">
-                      <input
-                        type="text"
-                        value={rm.remark}
-                        onChange={e => setRemarks(prev => ({ ...prev, [r.product.id]: { ...rm, remark: e.target.value } }))}
-                        onBlur={() => saveRemark(r.product.id)}
-                        placeholder="เหตุผล / หมายเหตุ..."
-                        className="w-56 px-2 py-1 border border-gray-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-300"
-                      />
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums" style={{ color: VIZ.lightText }}>
-                      {r.product.unit_price != null ? r.product.unit_price.toLocaleString('th-TH') : '—'}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <span className="text-xs" style={{ color: VIZ.lightText }}>หน้า {pageSafe} / {totalPages} · {filtered.length} รายการ</span>
-            <div className="flex gap-2">
-              <button disabled={pageSafe <= 1} onClick={() => setPage(p => p - 1)} className="p-1.5 border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"><ChevronLeft size={16} /></button>
-              <button disabled={pageSafe >= totalPages} onClick={() => setPage(p => p + 1)} className="p-1.5 border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"><ChevronRight size={16} /></button>
-            </div>
+      <section aria-label="รายการคำนวณสั่งซื้อ" data-testid="order-list" className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 text-xs text-slate-500">
+          <span>แสดง {pageRows.length} จาก {filtered.length} รายการ</span>
+          <span>เปิด “รายละเอียด” เพื่อดูยอดใช้รายเดือนและสูตรคำนวณ</span>
+        </div>
+        <div aria-hidden="true" className="hidden grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,.75fr)_minmax(0,1.5fr)_2.75rem] items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-500 xl:grid">
+          <span>สินค้า</span>
+          <div className="grid grid-cols-3 gap-2 text-center"><span>คงเหลือ</span><span>จุดสั่งซื้อ</span><span className="text-orange-700">ต้องสั่ง</span></div>
+          <span>สั่งจริง</span><span>หมายเหตุ</span><span className="sr-only">รายละเอียด</span>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {pageRows.length === 0 ? <p className="px-4 py-10 text-center text-sm text-slate-500">ไม่พบรายการ</p> : pageRows.map((row, index) => (
+            <PPEOrderItem
+              key={row.product.id}
+              row={row}
+              index={(pageSafe - 1) * PAGE_SIZE + index + 1}
+              months={months}
+              remark={remarks[row.product.id] || { remark: '', qty: '' }}
+              onChange={value => setRemarks(previous => ({ ...previous, [row.product.id]: value }))}
+              onSave={() => { void saveRemark(row.product.id); }}
+            />
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3">
+          <span className="text-xs text-slate-500">หน้า {pageSafe} / {totalPages} · {filtered.length} รายการ</span>
+          <div className="flex gap-2">
+            <button type="button" aria-label="หน้าก่อนหน้า" disabled={pageSafe <= 1} onClick={() => setPage(pageSafe - 1)} className="flex size-11 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30"><ChevronLeft size={17} /></button>
+            <button type="button" aria-label="หน้าถัดไป" disabled={pageSafe >= totalPages} onClick={() => setPage(pageSafe + 1)} className="flex size-11 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30"><ChevronRight size={17} /></button>
           </div>
-        )}
-      </div>
-
-      <p className="text-xs" style={{ color: VIZ.lightText }}>
+        </div>
+      </section>
+      <details className="min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs leading-6 text-slate-500">
+        <summary className="cursor-pointer font-medium text-slate-600">เกณฑ์และสูตรการคำนวณ</summary>
+        <p className="mt-2">
         แสดงแท็ก “ต้องสั่งซื้อ” เฉพาะรายการที่สั่งซื้อเพิ่มได้ เมื่อ Stock on hand ≤ Re-order point ยกเว้นรายการที่สต็อกและยอดใช้ทั้ง 3 เดือนเป็น 0 ·{' '}
         เรียงรายการที่ต้องสั่งซื้อก่อน แล้วเรียงจำนวน “ต้องสั่ง” จากมากไปน้อย รายการที่ไม่สั่งซื้อเพิ่มอยู่หลังรายการที่สั่งซื้อได้ โดยรายการที่ข้อมูลเป็น 0 ทั้งหมดอยู่ท้ายสุด ·{' '}
         สูตรตามไฟล์ฝ่ายจัดซื้อ: Safety Stock = เฉลี่ย 3 เดือน × Lead Time · MIN = เฉลี่ย + SS · MAX = (เฉลี่ย × Lead Time) + MIN + SS ·
         AVG. = (MAX + MIN) / 2 · Re-order point = (เฉลี่ย × Lead Time) + SS · ต้องสั่ง = AVG. − Stock on hand ·
         Item Code ราคา และตัวเลือกสั่งซื้อเพิ่มแก้ได้ที่หน้า &quot;จัดการสต็อก&quot;
-      </p>
+        </p>
+      </details>
 
       {toast && (
         <div
-          className="fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium z-50"
+          role="status"
+          className="fixed bottom-6 right-3 z-50 max-w-[calc(100vw-1.5rem)] rounded-xl px-5 py-3 text-sm font-medium text-white shadow-lg sm:right-6"
           style={{ backgroundColor: toast.type === 'success' ? VIZ.positive : VIZ.accent }}
         >
           {toast.msg}

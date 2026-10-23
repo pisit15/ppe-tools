@@ -33,12 +33,18 @@ const inventory = [
 ];
 const expectedCodes = [...qualifying, ...above, stockedWithoutUsage, ...nonReorderable, empty, nonReorderableEmpty].map(item => item.item_code);
 
-async function openReport(page) {
+async function openReport(page, { savedPurchases } = {}) {
   await page.clock.setFixedTime(new Date('2026-10-23T05:00:00Z'));
   await page.route('**/api/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
-    expect(request.method(), 'Report verification must never write data').toBe('GET');
+    if (savedPurchases && request.method() === 'POST' && url.pathname === '/api/ppe/order-remarks') {
+      const purchase = request.postDataJSON();
+      savedPurchases.push(purchase);
+      await route.fulfill({ json: { data: purchase } });
+      return;
+    }
+    expect(request.method(), 'Only the explicit editing test may save mock purchase data').toBe('GET');
     const responses = {
       '/api/auth/session': { user: { id: 'test-admin', username: 'test-admin', role: 'admin', companyId: 'amt', companyName: 'AMT', displayName: 'Test Admin' } },
       '/api/companies': { data: [{ company_id: 'amt', company_name: 'AMT' }] },
@@ -64,15 +70,15 @@ async function openReport(page) {
   });
   await page.goto('/ppe/reports/order?company_id=amt');
   await expect(page.getByRole('heading', { name: 'คำนวณสั่งซื้อ' })).toBeVisible();
-  await expect(page.locator('tbody tr')).toHaveCount(30);
+  await expect(page.getByTestId('order-item')).toHaveCount(30);
 }
 
 function productRow(page, code) {
-  return page.locator('tbody tr').filter({ has: page.getByRole('cell', { name: code, exact: true }) });
+  return page.locator(`article[data-testid="order-item"][data-product-code="${code}"]`);
 }
 
 async function visibleCodes(page) {
-  return page.locator('tbody tr td:nth-child(2)').allTextContents();
+  return page.getByTestId('order-item').evaluateAll(items => items.map(item => item.getAttribute('data-product-code')));
 }
 
 async function exportedSheet(page) {
@@ -90,12 +96,12 @@ test('badge includes equality and zero stock with usage, excludes unused rows, a
     await expect(productRow(page, code).getByText('ต้องสั่งซื้อ', { exact: true })).toBeVisible();
   }
   await expect(productRow(page, 'ABOVE-01').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(0);
-  await expect(page.locator('tbody').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(4);
-  await expect(productRow(page, 'EDGE-LOW').locator('td').nth(14)).toHaveText('26');
-  await expect(productRow(page, 'EDGE-EQUAL').locator('td').nth(14)).toHaveText('22');
-  await expect(productRow(page, 'EDGE-USED-ZERO').locator('td').nth(14)).toHaveText('6');
+  await expect(page.getByTestId('order-list').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(4);
+  await expect(productRow(page, 'EDGE-LOW').getByTestId('order-need')).toHaveText('26');
+  await expect(productRow(page, 'EDGE-EQUAL').getByTestId('order-need')).toHaveText('22');
+  await expect(productRow(page, 'EDGE-USED-ZERO').getByTestId('order-need')).toHaveText('6');
   await expect(productRow(page, 'EDGE-ZERO')).toHaveCount(0);
-  await expect(productRow(page, 'ABOVE-01').locator('td').nth(14)).toHaveText('49');
+  await expect(productRow(page, 'ABOVE-01').getByTestId('order-need')).toHaveText('49');
   await expect(page.getByRole('checkbox', { name: 'เฉพาะที่ต้องสั่งซื้อ (4)' })).toBeVisible();
   await expect(page.getByText('สินค้าทั้งหมด', { exact: true }).locator('..')).toContainText(String(expectedCodes.length));
   await expect(page.getByText('มูลค่าโดยประมาณ (เฉพาะที่มีราคา)', { exact: true }).locator('..')).toContainText('฿700');
@@ -106,22 +112,21 @@ test('badge includes equality and zero stock with usage, excludes unused rows, a
 test('sorts required items by quantity, keeps unused rows last across pagination, and excludes them from the filter', async ({ page }) => {
   await openReport(page);
   expect(await visibleCodes(page)).toEqual(expectedCodes.slice(0, 30));
-  const pagination = page.getByText(`หน้า 1 / 2 · ${expectedCodes.length} รายการ`, { exact: true }).locator('..');
-  await pagination.getByRole('button').last().click();
+  await page.getByRole('button', { name: 'หน้าถัดไป', exact: true }).click();
   await expect(page.getByText(`หน้า 2 / 2 · ${expectedCodes.length} รายการ`, { exact: true })).toBeVisible();
   expect(await visibleCodes(page)).toEqual(expectedCodes.slice(30));
-  await expect(page.locator('tbody').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(0);
-  await expect(page.locator('tbody tr').last()).toContainText('NO-REORDER-EMPTY');
-  await expect(productRow(page, 'EDGE-ZERO').locator('td').nth(14)).toHaveText('0');
+  await expect(page.getByTestId('order-list').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('order-item').last()).toContainText('NO-REORDER-EMPTY');
+  await expect(productRow(page, 'EDGE-ZERO').getByTestId('order-need')).toHaveText('0');
   // The raw need is -5, but the purchasing display clamps it to zero.
-  await expect(productRow(page, 'STOCKED-UNUSED').locator('td').nth(14)).toHaveText('0');
+  await expect(productRow(page, 'STOCKED-UNUSED').getByTestId('order-need')).toHaveText('0');
 
   await page.getByRole('checkbox', { name: 'เฉพาะที่ต้องสั่งซื้อ (4)' }).check();
-  await expect(page.locator('tbody tr')).toHaveCount(4);
+  await expect(page.getByTestId('order-item')).toHaveCount(4);
   expect(await visibleCodes(page)).toEqual(qualifying.map(item => item.item_code));
   const search = page.getByPlaceholder('ค้นหาชื่อสินค้า / Item Code');
   await search.fill('gloves');
-  await expect(page.locator('tbody tr')).toHaveCount(2);
+  await expect(page.getByTestId('order-item')).toHaveCount(2);
   expect(await visibleCodes(page)).toEqual(['EDGE-LOW', 'EDGE-EQUAL']);
   await search.fill('edge-zero');
   await expect(page.getByText('ไม่พบรายการ', { exact: true })).toBeVisible();
@@ -161,7 +166,7 @@ test('Excel exports every filtered row in the same priority order and retains th
 
   await page.getByRole('checkbox', { name: 'เฉพาะที่ต้องสั่งซื้อ (4)' }).check();
   await page.getByPlaceholder('ค้นหาชื่อสินค้า / Item Code').fill('gloves');
-  await expect(page.locator('tbody tr')).toHaveCount(2);
+  await expect(page.getByTestId('order-item')).toHaveCount(2);
   const filteredSheet = await exportedSheet(page);
   expect([filteredSheet.getCell('B5').value, filteredSheet.getCell('B6').value]).toEqual(['EDGE-LOW', 'EDGE-EQUAL']);
   expect(filteredSheet.getCell('B7').value).toBeNull();
@@ -171,19 +176,20 @@ test('non-reorderable products retain stock and remarks but cannot be ordered or
   await openReport(page);
   const search = page.getByPlaceholder('ค้นหาชื่อสินค้า / Item Code');
   await search.fill('NO-REORDER');
-  await expect(page.locator('tbody tr')).toHaveCount(3);
+  await expect(page.getByTestId('order-item')).toHaveCount(3);
   expect(await visibleCodes(page)).toEqual([...nonReorderable, nonReorderableEmpty].map(item => item.item_code));
   for (const item of [...nonReorderable, nonReorderableEmpty]) {
     const row = productRow(page, item.item_code);
-    await expect(row.getByText('ไม่สั่งซื้อเพิ่ม', { exact: true })).toBeVisible();
+    await expect(row.getByText('ไม่สั่งซื้อเพิ่ม', { exact: true }).first()).toBeVisible();
     await expect(row.getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(0);
-    await expect(row.locator('td').nth(14)).toHaveText('—');
-    await expect(row.locator('td').nth(15)).toHaveText('—');
+    await expect(row.getByTestId('order-need')).toHaveText('—');
     await expect(row.getByRole('spinbutton')).toHaveCount(0);
-    await expect(row.locator('td').nth(6)).toHaveText(String(item.current_stock));
-    await expect(row.locator('td').nth(7)).toHaveText(String(item.usage));
+    await expect(row.getByTestId('order-stock')).toHaveText(String(item.current_stock));
+    await row.getByRole('button', { name: `รายละเอียด ${item.name}`, exact: true }).click();
+    await expect(row.getByTestId('order-details').getByText('ใช้ 3 เดือน', { exact: true }).locator('..').locator('dd')).toHaveText(String(item.usage));
+    await expect(row.getByRole('spinbutton')).toHaveCount(0);
   }
-  await expect(productRow(page, 'NO-REORDER-USED').getByPlaceholder('เหตุผล / หมายเหตุ...')).toHaveValue('เก็บคืนไว้ใช้ซ้ำ');
+  await expect(productRow(page, 'NO-REORDER-USED').getByLabel('หมายเหตุ เสื้อสะท้อนแสง มือสอง', { exact: true })).toHaveValue('เก็บคืนไว้ใช้ซ้ำ');
   const sheet = await exportedSheet(page);
   expect([sheet.getCell('B5').value, sheet.getCell('B6').value, sheet.getCell('B7').value]).toEqual(['NO-REORDER-USED', 'NO-REORDER-ORDINARY', 'NO-REORDER-EMPTY']);
   expect(sheet.getCell('B8').value).toBeNull();
@@ -191,4 +197,88 @@ test('non-reorderable products retain stock and remarks but cannot be ordered or
   await expect(page.getByText('ไม่พบรายการ', { exact: true })).toBeVisible();
   const emptySheet = await exportedSheet(page);
   expect(emptySheet.getCell('B5').value).toBeNull();
+});
+
+async function expectReportFitsViewport(page) {
+  const widths = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+  }));
+  expect(widths.document).toBeLessThanOrEqual(widths.viewport);
+  expect(widths.body).toBeLessThanOrEqual(widths.viewport);
+  const overflows = await page.getByTestId('order-list').evaluate(list =>
+    [list, ...list.querySelectorAll('[data-testid="order-item"], [data-testid="order-details"], input, textarea, button')]
+      .filter(element => element.getClientRects().length)
+      .filter(element => {
+        const rect = element.getBoundingClientRect();
+        return rect.left < -1 || rect.right > window.innerWidth + 1 ||
+          (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && element.scrollWidth > element.clientWidth + 1);
+      })
+      .map(element => ({ tag: element.tagName, testId: element.dataset.testid, width: element.clientWidth, contentWidth: element.scrollWidth })),
+  );
+  expect(overflows, 'Report items and editing controls must fit without clipping or horizontal scrolling').toEqual([]);
+}
+
+test('order report fits desktop and small phones with every calculation available through details', async ({ page }) => {
+  await openReport(page);
+  const item = productRow(page, 'EDGE-LOW');
+  const toggle = item.getByRole('button', { name: 'รายละเอียด Below threshold gloves', exact: true });
+  const details = item.getByTestId('order-details');
+  for (const width of [1280, 390, 320]) {
+    await test.step(`No horizontal overflow at ${width}px, collapsed or expanded`, async () => {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(details).not.toBeVisible();
+      await expectReportFitsViewport(page);
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(details).toBeVisible();
+      for (const [label, value] of [
+        ['ส.ค. 69', '0'], ['ก.ย. 69', '0'], ['ต.ค. 69', '66'],
+        ['ใช้ 3 เดือน', '66'], ['เฉลี่ย/เดือน', '22'], ['Safety Stock', '22'],
+        ['MIN', '44'], ['MAX', '88'], ['AVG.', '66'], ['ราคา/หน่วย', '฿10'],
+      ]) {
+        await expect(details.getByText(label, { exact: true }).locator('..').locator('dd')).toHaveText(value);
+      }
+      await expect(item.getByTestId('order-stock')).toHaveText('40');
+      await expect(item.getByTestId('order-reorder-point')).toHaveText('44');
+      await expect(item.getByTestId('order-need')).toHaveText('26');
+      await expect(item.getByLabel('สั่งจริง Below threshold gloves', { exact: true })).toBeVisible();
+      await expect(item.getByLabel('หมายเหตุ Below threshold gloves', { exact: true })).toBeVisible();
+      await expectReportFitsViewport(page);
+      if (width === 390) await page.screenshot({ path: 'test-results/ppe-order-mobile-details.png' });
+      await toggle.click();
+    });
+  }
+});
+
+test('mobile purchase quantity and remarks save the correct product and survive detail toggles', async ({ page }) => {
+  const savedPurchases = [];
+  await page.setViewportSize({ width: 320, height: 844 });
+  await openReport(page, { savedPurchases });
+  const item = productRow(page, 'EDGE-LOW');
+  const quantity = item.getByLabel('สั่งจริง Below threshold gloves', { exact: true });
+  const remark = item.getByLabel('หมายเหตุ Below threshold gloves', { exact: true });
+  const toggle = item.getByRole('button', { name: 'รายละเอียด Below threshold gloves', exact: true });
+  await quantity.fill('18');
+  await quantity.blur();
+  await expect.poll(() => savedPurchases.at(-1)).toEqual({
+    company_id: 'amt', product_id: 'below', period: '2026-10', remark: '', actual_order_qty: 18,
+  });
+  await remark.fill('สั่งตามจำนวนบรรจุในกล่อง เตรียมใช้เดือนถัดไป');
+  await remark.blur();
+  await expect.poll(() => savedPurchases.at(-1)).toEqual({
+    company_id: 'amt', product_id: 'below', period: '2026-10',
+    remark: 'สั่งตามจำนวนบรรจุในกล่อง เตรียมใช้เดือนถัดไป', actual_order_qty: 18,
+  });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(quantity).toHaveValue('18');
+  await expect(remark).toHaveValue('สั่งตามจำนวนบรรจุในกล่อง เตรียมใช้เดือนถัดไป');
+  expect(savedPurchases).toHaveLength(2);
+  await expectReportFitsViewport(page);
 });
