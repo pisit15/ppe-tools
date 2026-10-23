@@ -3,12 +3,13 @@
 import { useMemo, useState } from 'react';
 import type { PricePoint } from '@/lib/procurement/types';
 import { median } from '@/lib/procurement/analysis';
+import { taxLabel, unitPriceBasisLabel } from '@/lib/procurement/comparability';
 import { VIZ, baht, prHref, thaiDate, usePeriodParam } from './ui';
 import { niceMax, useWidth } from './charts';
 
 const H = 280, PAD = { l: 76, r: 24, t: 20, b: 36 };
 
-/** Parent supplies one explicitly selected comparison group and its full-data median. */
+/** Parent supplies one unit/currency series; null median shows raw records without a pooled statistic. */
 export function PriceChart({ points, poMedian }: { points: PricePoint[]; poMedian?: number | null }) {
   const period = usePeriodParam();
   const { ref, w: W } = useWidth();
@@ -61,6 +62,7 @@ export function PriceChart({ points, poMedian }: { points: PricePoint[]; poMedia
       {hover && <div className="pointer-events-none absolute left-1/2 top-8 z-10 w-72 max-w-[90%] -translate-x-1/2 rounded-lg border bg-white p-3 text-xs shadow-lg" style={{ borderColor: VIZ.muted, color: VIZ.text }}>
         <p className="font-semibold">{baht(hover.unit_price)} {hover.currency || 'ไม่ระบุสกุลเงิน'} / {hover.unit || 'ไม่ระบุหน่วย'}</p>
         <p className="mt-1 line-clamp-2">{hover.item}</p>
+        <p className="mt-1">{taxLabel(hover.tax_basis || 'unknown')} · {unitPriceBasisLabel(hover.price_basis || 'unknown')}</p>
         <p className="mt-1" style={{ color: VIZ.lightText }}>{hover.vendor || '–'}</p>
         <p style={{ color: VIZ.lightText }}>{thaiDate(hover.date)} · {hover.pr_no} {hover.ref && `· ${hover.ref}`}</p>
       </div>}

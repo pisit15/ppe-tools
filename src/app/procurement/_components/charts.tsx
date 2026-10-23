@@ -198,7 +198,7 @@ export function HBarList({ rows, max, ariaLabel }: { rows: HBarRow[]; max?: numb
 
 /* ---------------- Vendor price strip: every price as a dot, one row per vendor ---------------- */
 
-export type StripRow = { key: string; label: ReactNode; po: number[]; quotes: number[]; median: number; best?: boolean; sub?: ReactNode };
+export type StripRow = { key: string; label: ReactNode; po: number[]; quotes: number[]; median?: number; best?: boolean; sub?: ReactNode };
 
 export function VendorStrip({ rows, unit, currency = 'THB' }: { rows: StripRow[]; unit: string; currency?: string }) {
   const all = rows.flatMap(r => [...r.po, ...r.quotes]).sort((a, b) => a - b);
@@ -235,7 +235,7 @@ export function VendorStrip({ rows, unit, currency = 'THB' }: { rows: StripRow[]
                 <span key={`p${i}`} className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
                   style={{ left: pct(v), background: VIZ.primary, opacity: 0.85 }} title={`ราคาตาม PO ${baht(v)} ${currency}/${unit}`} />
               ))}
-              <span className="absolute inset-y-1 w-0.5" style={{ left: pct(r.median), background: VIZ.text }} title={`มัธยฐาน ${baht(r.median)}`} />
+              {r.median !== undefined && <span className="absolute inset-y-1 w-0.5" style={{ left: pct(r.median), background: VIZ.text }} title={`มัธยฐาน ${baht(r.median)}`} />}
             </div>
           </li>
         ))}
