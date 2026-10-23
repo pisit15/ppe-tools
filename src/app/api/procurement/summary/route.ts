@@ -1,27 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase';
 import { apiError } from '@/lib/toolsSession';
 import { requireProcurementActor } from '@/lib/procurement/access';
-import { getDataset } from '@/lib/procurement/data';
+import { actorScope, getDataset } from '@/lib/procurement/data';
+import { canSee } from '@/lib/procurement/scope';
 
 export const dynamic = 'force-dynamic';
 
-// Per-person PR summary. Admins get every requester; everyone else gets only the requester
-// linked to their login in proc_requester_accounts (filtered here, server-side).
+// Per-person PR summary limited (server-side) to the companies the login has rights to. Admins see all.
 export async function GET(request: NextRequest) {
   try {
     const actor = await requireProcurementActor(request);
-    const { prs, meta } = await getDataset();
-    if (actor.isAdmin) return NextResponse.json({ prs, meta, scope: 'all', requester: null });
-
-    const { data, error } = await getSupabaseServer().from('proc_requester_accounts')
-      .select('requester').eq('username', actor.username.trim().toLowerCase()).maybeSingle();
-    if (error) throw error;
-    const requester = data?.requester ?? null;
-    return NextResponse.json({
-      prs: requester ? prs.filter(p => p.requester === requester) : [],
-      meta, scope: 'own', requester,
-    });
+    const d = await getDataset();
+    const scope = actorScope(actor, d);
+    const prs = d.prs
+      .map(p => ({ ...p, sites: d.sitesByPr.get(p.odoo_id) ?? [] }))
+      .filter(p => canSee(scope, p.sites, p.requester));
+    const sites = (scope.all ? [...new Set(prs.flatMap(p => p.sites))].sort() : scope.sites)
+      .map(id => ({ id, name: d.siteNames.get(id) ?? id.toUpperCase() }));
+    return NextResponse.json({ prs, meta: d.meta, scope: scope.all ? 'all' : 'company', sites });
   } catch (error) {
     return apiError(error);
   }
