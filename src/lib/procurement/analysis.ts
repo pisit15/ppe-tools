@@ -42,19 +42,25 @@ export function median(values: number[]) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
+/** PR numbers repeat across companies; pr_no + requester identifies a PR. */
+export const prKey = (prNo: string, requester: string) => `${prNo}|${requester}`;
+
 const cmpDate = (a: string | null, b: string | null) => (a || '').localeCompare(b || '');
 
-export function pricePoints(po: ProcPoLine[], items: ProcQuoteItem[], quotes: Map<number, ProcQuote>): PricePoint[] {
+/** prDate: prKey -> PR request date, used to place undated quotations in a period. */
+export function pricePoints(po: ProcPoLine[], items: ProcQuoteItem[], quotes: Map<number, ProcQuote>, prDate: Map<string, string | null> = new Map()): PricePoint[] {
   const out: PricePoint[] = [];
   for (const l of po) {
     if (!(l.unit_price > 0) || l.po_state === 'cancel') continue;
-    out.push({ source: 'po', id: l.odoo_id, pr_no: l.pr_no, requester: l.requester, vendor: l.vendor, date: l.order_date, item: l.item || l.product,
+    out.push({ source: 'po', id: l.odoo_id, pr_no: l.pr_no, requester: l.requester, vendor: l.vendor, date: l.order_date, period_date: l.order_date, item: l.item || l.product,
       detail: l.product, qty: l.qty, unit: l.uom || '', unit_price: Number(l.unit_price), ref: l.po_no, duplicate: false });
   }
   for (const it of items) {
     if (it.unit_price === null || !(it.unit_price > 0)) continue;
     const q = quotes.get(it.quote_id);
-    out.push({ source: 'quote', id: it.id, pr_no: it.pr_no, requester: q?.requester ?? '', vendor: it.vendor_group || q?.vendor || '', date: it.quote_date ?? q?.quote_date ?? null,
+    const date = it.quote_date ?? q?.quote_date ?? null;
+    out.push({ source: 'quote', id: it.id, pr_no: it.pr_no, requester: q?.requester ?? '', vendor: it.vendor_group || q?.vendor || '', date,
+      period_date: date ?? prDate.get(prKey(it.pr_no, q?.requester ?? '')) ?? null,
       item: it.name, detail: it.spec || '', qty: it.qty, unit: it.unit || '', unit_price: Number(it.unit_price),
       ref: q?.quote_no || (q?.doc_type === 'comparison_table' ? 'ตารางเทียบราคา' : ''), duplicate: it.duplicate_file });
   }
@@ -104,16 +110,17 @@ export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string
     relaxed,
     units: [...unitCount.entries()].map(([unit, count]) => ({ unit, count })).sort((a, b) => b.count - a.count),
     points: hits.slice(0, limit),
+    total: hits.length,
     vendors,
     truncated: hits.length > limit,
   };
 }
 
-export const prKey = (prNo: string, requester: string) => `${prNo}|${requester}`;
 
-export function vendorSummaries(prs: Pick<ProcPr, 'pr_no' | 'requester'>[], po: ProcPoLine[], quotes: ProcQuote[]): VendorSummary[] {
+/** wonPo: PO lines used to decide whether a quoting vendor won the PR (defaults to po; pass all periods when po is filtered). */
+export function vendorSummaries(prs: Pick<ProcPr, 'pr_no' | 'requester'>[], po: ProcPoLine[], quotes: ProcQuote[], wonPo: ProcPoLine[] = po): VendorSummary[] {
   const prVendorKeys = new Map<string, Set<string>>();
-  for (const l of po) {
+  for (const l of wonPo) {
     if (l.po_state === 'cancel') continue;
     const pk = prKey(l.pr_no, l.requester);
     const s = prVendorKeys.get(pk) ?? new Set();

@@ -3,31 +3,43 @@ import { apiError } from '@/lib/toolsSession';
 import { requireProcurementActor } from '@/lib/procurement/access';
 import { actorScope, getDataset } from '@/lib/procurement/data';
 import { canSee } from '@/lib/procurement/scope';
-import { prKey, vendorKey, vendorSummaries } from '@/lib/procurement/analysis';
+import { prKey, vendorKey } from '@/lib/procurement/analysis';
+import { isSpendCat } from '@/lib/procurement/categories';
+import { inRange, parsePeriod, periodInfo } from '@/lib/procurement/period';
+import { vendorDetail, vendorReport } from '@/lib/procurement/report';
 
 export const dynamic = 'force-dynamic';
 
-// GET            -> all vendor summaries
-// GET ?name=...  -> one vendor: summary + every price point + related PRs
+// GET ?y=2026&cat=goods  -> vendors in the period (+ same span last year), spend by category, year x category matrix
+// GET ?name=...&y=2026   -> one vendor in the period: row, yearly trend, price points, related PRs
 export async function GET(request: NextRequest) {
   try {
     const actor = await requireProcurementActor(request);
     const d = await getDataset();
-    const { prs, po, quotes, points, meta } = d;
-    const vendors = vendorSummaries(prs, po, quotes);
-    const name = request.nextUrl.searchParams.get('name');
-    if (!name) return NextResponse.json({ vendors, meta });
+    const p = request.nextUrl.searchParams;
+    const sel = parsePeriod(p.get('y'), d.meta.years);
+    const name = p.get('name');
+    if (!name) {
+      const rawCat = p.get('cat');
+      const cat = isSpendCat(rawCat) ? rawCat : null;
+      return NextResponse.json({ ...vendorReport(d, sel, cat), meta: d.meta });
+    }
 
     const key = vendorKey(name) || name;
-    const summary = vendors.find(v => (vendorKey(v.vendor) || v.vendor) === key);
-    if (!summary) return NextResponse.json({ error: 'ไม่พบผู้ขายนี้' }, { status: 404 });
-    const mine = points.filter(p => (vendorKey(p.vendor) || p.vendor) === key && !p.duplicate)
+    const detail = vendorDetail(d, sel, key);
+    if (!detail.overall) return NextResponse.json({ error: 'ไม่พบผู้ขายนี้' }, { status: 404 });
+    const range = periodInfo(sel, d.meta, 'po').range;
+    const mine = d.points.filter(pt => (vendorKey(pt.vendor) || pt.vendor) === key && !pt.duplicate && inRange(pt.period_date, range))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const prNos = new Set(mine.map(p => prKey(p.pr_no, p.requester)));
+    const prNos = new Set(mine.map(pt => prKey(pt.pr_no, pt.requester)));
     const scope = actorScope(actor, d);
-    const relatedPrs = prs.filter(p => prNos.has(prKey(p.pr_no, p.requester)) && canSee(scope, d.sitesByPr.get(p.odoo_id) ?? [], p.requester)).sort((a, b) => (b.request_date || '').localeCompare(a.request_date || ''));
-    const names = [...new Set([...po.filter(l => vendorKey(l.vendor) === key).map(l => l.vendor), ...quotes.filter(q => vendorKey(q.vendor_group || q.vendor) === key).map(q => q.vendor_group || q.vendor)])];
-    return NextResponse.json({ summary, names, points: mine, prs: relatedPrs, meta });
+    const prs = d.prs.filter(pr => prNos.has(prKey(pr.pr_no, pr.requester)) && canSee(scope, d.sitesByPr.get(pr.odoo_id) ?? [], pr.requester))
+      .sort((a, b) => (b.request_date || '').localeCompare(a.request_date || ''));
+    const names = [...new Set([
+      ...d.po.filter(l => vendorKey(l.vendor) === key).map(l => l.vendor),
+      ...d.quotes.filter(q => vendorKey(q.vendor_group || q.vendor) === key).map(q => q.vendor_group || q.vendor),
+    ])];
+    return NextResponse.json({ ...detail, sel, names, points: mine, prs, meta: d.meta });
   } catch (error) {
     return apiError(error);
   }

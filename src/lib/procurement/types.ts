@@ -1,4 +1,6 @@
 // Procurement (PR / PO / quotation) analytics — rows mirror the proc_* tables.
+import type { PeriodMeta, PeriodSel } from './period';
+import type { SpendCat } from './categories';
 
 export type PrState = 'draft' | 'to_approve' | 'approved' | 'rejected' | 'done';
 
@@ -63,6 +65,8 @@ export type PricePoint = {
   requester: string; // PR numbers repeat across companies; pr_no + requester identifies the PR
   vendor: string;
   date: string | null;
+  /** date used for period filters: the document date, or the PR's request date when the document has none */
+  period_date: string | null;
   item: string;
   detail: string;
   qty: number | null;
@@ -85,6 +89,7 @@ export type SearchResult = {
   relaxed: boolean;
   units: { unit: string; count: number }[];
   points: PricePoint[];
+  total: number; // matches before the display limit
   vendors: VendorPriceStat[];
   truncated: boolean;
 };
@@ -95,7 +100,33 @@ export type VendorSummary = {
   first_date: string | null; last_date: string | null; top_items: string[];
 };
 
-export type ProcMeta = { imported_at: string | null; imported_by: string | null; counts: Partial<Record<ProcTable, number>> };
+export type ProcMeta = PeriodMeta & { imported_at: string | null; imported_by: string | null; counts: Partial<Record<ProcTable, number>> };
+
+/** One vendor in a period, with the same span of the previous year and a per-year trend. */
+export type VendorRow = VendorSummary & {
+  rank: number | null; // by PO value in the period (1 = largest); null when no PO
+  prev_amount: number | null; // PO value in the same span last year; null when there is nothing to compare with
+  prev_rank: number | null;
+  first_po: string | null; // first PO ever (any category)
+  is_new: boolean; // first PO ever falls in this period
+  yearly: number[]; // PO value per year, aligned with VendorsResp.years (oldest first)
+};
+export type CatStat = { cat: SpendCat; amount: number; prev: number | null; vendors: number };
+export type YearCats = { year: number; total: number; byCat: Partial<Record<SpendCat, number>> };
+export type VendorTotals = {
+  amount: number; prev: number | null; vendors: number; prev_vendors: number | null; new_vendors: number | null;
+  quotes: number; quoted_prs: number; top10_share: number | null;
+};
+export type VendorsResp = {
+  meta: ProcMeta; sel: PeriodSel; cat: SpendCat | null; years: number[];
+  totals: VendorTotals; vendors: VendorRow[]; cats: CatStat[]; matrix: YearCats[];
+  /** cumulative PO value by month (selected year, previous year) and the previous year's value on the same day */
+  monthly: { cur: number[]; prev: number[] | null; prevSame: number | null; lastMonth: number } | null;
+};
+export type VendorDetailResp = {
+  meta: ProcMeta; sel: PeriodSel; years: number[]; summary: VendorRow | null; overall: VendorRow; names: string[];
+  points: PricePoint[]; prs: ProcPrSummary[]; cats: CatStat[];
+};
 
 /* ---------- raw sync file shapes (D:\Odoo PR\_scripts) ---------- */
 export type OdooRef = [number, string] | false | null;

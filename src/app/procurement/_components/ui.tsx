@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import type { ProcMeta } from '@/lib/procurement/types';
@@ -48,8 +49,8 @@ export async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-/** Loads JSON for a URL; null url = idle. */
-export function useJson<T>(url: string | null) {
+/** Loads JSON for a URL; null url = idle. keep = show the previous result while the next one loads (filters feel instant). */
+export function useJson<T>(url: string | null, keep = false) {
   const [state, setState] = useState<{ url: string | null; data: T | null; error: FetchError | null }>({ url: null, data: null, error: null });
   useEffect(() => {
     if (!url) return;
@@ -60,7 +61,7 @@ export function useJson<T>(url: string | null) {
     return () => { cancelled = true; };
   }, [url]);
   const ready = state.url === url;
-  return { data: ready ? state.data : null, error: ready ? state.error : null, loading: !!url && !ready };
+  return { data: ready || keep ? state.data : null, error: ready ? state.error : null, loading: !!url && !ready };
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -83,14 +84,49 @@ export function SourceBadge({ source }: { source: 'po' | 'quote' }) {
     : <span className="inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium" style={{ border: `1px solid ${VIZ.secondary}`, color: '#B5600F' }}>ใบเสนอราคา</span>;
 }
 
-export const prHref = (no: string, by?: string) => `/procurement/pr?no=${encodeURIComponent(no)}${by ? `&by=${encodeURIComponent(by)}` : ''}`;
-export function PrLink({ no, by }: { no: string; by?: string }) {
-  return <Link href={prHref(no, by)} className="font-medium hover:underline whitespace-nowrap" style={{ color: VIZ.primary }}>{no}</Link>;
+/** Raw ?y= value of the current page ('' = all years). Links carry it so the period survives navigation. */
+export function usePeriodParam() {
+  const y = useSearchParams().get('y') ?? '';
+  return /^\d{4}$/.test(y) ? y : '';
 }
 
-export function VendorLink({ name }: { name: string }) {
+/** Add a period to an internal link. */
+export function withPeriod(href: string, y: string) {
+  if (!y) return href;
+  const [path, query = ''] = href.split('?');
+  const sp = new URLSearchParams(query);
+  sp.set('y', y);
+  return `${path}?${sp}`;
+}
+
+export const prHref = (no: string, by?: string, y = '') =>
+  withPeriod(`/procurement/pr?no=${encodeURIComponent(no)}${by ? `&by=${encodeURIComponent(by)}` : ''}`, y);
+export function PrLink({ no, by }: { no: string; by?: string }) {
+  const y = usePeriodParam();
+  return <Link href={prHref(no, by, y)} className="font-medium hover:underline whitespace-nowrap" style={{ color: VIZ.primary }}>{no}</Link>;
+}
+
+/** "บริษัท เทคนิคสิ่งแวดล้อมไทย จำกัด" -> "เทคนิคสิ่งแวดล้อมไทย" for tight chart labels (full name stays in the tooltip). */
+export function shortVendor(name: string) {
+  const s = name
+    .replace(/\s\d{5}$/, '')
+    .trim()
+    .replace(/\s*\([A-Za-z][^)]*\)\s*$/, '') // trailing English name in brackets
+    .replace(/^(บริษัท|บจก\.?|ห้างหุ้นส่วนจำกัด|หจก\.?)\s*/, '')
+    .replace(/\s*จำกัด(\s*\(มหาชน\))?\s*$/, '')
+    .replace(/[\s,]*(co\.?,?\s*ltd\.?|company limited|limited|ltd\.?)\s*$/i, '')
+    .trim();
+  return s || name;
+}
+
+export function VendorLink({ name, short = false }: { name: string; short?: boolean }) {
+  const y = usePeriodParam();
   if (!name) return <span style={{ color: VIZ.lightText }}>–</span>;
-  return <Link href={`/procurement/vendors?name=${encodeURIComponent(name)}`} className="hover:underline" style={{ color: VIZ.primary }}>{name}</Link>;
+  return (
+    <Link href={withPeriod(`/procurement/vendors?name=${encodeURIComponent(name)}`, y)} title={name} className="hover:underline" style={{ color: VIZ.primary }}>
+      {short ? shortVendor(name) : name}
+    </Link>
+  );
 }
 
 export function Loading({ text = 'กำลังโหลด…' }: { text?: string }) {

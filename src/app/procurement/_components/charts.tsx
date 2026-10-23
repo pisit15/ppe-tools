@@ -5,9 +5,10 @@
 // HTML rows for horizontal charts so Thai labels wrap on phones.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { MONTHS_TH, be, pctChange } from '@/lib/procurement/period';
 import { VIZ, baht, int } from './ui';
 
-export const MONTHS_TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+export { MONTHS_TH };
 // Status colours: approved is the quiet base, pending a warning, cancelled the accent to look at.
 export const STATUS_COLOR = { approved: '#A9BED4', pending: VIZ.secondary, rejected: VIZ.accent } as const;
 
@@ -109,8 +110,10 @@ export function MonthlyBars({ data, format = int, ariaLabel }: { data: MonthPoin
 
 /* ---------------- Cumulative pace: this year vs last year ---------------- */
 
-export function CumulativeLines({ cur, prev, curLabel, prevLabel, format = shortBaht, lastMonth }: {
+export function CumulativeLines({ cur, prev, curLabel, prevLabel, format = shortBaht, lastMonth, prevSame, ariaLabel }: {
   cur: number[]; prev: number[] | null; curLabel: string; prevLabel: string; format?: (v: number) => string; lastMonth: number;
+  /** last year's value on the same day as the latest data (more exact than the month-end value) */
+  prevSame?: number | null; ariaLabel?: string;
 }) {
   const { ref, w: W } = useWidth();
   const narrow = W < 480;
@@ -122,7 +125,7 @@ export function CumulativeLines({ cur, prev, curLabel, prevLabel, format = short
   const path = (vals: number[]) => vals.map((v, m) => `${m ? 'L' : 'M'}${x(m)},${y(v)}`).join(' ');
   const ticks = [0, 0.5, 1].map(f => f * max);
   const curEnd = curShown[curShown.length - 1] ?? 0;
-  const prevAtSame = prev ? prev[lastMonth] : null;
+  const prevAtSame = prev ? (prevSame ?? prev[lastMonth]) : null;
   const prevEnd = prev ? prev[11] : null;
   // keep the two end labels apart
   let yCur = y(curEnd), yPrev = prevEnd !== null ? y(prevEnd) : 0;
@@ -130,7 +133,7 @@ export function CumulativeLines({ cur, prev, curLabel, prevLabel, format = short
   const showMonth = (m: number) => !narrow || m % 2 === 0;
   return (
     <div ref={ref}>
-    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="block h-auto max-w-full" role="img" aria-label={`งบประมาณสะสม ${curLabel} เทียบ ${prevLabel}`}>
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="block h-auto max-w-full" role="img" aria-label={ariaLabel ?? `งบประมาณสะสม ${curLabel} เทียบ ${prevLabel}`}>
       {ticks.map(t => (
         <g key={t}>
           <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke={VIZ.grid} />
@@ -241,3 +244,181 @@ export function VendorStrip({ rows, unit }: { rows: StripRow[]; unit: string }) 
     </div>
   );
 }
+
+/* ---------------- Change vs the same span last year ---------------- */
+
+/** "▲ 39%" / "▼ 12%" — neutral colours: more spend is not good or bad by itself. */
+export function Delta({ cur, prev, isNew, unit = '%' }: { cur: number; prev: number | null | undefined; isNew?: boolean; unit?: string }) {
+  if (isNew) return <span className="rounded px-1.5 py-px text-[11px] font-medium" style={{ background: '#E8EEF5', color: VIZ.primary }}>ผู้ขายใหม่</span>;
+  if (prev === null || prev === undefined) return null;
+  if (!(prev > 0)) return cur > 0 ? <span style={{ color: VIZ.lightText }}>ปีก่อนไม่มี</span> : null;
+  const p = pctChange(cur, prev)!;
+  const r = Math.round(p);
+  if (r === 0) return <span style={{ color: VIZ.lightText }}>≈ เท่าเดิม</span>;
+  const times = cur / prev;
+  return (
+    <span className="whitespace-nowrap tabular-nums" style={{ color: r > 0 ? VIZ.text : VIZ.lightText }} title={`${r > 0 ? '+' : ''}${int(r)}%`}>
+      {r > 0 ? '▲' : '▼'} {times >= 3 ? `${timesText(times)} เท่า` : `${int(Math.abs(r))}${unit}`}
+    </span>
+  );
+}
+
+/** 3.64 -> "3.6", 35.2 -> "35": a multiple reads better than "+3,418%". */
+const timesText = (t: number) => (t < 10 ? t.toLocaleString('th-TH', { maximumFractionDigits: 1 }) : int(Math.round(t)));
+
+/** Rank movement: "▲2", "▼1", "ใหม่ใน 10 อันดับ" */
+export function RankMove({ rank, prev }: { rank: number | null; prev: number | null }) {
+  if (rank === null) return null;
+  if (prev === null) return null;
+  const d = prev - rank;
+  if (d === 0) return <span style={{ color: VIZ.lightText }}>อันดับเดิม</span>;
+  return <span className="tabular-nums" style={{ color: VIZ.lightText }}>{d > 0 ? `ขึ้น ${d} อันดับ` : `ลง ${-d} อันดับ`}</span>;
+}
+
+/* ---------------- Ranked bars with last year's mark (HTML rows) ---------------- */
+
+export type RankRow = {
+  key: string; label: ReactNode; title?: string; note?: ReactNode; rank?: number | null;
+  value: number; prev?: number | null; display: ReactNode; delta?: ReactNode; highlight?: boolean;
+};
+
+/**
+ * One row per item: label (one line + one note line), bar from zero, last year's same-span value as a dark mark,
+ * value and change on the right. Rows become buttons when onSelect is given (click to filter).
+ */
+export function RankBars({ rows, ariaLabel, max, onSelect, selected }: {
+  rows: RankRow[]; ariaLabel: string; max?: number; onSelect?: (key: string) => void; selected?: string | null;
+}) {
+  const top = max ?? Math.max(1, ...rows.map(r => Math.max(r.value, r.prev ?? 0)));
+  const pct = (v: number) => `${Math.max(0, Math.min(100, (v / top) * 100))}%`;
+  return (
+    <ul className="@container divide-y divide-gray-50" aria-label={ariaLabel}>
+      {rows.map(r => {
+        const isSel = !!selected && selected === r.key;
+        const fill = isSel || (!selected && r.highlight) ? VIZ.primary : selected ? '#C5CFDA' : '#8FA3B8';
+        const body = (
+          <>
+            <div className="order-1 min-w-0 text-left">
+              <p className="truncate text-sm leading-snug" title={r.title} style={{ color: VIZ.text, fontWeight: isSel || r.highlight ? 600 : 400 }}>
+                {r.rank ? <span className="mr-1.5 inline-block w-5 text-right tabular-nums" style={{ color: VIZ.lightText, fontWeight: 400 }}>{r.rank}</span> : null}
+                {r.label}
+              </p>
+              {r.note && <p className="truncate text-xs" style={{ color: VIZ.lightText, paddingLeft: r.rank ? '1.625rem' : 0 }}>{r.note}</p>}
+            </div>
+            <div className="order-3 col-span-2 @md:order-2 @md:col-span-1">
+              <div className="relative h-3.5 rounded-sm" style={{ background: VIZ.bg }}>
+                <div className="h-full rounded-sm" style={{ width: r.value > 0 ? `max(2px, ${pct(r.value)})` : 0, background: fill }} />
+                {r.prev !== null && r.prev !== undefined && r.prev > 0 && (
+                  <span className="absolute -top-1 -bottom-1 w-[3px] -translate-x-1/2 rounded-sm" style={{ left: pct(r.prev), background: '#444' }} aria-hidden />
+                )}
+              </div>
+            </div>
+            <div className="order-2 text-right @md:order-3">
+              <p className="text-sm font-semibold tabular-nums" style={{ color: VIZ.text }}>{r.display}</p>
+              {r.delta && <p className="text-xs">{r.delta}</p>}
+            </div>
+          </>
+        );
+        // Columns follow the card's own width (container query), so half-width cards still get a usable bar.
+        const grid = 'grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-md px-2 py-2 @md:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_6.5rem] @3xl:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_8.5rem]';
+        return (
+          <li key={r.key}>
+            {onSelect
+              ? <button type="button" onClick={() => onSelect(r.key)} aria-pressed={isSel} className={`${grid} hover:bg-gray-50`} style={{ background: isSel ? '#EEF3F8' : undefined }}>{body}</button>
+              : <div className={grid}>{body}</div>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/* ---------------- Year sparkline: one bar per year, own scale per row ---------------- */
+
+export function YearSpark({ years, values, selected }: { years: number[]; values: number[]; selected?: number | 'all' }) {
+  const max = Math.max(...values, 0);
+  const label = years.map((y, i) => `${be(y)}: ${shortBaht(values[i] ?? 0)}`).join(' · ');
+  return (
+    <span className="inline-flex h-6 items-end gap-0.5" role="img" aria-label={`ยอด PO รายปี ${label}`} title={label}>
+      {years.map((y, i) => {
+        const v = values[i] ?? 0;
+        const on = selected === y;
+        return <span key={y} className="w-2.5 rounded-t-sm" style={{ height: v > 0 && max > 0 ? `${Math.max(8, (v / max) * 100)}%` : '2px', background: v > 0 ? (on ? VIZ.primary : '#A9BED4') : VIZ.muted }} />;
+      })}
+    </span>
+  );
+}
+
+/* ---------------- Year x category matrix (pivot with in-cell bars) ---------------- */
+
+export type MatrixRow = { key: string; label: string; values: number[]; note?: string };
+
+/**
+ * Rows = categories, columns = years. Each cell: value + a bar scaled within its row (reads as that row's trend).
+ * Column headers drill into a year; row labels filter by category.
+ */
+export function YearMatrix({ years, rows, total, yearNotes, onYear, onRow, selectedRow }: {
+  years: number[]; rows: MatrixRow[]; total: MatrixRow; yearNotes: Record<number, string | undefined>;
+  onYear: (y: number) => void; onRow: (key: string) => void; selectedRow: string | null;
+}) {
+  const grand = total.values.reduce((a, b) => a + b, 0);
+  const line = (r: MatrixRow, isTotal: boolean) => {
+    const rowMax = Math.max(...r.values, 0);
+    const sum = r.values.reduce((a, b) => a + b, 0);
+    const isSel = selectedRow === r.key;
+    return (
+      <tr key={r.key} className="border-t border-gray-100" style={{ background: isSel ? '#EEF3F8' : isTotal ? '#FAFAFA' : undefined }}>
+        <th scope="row" className="sticky left-0 z-10 min-w-[9rem] px-3 py-2 text-left font-normal" style={{ background: isSel ? '#EEF3F8' : isTotal ? '#FAFAFA' : 'white' }}>
+          {isTotal
+            ? <span className="font-semibold">{r.label}</span>
+            : <button type="button" onClick={() => onRow(r.key)} aria-pressed={isSel} className="text-left hover:underline" style={{ color: VIZ.primary, fontWeight: isSel ? 600 : 400 }}>{r.label}</button>}
+          {r.note && <span className="block text-[11px]" style={{ color: VIZ.lightText }}>{r.note}</span>}
+        </th>
+        {r.values.map((v, i) => (
+          <td key={years[i]} className="px-3 py-2 align-middle">
+            <span className={`block whitespace-nowrap text-right tabular-nums ${isTotal ? 'font-semibold' : ''}`}>{v ? shortBaht(v) : '–'}</span>
+            <span className="mt-1 block h-1.5 rounded-sm" style={{ background: VIZ.bg }}>
+              <span className="block h-full rounded-sm" style={{ width: rowMax > 0 && v > 0 ? `${Math.max(3, (v / rowMax) * 100)}%` : 0, background: isTotal ? VIZ.text : isSel ? VIZ.primary : '#8FA3B8' }} />
+            </span>
+          </td>
+        ))}
+        <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${isTotal ? 'font-semibold' : ''}`}>{shortBaht(sum)}</td>
+        <td className="px-3 py-2 text-right tabular-nums" style={{ color: VIZ.lightText }}>{grand > 0 ? `${sum > 0 && Math.round((sum / grand) * 100) === 0 ? '<1' : Math.round((sum / grand) * 100)}%` : '–'}</td>
+      </tr>
+    );
+  };
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[34rem] text-sm">
+        <thead style={{ background: VIZ.bg }}>
+          <tr>
+            <th scope="col" className="sticky left-0 z-10 px-3 py-2 text-left font-semibold" style={{ background: VIZ.bg }}>หมวด (ตามรหัสสินค้า Odoo)</th>
+            {years.map(y => (
+              <th key={y} scope="col" className="px-3 py-2 text-right font-semibold whitespace-nowrap">
+                <button type="button" onClick={() => onYear(y)} className="hover:underline" style={{ color: VIZ.primary }} title={yearNotes[y] ?? `ดูเฉพาะปี ${be(y)}`}>
+                  ปี {be(y)}{yearNotes[y] ? '*' : ''}
+                </button>
+                {yearNotes[y] && <span className="block text-[11px] font-normal" style={{ color: VIZ.lightText }}>{yearNotes[y]}</span>}
+              </th>
+            ))}
+            <th scope="col" className="px-3 py-2 text-right font-semibold">รวม</th>
+            <th scope="col" className="px-3 py-2 text-right font-semibold">สัดส่วน</th>
+          </tr>
+        </thead>
+        <tbody>
+          {line(total, true)}
+          {rows.map(r => line(r, false))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export const changeWord = (cur: number, prev: number | null | undefined) => {
+  const p = pctChange(cur, prev);
+  if (p === null) return null;
+  const r = Math.round(p);
+  if (r === 0) return 'ใกล้เคียงช่วงเดียวกันปีก่อน';
+  const times = cur / (prev as number);
+  return `${r > 0 ? 'สูงกว่า' : 'ต่ำกว่า'}ช่วงเดียวกันปีก่อน ${times >= 3 ? `${timesText(times)} เท่า` : `${int(Math.abs(r))}%`}`;
+};

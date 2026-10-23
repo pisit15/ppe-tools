@@ -10,6 +10,8 @@ import {
 import {
   ChartTitle, CumulativeLines, HBarList, Legend, MONTHS_TH, MonthlyBars, STATUS_COLOR, StackBar, shortBaht, type MonthPoint,
 } from '../_components/charts';
+import { PeriodBar, usePeriod, validPeriod } from '../_components/period';
+import { inRange, periodInfo, thaiDay } from '@/lib/procurement/period';
 
 type Row = ProcPrSummary & { sites: string[] };
 type Site = { id: string; name: string };
@@ -57,27 +59,24 @@ export default function SummaryPage() {
   const [site, setSite] = useState<string>('all');
   const allPrs = useMemo(() => data?.prs ?? [], [data]);
   const prs = useMemo(() => allPrs.filter(p => site === 'all' || p.sites.includes(site)), [allPrs, site]);
-  const years = useMemo(() => [...new Set(prs.map(yearOf).filter((y): y is number => y !== null))].sort((a, b) => b - a), [prs]);
-  const [year, setYear] = useState<number | 'all' | null>(null);
-  const activeYear = year ?? years[0] ?? 'all';
+  const { sel: requested, setSel } = usePeriod();
+  const activeYear = validPeriod(requested, data?.meta);
+  const setYear = (y: number | 'all') => setSel(y);
   const [sort, setSort] = useState<SortState<Key>>({ key: 'total', dir: 'desc' });
   const [open, setOpen] = useState<string | null>(null);
   const limited = data?.scope === 'company';
 
-  // Latest PR date in the data = how far the current year has run (compare the same period last year).
-  const lastDate = useMemo(() => prs.reduce((m, p) => (p.request_date && p.request_date > m ? p.request_date : m), ''), [prs]);
-  const lastYear = lastDate ? Number(lastDate.slice(0, 4)) : null;
-  const firstYear = years.length ? years[years.length - 1] : null;
-
+  // Same rules as every other page: the running year is cut at the import day and compared with the same span last year.
+  const meta = data?.meta;
   const view = useMemo(() => {
-    if (activeYear === 'all') return null;
+    if (activeYear === 'all' || !meta) return null;
     const y = activeYear;
-    const isCurrent = y === lastYear;
-    const cutoff = isCurrent ? lastDate.slice(5) : '12-31';
-    const cur = prs.filter(p => yearOf(p) === y);
-    const hasPrev = years.includes(y - 1);
-    const prev = hasPrev ? prs.filter(p => yearOf(p) === y - 1 && (p.request_date ?? '').slice(5) <= cutoff) : [];
-    const lastMonth = isCurrent ? Number(lastDate.slice(5, 7)) - 1 : 11;
+    const info = periodInfo(y, meta, 'pr');
+    const isCurrent = info.partial;
+    const cur = prs.filter(p => inRange(p.request_date, info.range));
+    const hasPrev = !!info.prev;
+    const prev = info.prev ? prs.filter(p => inRange(p.request_date, info.prev)) : [];
+    const lastMonth = Number(info.range!.to.slice(5, 7)) - 1;
     const months: MonthPoint[] = MONTHS_TH.map((_, m) => {
       const mm = String(m + 1).padStart(2, '0');
       const inM = (rows: Row[], yy: number) => rows.filter(p => p.request_date?.startsWith(`${yy}-${mm}`)).length;
@@ -96,11 +95,12 @@ export default function SummaryPage() {
       }
       return out;
     };
+    const approvedEst = (rows: Row[]) => rows.filter(p => isApproved(p.state)).reduce((s, p) => s + (Number(p.estimated_cost) || 0), 0);
     return {
       y, isCurrent, cur, prevSame: prev, hasPrev, months, lastMonth,
-      cumCur: cum(cur, y), cumPrev: hasPrev ? cum(prs.filter(p => yearOf(p) === y - 1), y - 1) : null,
+      cumCur: cum(cur, y), cumPrev: hasPrev ? cum(prs.filter(p => yearOf(p) === y - 1), y - 1) : null, cumPrevSame: hasPrev ? approvedEst(prev) : null,
     };
-  }, [activeYear, prs, years, lastDate, lastYear]);
+  }, [activeYear, prs, meta]);
 
   const inYear = useMemo(() => prs.filter(p => activeYear === 'all' || yearOf(p) === activeYear), [prs, activeYear]);
   const people = useMemo(() => sortRows(summarize(inYear, p => p.requester), sort, (s, k) => s[k]), [inYear, sort]);
@@ -114,17 +114,16 @@ export default function SummaryPage() {
   let headline = '';
   let headSub = '';
   if (t && view) {
-    const period = view.isCurrent ? `ปี ${be(view.y)} (ถึง ${thaiDate(lastDate)})` : `ปี ${be(view.y)}`;
+    const period = view.isCurrent && meta ? `ปี ${be(view.y)} (ถึง ${thaiDay(meta.as_of, false)})` : `ปี ${be(view.y)}`;
     headline = `${period} เปิด PR ${int(t.total)} ฉบับ อนุมัติแล้ว ${pctOf(t.approved, t.total)}%`;
     if (tp) headline += ` · ${t.total >= tp.total ? 'มากกว่า' : 'น้อยกว่า'}ช่วงเดียวกันปีก่อน ${int(Math.abs(t.total - tp.total))} ฉบับ`;
     headSub = topReject && topReject.rejected ? `ยกเลิก/ไม่อนุมัติมากที่สุด: ${topReject.requester} ${int(topReject.rejected)} ฉบับ (${Math.round(topReject.reject_rate * 100)}% ของที่เปิด)` : 'ไม่มี PR ที่ถูกยกเลิกในช่วงนี้';
   } else if (t) {
     headline = `ทุกปีรวม ${int(t.total)} ฉบับ อนุมัติแล้ว ${pctOf(t.approved, t.total)}% · ยกเลิก ${int(t.rejected)} ฉบับ`;
   }
-  const prevNote = view?.hasPrev && view.y - 1 === firstYear ? ' · ปีก่อนเป็นปีแรกที่มีข้อมูลใน Odoo' : '';
   const busiest = view ? view.months.reduce((b, m, i) => (m.cur > view.months[b].cur ? i : b), 0) : 0;
   const cumNow = view ? view.cumCur[view.lastMonth] : 0;
-  const cumPrevSame = view?.cumPrev ? view.cumPrev[view.lastMonth] : null;
+  const cumPrevSame = view?.cumPrevSame ?? null;
 
   return (
     <div className="space-y-4">
@@ -143,7 +142,8 @@ export default function SummaryPage() {
       )}
       {data && allPrs.length > 0 && (
         <>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
+            <PeriodBar meta={data.meta} sel={activeYear} onChange={y => { setYear(y); setOpen(null); }} measure="pr" />
             {data.sites.length > 1 && (
               <div className="flex flex-wrap gap-2" role="group" aria-label="เลือกบริษัท">
                 {[{ id: 'all', name: 'ทุกบริษัท' }, ...data.sites].map(s => (
@@ -154,14 +154,6 @@ export default function SummaryPage() {
                 ))}
               </div>
             )}
-            <div className="flex flex-wrap gap-2" role="group" aria-label="เลือกปี">
-              {[...years, 'all' as const].map(y => (
-                <button key={y} onClick={() => { setYear(y); setOpen(null); }} className="rounded-full px-4 py-1.5 text-sm font-medium"
-                  style={activeYear === y ? { background: VIZ.primary, color: 'white' } : { border: `1px solid ${VIZ.muted}`, background: 'white' }}>
-                  {y === 'all' ? 'ทุกปี' : `ปี ${be(y)}`}
-                </button>
-              ))}
-            </div>
           </div>
 
           {t && (
@@ -174,7 +166,7 @@ export default function SummaryPage() {
           {t && (
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Kpi label="PR ที่เปิด" value={int(t.total)}
-                sub={tp ? `${signed(t.total - tp.total, ' ฉบับ')} เทียบช่วงเดียวกันปีก่อน (${int(tp.total)})${prevNote}` : `${int(people.length)} คน`} />
+                sub={tp ? `${signed(t.total - tp.total, ' ฉบับ')} เทียบช่วงเดียวกันปีก่อน (${int(tp.total)})` : `${int(people.length)} คน`} />
               <Kpi label="อนุมัติแล้ว" value={`${pctOf(t.approved, t.total)}%`} color={VIZ.primary}
                 sub={`${int(t.approved)} ฉบับ${tp ? ` · ปีก่อน ${pctOf(tp.approved, tp.total)}%` : ''}`} />
               <Kpi label="ไม่อนุมัติ / ยกเลิก" value={int(t.rejected)} color={VIZ.accent}
@@ -201,7 +193,7 @@ export default function SummaryPage() {
                     ? `งบที่อนุมัติสะสม ${shortBaht(cumNow)} บาท — ${cumNow >= cumPrevSame ? 'สูงกว่า' : 'ต่ำกว่า'}ช่วงเดียวกันปีก่อน ${Math.abs(Math.round(((cumNow - cumPrevSame) / cumPrevSame) * 100))}%`
                     : `งบที่อนุมัติสะสม ${shortBaht(cumNow)} บาท`}
                   sub="ยอดประมาณการใน PR ที่อนุมัติแล้ว สะสมตามเดือนที่เปิด PR · ขั้นบันไดที่สูงชัน = PR สัญญาใหญ่รายปี" />
-                <CumulativeLines cur={view.cumCur} prev={view.cumPrev} curLabel={be(view.y)} prevLabel={be(view.y - 1)} lastMonth={view.lastMonth} />
+                <CumulativeLines cur={view.cumCur} prev={view.cumPrev} prevSame={view.cumPrevSame} curLabel={be(view.y)} prevLabel={be(view.y - 1)} lastMonth={view.lastMonth} />
                 <div className="mt-2">
                   <Legend items={[{ color: VIZ.primary, label: `ปี ${be(view.y)}`, kind: 'line' }, ...(view.cumPrev ? [{ color: VIZ.neutral, label: `ปี ${be(view.y - 1)}`, kind: 'line' as const }] : [])]} />
                 </div>
@@ -211,13 +203,16 @@ export default function SummaryPage() {
 
           {!view && byYear.length > 0 && (
             <Card>
-              <ChartTitle title="จำนวน PR และสถานะรายปี" sub="ความยาวแท่ง = จำนวน PR · สีแยกสถานะ" />
-              <ul className="space-y-2">
+              <ChartTitle title="จำนวน PR และสถานะรายปี" sub={`ความยาวแท่ง = จำนวน PR · สีแยกสถานะ · กดปีเพื่อดูรายเดือนและเทียบปีก่อน${meta ? ` · ปี ${be(Number(meta.as_of.slice(0, 4)))} ถึง ${thaiDay(meta.as_of, false)}` : ''}`} />
+              <ul className="space-y-1">
                 {byYear.map(s => (
-                  <li key={s.requester} className="grid grid-cols-[4rem_1fr_auto] items-center gap-3 text-sm">
-                    <span style={{ color: VIZ.lightText }}>ปี {s.requester === '–' ? '–' : be(Number(s.requester))}</span>
-                    <StackBar parts={statusParts(s)} max={Math.max(...byYear.map(b => b.total))} />
-                    <span className="tabular-nums">{int(s.total)} ฉบับ · ยกเลิก {pctOf(s.rejected, s.total)}%</span>
+                  <li key={s.requester}>
+                    <button type="button" disabled={s.requester === '–'} onClick={() => { setYear(Number(s.requester)); setOpen(null); }}
+                      className="grid w-full grid-cols-[4.5rem_1fr_auto] items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-gray-50">
+                      <span className="font-medium hover:underline" style={{ color: VIZ.primary }}>ปี {s.requester === '–' ? '–' : be(Number(s.requester))}</span>
+                      <StackBar parts={statusParts(s)} max={Math.max(...byYear.map(b => b.total))} />
+                      <span className="tabular-nums">{int(s.total)} ฉบับ · ยกเลิก {pctOf(s.rejected, s.total)}%</span>
+                    </button>
                   </li>
                 ))}
               </ul>

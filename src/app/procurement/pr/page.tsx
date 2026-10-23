@@ -15,6 +15,8 @@ import {
 } from '../_components/ui';
 import { ChartTitle, HBarList } from '../_components/charts';
 import { vendorKey } from '@/lib/procurement/analysis';
+import { inRange, periodInfo } from '@/lib/procurement/period';
+import { PeriodBar, usePeriod, usePeriodParam, validPeriod, withPeriod } from '../_components/period';
 
 type Row = ProcPrSummary & { quote_count: number };
 type ListResp = { prs: Row[]; meta: ProcMeta };
@@ -44,13 +46,16 @@ export default function PrPage() {
 
 function PrList() {
   const { data, error, loading } = useJson<ListResp>('/api/procurement/prs');
+  const { sel: requested, setSel } = usePeriod();
+  const sel = validPeriod(requested, data?.meta);
+  const range = useMemo(() => (data?.meta ? periodInfo(sel, data.meta, 'pr').range : null), [data, sel]);
   const [group, setGroup] = useState<Group>('all');
   const [person, setPerson] = useState('');
   const [type, setType] = useState('');
   const [text, setText] = useState('');
   const [sort, setSort] = useState<SortState<Key>>({ key: 'request_date', dir: 'desc' });
   const [page, setPage] = useState(0);
-  const prs = useMemo(() => data?.prs ?? [], [data]);
+  const prs = useMemo(() => (data?.prs ?? []).filter(p => inRange(p.request_date, range)), [data, range]);
   const people = useMemo(() => [...new Set(prs.map(p => p.requester))].sort(), [prs]);
   const types = useMemo(() => [...new Set(prs.map(p => p.request_type || '(ไม่ระบุ)'))].sort(), [prs]);
   const rows = useMemo(() => {
@@ -73,6 +78,7 @@ function PrList() {
         <h2 className="text-xl font-bold">รายการ PR ทีม SHE</h2>
         <div className="mt-1"><MetaLine meta={data?.meta} /></div>
       </div>
+      <PeriodBar meta={data?.meta} sel={sel} onChange={s => { setSel(s); setPage(0); }} measure="pr" compare={false} />
       <div className="flex flex-wrap gap-2">
         {GROUPS.map(g => (
           <button key={g.id} onClick={() => { setGroup(g.id); reset(); }} className="rounded-full px-3 py-1 text-sm"
@@ -142,7 +148,8 @@ function PrList() {
 function PrDetail({ no, by }: { no: string; by: string }) {
   const { data, error, loading } = useJson<DetailResp>(`/api/procurement/pr?no=${encodeURIComponent(no)}${by ? `&by=${encodeURIComponent(by)}` : ''}`);
   const [showDesc, setShowDesc] = useState(false);
-  const back = <Link href="/procurement/pr" className="inline-flex items-center gap-1 text-sm hover:underline" style={{ color: VIZ.primary }}><ArrowLeft size={16} />รายการ PR</Link>;
+  const y = usePeriodParam();
+  const back = <Link href={withPeriod('/procurement/pr', y)} className="inline-flex items-center gap-1 text-sm hover:underline" style={{ color: VIZ.primary }}><ArrowLeft size={16} />รายการ PR</Link>;
   if (error) return <div className="space-y-3">{back}<ErrorBox error={error} /></div>;
   if (loading || !data) return <div className="space-y-3">{back}<Loading /></div>;
   if (data.choices) return (

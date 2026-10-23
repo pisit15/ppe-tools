@@ -1,5 +1,7 @@
 import { getSupabaseServer } from '@/lib/supabase';
-import { pricePoints } from './analysis';
+import { prKey, pricePoints } from './analysis';
+import { categorizePoLines, type SpendCat } from './categories';
+import { dataYears, type Coverage } from './period';
 import { prSites, type ActorScope } from './scope';
 import type { ToolsActor } from '@/lib/toolsSession';
 import type { PricePoint, ProcMeta, ProcPoLine, ProcPrSummary, ProcQuote, ProcQuoteItem, ProcTable } from './types';
@@ -8,7 +10,7 @@ import type { PricePoint, ProcMeta, ProcPoLine, ProcPrSummary, ProcQuote, ProcQu
 const TTL_MS = 5 * 60 * 1000;
 const PR_COLUMNS = 'odoo_id,pr_no,requester,request_date,company,operating_unit,request_type,state,title,estimated_cost,po_amount,po_count,po_list,vendors,n_lines,n_attachments,drive_folder_id';
 
-type Dataset = {
+export type Dataset = {
   prs: ProcPrSummary[]; po: ProcPoLine[]; quotes: ProcQuote[]; items: ProcQuoteItem[];
   quoteById: Map<number, ProcQuote>; points: PricePoint[]; meta: ProcMeta; loadedAt: number;
   /** odoo_id -> tools company ids (sites) the PR belongs to */
@@ -16,6 +18,8 @@ type Dataset = {
   /** login accounts (lowercased username -> company ids) and username -> Odoo requester */
   accountSites: Map<string, string[]>; requesterOf: Map<string, string>;
   siteNames: Map<string, string>;
+  /** prKey -> PR request date; PO line id -> spend category; prKey -> categories of its PO lines */
+  prDate: Map<string, string | null>; poCat: Map<number, SpendCat>; prCats: Map<string, Set<SpendCat>>;
 };
 let cache: Dataset | null = null;
 let pending: Promise<Dataset> | null = null;
@@ -58,10 +62,36 @@ async function load(): Promise<Dataset> {
   const sitesByPr = new Map(prs.map(p => [p.odoo_id, prSites(p, requesterSites)]));
   const siteNames = new Map(((companies.data ?? []) as { company_id: string; company_name: string }[]).map(c => [c.company_id, c.company_name]));
   const quoteById = new Map(quotes.map(q => [q.id, q]));
+  const prDate = new Map(prs.map(p => [prKey(p.pr_no, p.requester), p.request_date]));
+  const poCat = categorizePoLines(po);
+  const prCats = new Map<string, Set<SpendCat>>();
+  for (const l of po) {
+    if (l.po_state === 'cancel') continue;
+    const k = prKey(l.pr_no, l.requester);
+    prCats.set(k, (prCats.get(k) ?? new Set<SpendCat>()).add(poCat.get(l.odoo_id) ?? 'other'));
+  }
+  const points = pricePoints(po, items, quoteById, prDate);
+
+  // Period facts: data as of the import day (Bangkok), years with PR/PO data, first date per measure.
+  const livePo = po.filter(l => l.po_state !== 'cancel');
+  const maxDate = [...prs.map(p => p.request_date), ...livePo.map(l => l.order_date)].reduce<string>((m, d) => (d && d.slice(0, 10) > m ? d.slice(0, 10) : m), '');
+  const importedDay = run.data?.imported_at ? new Date(run.data.imported_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }) : '';
+  const as_of = [importedDay, maxDate].sort().pop() || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+  const years = dataYears([...prs.map(p => p.request_date), ...livePo.map(l => l.order_date)], as_of);
+  const firstYear = years.length ? `${Math.min(...years)}-01-01` : '';
+  const minDate = (ds: (string | null)[]) => ds.reduce<string | null>((m, d) => (d && d.slice(0, 10) >= firstYear && (!m || d.slice(0, 10) < m) ? d.slice(0, 10) : m), null);
+  const coverage: Coverage = {
+    pr: minDate(prs.map(p => p.request_date)),
+    po: minDate(livePo.map(l => l.order_date)),
+    quote: minDate(points.filter(p => p.source === 'quote').map(p => p.period_date)),
+  };
   return {
-    prs, po, quotes, items, quoteById, points: pricePoints(po, items, quoteById), loadedAt: Date.now(),
-    sitesByPr, accountSites, requesterOf, siteNames,
-    meta: { imported_at: run.data?.imported_at ?? null, imported_by: run.data?.imported_by ?? null, counts: (run.data?.counts ?? {}) as ProcMeta['counts'] },
+    prs, po, quotes, items, quoteById, points, loadedAt: Date.now(),
+    sitesByPr, accountSites, requesterOf, siteNames, prDate, poCat, prCats,
+    meta: {
+      imported_at: run.data?.imported_at ?? null, imported_by: run.data?.imported_by ?? null, counts: (run.data?.counts ?? {}) as ProcMeta['counts'],
+      as_of, years, coverage,
+    },
   };
 }
 

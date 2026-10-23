@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PricePoint } from '@/lib/procurement/types';
 import { median } from '@/lib/procurement/analysis';
-import { VIZ, baht, prHref, thaiDate } from './ui';
+import { VIZ, baht, prHref, thaiDate, usePeriodParam } from './ui';
 
 const W = 800, H = 260, PAD = { l: 64, r: 16, t: 16, b: 32 };
 
@@ -17,6 +17,7 @@ function niceMax(v: number) {
 /** Unit price over time: filled = paid on a PO, hollow = quoted. Click a point to open its PR. */
 export function PriceChart({ points }: { points: PricePoint[] }) {
   const router = useRouter();
+  const period = usePeriodParam();
   const [hover, setHover] = useState<PricePoint | null>(null);
   const dated = useMemo(() => points.filter(p => p.date), [points]);
   const model = useMemo(() => {
@@ -61,9 +62,9 @@ export function PriceChart({ points }: { points: PricePoint[] }) {
           const on = hover === p;
           return p.source === 'po'
             ? <circle key={`${p.source}${p.id}`} cx={cx} cy={cy} r={on ? 6 : 4} fill={VIZ.primary} fillOpacity={0.85} className="cursor-pointer"
-                onMouseEnter={() => setHover(p)} onMouseLeave={() => setHover(null)} onClick={() => router.push(prHref(p.pr_no, p.requester))} />
+                onMouseEnter={() => setHover(p)} onMouseLeave={() => setHover(null)} onClick={() => router.push(prHref(p.pr_no, p.requester, period))} />
             : <circle key={`${p.source}${p.id}`} cx={cx} cy={cy} r={on ? 6 : 3.5} fill="white" stroke={VIZ.secondary} strokeWidth={1.5} className="cursor-pointer"
-                onMouseEnter={() => setHover(p)} onMouseLeave={() => setHover(null)} onClick={() => router.push(prHref(p.pr_no, p.requester))} />;
+                onMouseEnter={() => setHover(p)} onMouseLeave={() => setHover(null)} onClick={() => router.push(prHref(p.pr_no, p.requester, period))} />;
         })}
       </svg>
       {hover && (

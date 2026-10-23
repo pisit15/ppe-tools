@@ -13,8 +13,10 @@ import {
 } from './_components/ui';
 import { median, vendorKey } from '@/lib/procurement/analysis';
 import { ChartTitle, Legend, VendorStrip, type StripRow } from './_components/charts';
+import { PeriodBar, usePeriod, validPeriod } from './_components/period';
+import { be } from '@/lib/procurement/period';
 
-type Resp = SearchResult & { meta: ProcMeta };
+type Resp = SearchResult & { meta: ProcMeta; outside: number };
 type VKey = 'vendor' | 'po_count' | 'quote_count' | 'last_po_price' | 'min_price' | 'median_price' | 'last_quote_price' | 'last';
 type PKey = 'date' | 'vendor' | 'unit_price' | 'qty' | 'item';
 const EXAMPLES = ['อบรม รถยก', 'กำจัด ขยะ', 'ถังดับเพลิง', 'ถุงมือ'];
@@ -27,6 +29,8 @@ export default function PriceSearchPage() {
   const unit = params.get('unit') || '';
   const dup = params.get('dup') === '1';
   const [text, setText] = useState(q);
+  const { sel: requested, setSel } = usePeriod();
+  const yq: Record<string, string> = requested !== 'all' ? { y: String(requested) } : {};
 
   const setParams = (next: Record<string, string>) => {
     const sp = new URLSearchParams(params.toString());
@@ -41,10 +45,11 @@ export default function PriceSearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
-  const url = q ? `/api/procurement/search?${new URLSearchParams({ q, ...(unit ? { unit } : {}), ...(dup ? { dup: '1' } : {}) })}` : null;
+  const url = q ? `/api/procurement/search?${new URLSearchParams({ q, ...(unit ? { unit } : {}), ...(dup ? { dup: '1' } : {}), ...yq })}` : null;
   const { data, error, loading } = useJson<Resp>(url);
-  const { data: idle } = useJson<Idle>(q ? null : '/api/procurement/search?q=');
+  const { data: idle } = useJson<Idle>(q ? null : `/api/procurement/search?${new URLSearchParams({ q: '', ...yq })}`, true);
   const meta = data?.meta ?? idle?.meta;
+  const sel = validPeriod(requested, meta);
 
   return (
     <div className="space-y-5">
@@ -68,11 +73,12 @@ export default function PriceSearchPage() {
           )}
         </div>
         <div className="mt-2"><MetaLine meta={meta} /></div>
+        <div className="mt-3"><PeriodBar meta={meta} sel={sel} onChange={setSel} measure="po" compare={false} /></div>
       </section>
 
       {!q && idle?.top && idle.top.length > 0 && (
         <Card>
-          <ChartTitle title="เริ่มจากรายการที่ทีม SHE ซื้อบ่อย" sub="เรียงตามจำนวน PR ที่ออก PO แล้ว · กดเพื่อดูราคาและผู้ขาย" />
+          <ChartTitle title={`เริ่มจากรายการที่ทีม SHE ซื้อบ่อย${sel === 'all' ? '' : ` ปี ${be(sel)}`}`} sub="เรียงตามจำนวน PR ที่ออก PO แล้ว · กดเพื่อดูราคาและผู้ขาย" />
           <div className="flex flex-wrap gap-2">
             {idle.top.map(t => (
               <button key={t.label} onClick={() => setText(t.label)} className="rounded-lg border px-3 py-1.5 text-left text-sm hover:bg-gray-50" style={{ borderColor: VIZ.muted }}>
@@ -84,13 +90,28 @@ export default function PriceSearchPage() {
       )}
       {error && <ErrorBox error={error} />}
       {loading && <Loading text="กำลังค้นหา…" />}
-      {data && !data.points.length && <Card><p className="text-sm" style={{ color: VIZ.lightText }}>ไม่พบรายการที่ตรงกับ “{q}” — ลองใช้คำที่สั้นลง หรือแยกคำด้วยเว้นวรรค</p></Card>}
-      {data && data.points.length > 0 && <Results key={`${q}|${unit}|${dup}`} data={data} unit={unit} onUnit={u => setParams({ unit: u })} />}
+      {data && !data.points.length && (
+        <Card>
+          <p className="text-sm" style={{ color: VIZ.lightText }}>
+            {data.outside > 0
+              ? <>ไม่พบ “{q}” ในปี {sel === 'all' ? '' : be(sel)} แต่พบในปีอื่น {int(data.outside)} รายการ — <button className="underline" style={{ color: VIZ.primary }} onClick={() => setSel('all')}>ดูทุกปี</button></>
+              : <>ไม่พบรายการที่ตรงกับ “{q}” — ลองใช้คำที่สั้นลง หรือแยกคำด้วยเว้นวรรค</>}
+          </p>
+        </Card>
+      )}
+      {data && data.points.length > 0 && data.outside > 0 && (
+        <p className="text-sm" style={{ color: VIZ.lightText }}>
+          แสดงเฉพาะปี {sel === 'all' ? '' : be(sel)} · มีราคาในปีอื่นอีก {int(data.outside)} รายการ — <button className="underline" style={{ color: VIZ.primary }} onClick={() => setSel('all')}>ดูทุกปีเพื่อเห็นแนวโน้มราคา</button>
+        </p>
+      )}
+      {data && data.points.length > 0 && <Results key={`${q}|${unit}|${dup}|${sel}`} data={data} unit={unit} onUnit={u => setParams({ unit: u })} period={sel === 'all' ? '' : `ปี ${be(sel)}`} />}
     </div>
   );
 }
 
-function Results({ data, unit, onUnit }: { data: Resp; unit: string; onUnit: (u: string) => void }) {
+/** period = '' for all years, or "ปี 2569" — wording must not claim "never" when only one year is shown. */
+function Results({ data, unit, onUnit, period }: { data: Resp; unit: string; onUnit: (u: string) => void; period: string }) {
+  const never = period ? `${period} ยังไม่มี PO` : 'ยังไม่เคยออก PO';
   const po = data.points.filter(p => p.source === 'po');
   const lastPo = po[0];
   const poPrices = po.map(p => p.unit_price);
@@ -117,10 +138,10 @@ function Results({ data, unit, onUnit }: { data: Resp; unit: string; onUnit: (u:
       return { key: k, name: [...g.names.entries()].sort((a, b) => b[1] - a[1])[0][0], po: g.po, quotes: g.quotes, median: median(all), n: all.length };
     });
     return rows.sort((a, b) => b.n - a.n).slice(0, 12).sort((a, b) => a.median - b.median).map((r, i) => ({
-      key: r.key, name: r.name, label: <VendorLink name={r.name} />, po: r.po, quotes: r.quotes, median: r.median, best: i === 0,
-      sub: `มัธยฐาน ${baht(r.median)} · ${r.po.length ? `ซื้อ ${r.po.length}` : 'ยังไม่เคยซื้อ'}${r.quotes.length ? ` · เสนอ ${r.quotes.length}` : ''}`,
+      key: r.key, name: r.name, label: <VendorLink name={r.name} short />, po: r.po, quotes: r.quotes, median: r.median, best: i === 0,
+      sub: `มัธยฐาน ${baht(r.median)} · ${r.po.length ? `ซื้อ ${r.po.length}` : period ? 'ไม่ได้ซื้อในช่วงนี้' : 'ยังไม่เคยซื้อ'}${r.quotes.length ? ` · เสนอ ${r.quotes.length}` : ''}`,
     }));
-  }, [data.points, oneUnit]);
+  }, [data.points, oneUnit, period]);
 
   return (
     <>
@@ -142,8 +163,8 @@ function Results({ data, unit, onUnit }: { data: Resp; unit: string; onUnit: (u:
           <>
             <p className="text-lg font-bold leading-snug" style={{ color: VIZ.text }}>
               {poMed !== null
-                ? `ราคาที่จ่ายจริงอยู่ที่ราว ${baht(poMed)} บาท/${unitName} (มัธยฐานจาก ${int(po.length)} รายการ PO)`
-                : `ยังไม่เคยออก PO รายการนี้ — มีใบเสนอราคา ${int(quoteCount)} รายการ`}
+                ? `${period ? `${period} ` : ''}ราคาที่จ่ายจริงอยู่ที่ราว ${baht(poMed)} บาท/${unitName} (มัธยฐานจาก ${int(po.length)} รายการ PO)`
+                : `${never}รายการนี้ — มีใบเสนอราคา ${int(quoteCount)} รายการ`}
             </p>
             <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>
               {bestVendor && `ผู้ขายที่ราคามัธยฐานต่ำสุด: ${bestVendor.vendor} ${baht(bestVendor.median_price)} บาท`}
@@ -158,7 +179,7 @@ function Results({ data, unit, onUnit }: { data: Resp; unit: string; onUnit: (u:
         )}
       </Card>
       {po.length > 0 && <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Kpi label="จ่ายจริงล่าสุด" value={lastPo ? baht(lastPo.unit_price) : '–'} sub={lastPo ? `${thaiDate(lastPo.date)} · ${lastPo.vendor}` : 'ยังไม่เคยออก PO'} />
+        <Kpi label="จ่ายจริงล่าสุด" value={lastPo ? baht(lastPo.unit_price) : '–'} sub={lastPo ? `${thaiDate(lastPo.date)} · ${lastPo.vendor}` : never} />
         <Kpi label="จ่ายจริง ต่ำสุด – สูงสุด" value={poPrices.length ? `${baht(Math.min(...poPrices))} – ${baht(Math.max(...poPrices))}` : '–'} sub={`${int(po.length)} รายการ PO`} color={VIZ.primary} />
         <Kpi label="ผู้ขายที่เกี่ยวข้อง" value={int(data.vendors.length)} sub={`ใบเสนอราคา ${int(quoteCount)} รายการ`} color={VIZ.text} />
       </div>}
