@@ -133,7 +133,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     <aside
       className={`${
         mode === 'chemical' ? (isOpen ? 'w-full md:w-64' : 'w-full md:w-20') : (isOpen ? 'w-64' : 'w-20')
-      } ${bgColor} text-white transition-colors duration-300 shrink-0 ${isPurple ? `sticky top-0 z-30 max-h-dvh md:h-dvh md:self-start ${mobileOpen ? 'h-dvh' : ''}` : 'sticky top-0 z-30 h-dvh self-start'} flex flex-col`}
+      } ${bgColor} text-white transition-colors duration-300 shrink-0 ${isPurple ? `sticky top-0 z-30 max-h-dvh md:h-dvh md:self-start ${mobileOpen ? 'h-dvh' : ''}` : 'min-h-screen'} flex flex-col`}
     >
       {/* Header */}
       <div className={`flex shrink-0 items-center justify-between p-4 border-b ${borderColor}`}>
@@ -212,7 +212,8 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 min-h-0 p-4 space-y-1 overflow-y-auto overscroll-contain">
+      {/* PPE/SHE: no inner scroll — logout/home follow directly after the menu items */}
+      <nav className={isPurple ? 'flex-1 min-h-0 p-4 space-y-1 overflow-y-auto overscroll-contain' : 'p-4 space-y-1'}>
         {navItems.map((item) => (
           <Link
             key={item.href}
@@ -259,7 +260,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
 
       {/* Footer */}
       {isOpen && (
-        <div className={`shrink-0 p-4 border-t ${borderColor} text-xs ${mutedText}`}>
+        <div className={`shrink-0 p-4 border-t ${borderColor} text-xs ${mutedText} ${isPurple ? '' : 'mt-auto'}`}>
           <p className="mb-1">EA SHE Tools</p>
           <p>tools.eashe.org</p>
         </div>
