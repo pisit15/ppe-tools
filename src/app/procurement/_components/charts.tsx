@@ -10,7 +10,7 @@ import { VIZ, baht, int } from './ui';
 
 export { MONTHS_TH };
 // Status colours: approved is the quiet base, pending a warning, cancelled the accent to look at.
-export const STATUS_COLOR = { approved: '#A9BED4', pending: VIZ.secondary, rejected: VIZ.accent } as const;
+export const STATUS_COLOR = { approved: '#8CAE9B', pending: VIZ.secondary, rejected: VIZ.accent } as const;
 
 export function niceMax(v: number) {
   if (!(v > 0)) return 1;
@@ -54,7 +54,7 @@ export function ChartTitle({ title, sub }: { title: ReactNode; sub?: ReactNode }
 }
 
 /** Render SVG charts at the container's real pixel width so text stays readable on phones. */
-function useWidth(fallback = 720) {
+export function useWidth(fallback = 720) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(fallback);
   useEffect(() => {

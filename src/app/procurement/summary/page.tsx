@@ -50,8 +50,8 @@ function summarize(rows: Row[], key: (p: Row) => string) {
 const total = (rows: Row[]) => summarize(rows, () => 'all')[0] ?? null;
 const statusParts = (s: Stat) => [
   { value: s.approved, color: STATUS_COLOR.approved, label: 'อนุมัติ' },
-  { value: s.pending, color: STATUS_COLOR.pending, label: 'รออนุมัติ' },
-  { value: s.rejected, color: STATUS_COLOR.rejected, label: 'ยกเลิก' },
+  { value: s.pending, color: STATUS_COLOR.pending, label: 'ร่าง / รออนุมัติ' },
+  { value: s.rejected, color: STATUS_COLOR.rejected, label: 'ไม่อนุมัติ / ยกเลิก' },
 ];
 
 export default function SummaryPage() {
@@ -64,6 +64,7 @@ export default function SummaryPage() {
   const setYear = (y: number | 'all') => setSel(y);
   const [sort, setSort] = useState<SortState<Key>>({ key: 'total', dir: 'desc' });
   const [open, setOpen] = useState<string | null>(null);
+  const [queue, setQueue] = useState<'all' | 'draft' | 'to_approve' | 'approved'>('all');
   const limited = data?.scope === 'company';
 
   // Same rules as every other page: the running year is cut at the import day and compared with the same span last year.
@@ -104,10 +105,11 @@ export default function SummaryPage() {
 
   const inYear = useMemo(() => prs.filter(p => activeYear === 'all' || yearOf(p) === activeYear), [prs, activeYear]);
   const people = useMemo(() => sortRows(summarize(inYear, p => p.requester), sort, (s, k) => s[k]), [inYear, sort]);
+  const queued = useMemo(() => inYear.filter(p => queue === 'all' || p.state === queue), [inYear, queue]);
+  const tablePeople = useMemo(() => sortRows(summarize(queued, p => p.requester), sort, (s, k) => s[k]), [queued, sort]);
   const t = useMemo(() => total(inYear), [inYear]);
   const tp = useMemo(() => (view?.hasPrev ? total(view.prevSame) : null), [view]);
-  const maxTotal = Math.max(1, ...people.map(p => p.total));
-  const topReject = [...people].sort((a, b) => b.rejected - a.rejected || b.reject_rate - a.reject_rate)[0];
+  const maxTotal = Math.max(1, ...tablePeople.map(p => p.total));
   const byYear = useMemo(() => summarize(prs, p => String(yearOf(p) ?? '–')).sort((a, b) => b.requester.localeCompare(a.requester)), [prs]);
 
   // Action title — the conclusion, not the topic.
@@ -117,9 +119,10 @@ export default function SummaryPage() {
     const period = view.isCurrent && meta ? `ปี ${be(view.y)} (ถึง ${thaiDay(meta.as_of, false)})` : `ปี ${be(view.y)}`;
     headline = `${period} เปิด PR ${int(t.total)} ฉบับ อนุมัติแล้ว ${pctOf(t.approved, t.total)}%`;
     if (tp) headline += ` · ${t.total >= tp.total ? 'มากกว่า' : 'น้อยกว่า'}ช่วงเดียวกันปีก่อน ${int(Math.abs(t.total - tp.total))} ฉบับ`;
-    headSub = topReject && topReject.rejected ? `ยกเลิก/ไม่อนุมัติมากที่สุด: ${topReject.requester} ${int(topReject.rejected)} ฉบับ (${Math.round(topReject.reject_rate * 100)}% ของที่เปิด)` : 'ไม่มี PR ที่ถูกยกเลิกในช่วงนี้';
+    headSub = `ร่าง / รออนุมัติ ${int(t.pending)} ฉบับ · ไม่อนุมัติ / ยกเลิก ${int(t.rejected)} ฉบับ · สถานะตามข้อมูลที่นำเข้าล่าสุด`;
   } else if (t) {
-    headline = `ทุกปีรวม ${int(t.total)} ฉบับ อนุมัติแล้ว ${pctOf(t.approved, t.total)}% · ยกเลิก ${int(t.rejected)} ฉบับ`;
+    headline = `ทุกปีรวม ${int(t.total)} ฉบับ อนุมัติแล้ว ${pctOf(t.approved, t.total)}%`;
+    headSub = `ร่าง / รออนุมัติ ${int(t.pending)} ฉบับ · ไม่อนุมัติ / ยกเลิก ${int(t.rejected)} ฉบับ`;
   }
   const busiest = view ? view.months.reduce((b, m, i) => (m.cur > view.months[b].cur ? i : b), 0) : 0;
   const cumNow = view ? view.cumCur[view.lastMonth] : 0;
@@ -128,8 +131,8 @@ export default function SummaryPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-bold">สรุป PR รายคน รายปี</h2>
-        <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>ใช้ติดตามว่าแต่ละคนเปิด PR เท่าไร ผ่านอนุมัติหรือถูกยกเลิกเท่าไร และใช้งบไปแล้วเท่าไรเทียบช่วงเดียวกันปีก่อน</p>
+        <h2 className="text-2xl font-semibold tracking-tight">ติดตามงานและสรุปรายคน</h2>
+        <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>ตรวจงานที่ต้องดำเนินการต่อ พร้อมสถานะ PR งบประมาณที่ขอ และมูลค่าตาม PO</p>
         <div className="mt-1"><MetaLine meta={data?.meta} /></div>
       </div>
       {error && <ErrorBox error={error} />}
@@ -147,7 +150,7 @@ export default function SummaryPage() {
             {data.sites.length > 1 && (
               <div className="flex flex-wrap gap-2" role="group" aria-label="เลือกบริษัท">
                 {[{ id: 'all', name: 'ทุกบริษัท' }, ...data.sites].map(s => (
-                  <button key={s.id} onClick={() => { setSite(s.id); setOpen(null); }} className="rounded-lg px-3 py-1 text-sm"
+                  <button key={s.id} aria-pressed={site === s.id} onClick={() => { setSite(s.id); setOpen(null); }} className="rounded-lg px-3 py-1 text-sm"
                     style={site === s.id ? { background: VIZ.text, color: 'white' } : { border: `1px solid ${VIZ.muted}`, background: 'white' }}>
                     {s.name}
                   </button>
@@ -170,69 +173,31 @@ export default function SummaryPage() {
               <Kpi label="อนุมัติแล้ว" value={`${pctOf(t.approved, t.total)}%`} color={VIZ.primary}
                 sub={`${int(t.approved)} ฉบับ${tp ? ` · ปีก่อน ${pctOf(tp.approved, tp.total)}%` : ''}`} />
               <Kpi label="ไม่อนุมัติ / ยกเลิก" value={int(t.rejected)} color={VIZ.accent}
-                sub={`${pctOf(t.rejected, t.total)}% ของที่เปิด${t.pending ? ` · รออนุมัติอีก ${int(t.pending)}` : ''}`} />
+                sub={`${pctOf(t.rejected, t.total)}% ของที่เปิด · ต้นทางรวมสองสถานะนี้ไว้ด้วยกัน`} />
               <Kpi label="งบที่อนุมัติ (บาท)" value={shortBaht(t.est_approved)} color={VIZ.text}
-                sub={`ขอทั้งหมด ${shortBaht(t.est_all)} · PO จริง ${shortBaht(t.po_amount)}`} />
+                sub={`ขอทั้งหมด ${shortBaht(t.est_all)} · ตาม PO ${shortBaht(t.po_amount)}`} />
             </div>
           )}
 
-          {view && t && (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <Card>
-                <ChartTitle
-                  title={`เปิด PR มากที่สุดเดือน ${MONTHS_TH[busiest]} (${int(view.months[busiest].cur)} ฉบับ)`}
-                  sub={`จำนวน PR ที่เปิดรายเดือน ปี ${be(view.y)}${view.isCurrent ? ` · เดือน ${MONTHS_TH[view.lastMonth]} ยังไม่ครบเดือน (สีจาง)` : ''}`} />
-                <MonthlyBars data={view.months} ariaLabel={`จำนวน PR รายเดือน ปี ${be(view.y)}`} />
-                <div className="mt-2">
-                  <Legend items={[{ color: VIZ.primary, label: `ปี ${be(view.y)}` }, ...(view.hasPrev ? [{ color: '#555', label: `ปี ${be(view.y - 1)} (เดือนเดียวกัน)`, kind: 'tick' as const }] : [])]} />
-                </div>
-              </Card>
-              <Card>
-                <ChartTitle
-                  title={cumPrevSame !== null && cumPrevSame > 0
-                    ? `งบที่อนุมัติสะสม ${shortBaht(cumNow)} บาท — ${cumNow >= cumPrevSame ? 'สูงกว่า' : 'ต่ำกว่า'}ช่วงเดียวกันปีก่อน ${Math.abs(Math.round(((cumNow - cumPrevSame) / cumPrevSame) * 100))}%`
-                    : `งบที่อนุมัติสะสม ${shortBaht(cumNow)} บาท`}
-                  sub="ยอดประมาณการใน PR ที่อนุมัติแล้ว สะสมตามเดือนที่เปิด PR · ขั้นบันไดที่สูงชัน = PR สัญญาใหญ่รายปี" />
-                <CumulativeLines cur={view.cumCur} prev={view.cumPrev} prevSame={view.cumPrevSame} curLabel={be(view.y)} prevLabel={be(view.y - 1)} lastMonth={view.lastMonth} />
-                <div className="mt-2">
-                  <Legend items={[{ color: VIZ.primary, label: `ปี ${be(view.y)}`, kind: 'line' }, ...(view.cumPrev ? [{ color: VIZ.neutral, label: `ปี ${be(view.y - 1)}`, kind: 'line' as const }] : [])]} />
-                </div>
-              </Card>
+          <section aria-label="งานที่ต้องดำเนินการต่อ" className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-semibold">งานที่ต้องดำเนินการต่อ</h3>
+              <button type="button" onClick={() => { setQueue('all'); setOpen(null); }} className="text-sm font-medium hover:underline" style={{ color: VIZ.primary }}>ดูทุกสถานะ ({int(inYear.length)})</button>
             </div>
-          )}
-
-          {!view && byYear.length > 0 && (
-            <Card>
-              <ChartTitle title="จำนวน PR และสถานะรายปี" sub={`ความยาวแท่ง = จำนวน PR · สีแยกสถานะ · กดปีเพื่อดูรายเดือนและเทียบปีก่อน${meta ? ` · ปี ${be(Number(meta.as_of.slice(0, 4)))} ถึง ${thaiDay(meta.as_of, false)}` : ''}`} />
-              <ul className="space-y-1">
-                {byYear.map(s => (
-                  <li key={s.requester}>
-                    <button type="button" disabled={s.requester === '–'} onClick={() => { setYear(Number(s.requester)); setOpen(null); }}
-                      className="grid w-full grid-cols-[4.5rem_1fr_auto] items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-gray-50">
-                      <span className="font-medium hover:underline" style={{ color: VIZ.primary }}>ปี {s.requester === '–' ? '–' : be(Number(s.requester))}</span>
-                      <StackBar parts={statusParts(s)} max={Math.max(...byYear.map(b => b.total))} />
-                      <span className="tabular-nums">{int(s.total)} ฉบับ · ยกเลิก {pctOf(s.rejected, s.total)}%</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-3"><Legend items={[{ color: STATUS_COLOR.approved, label: 'อนุมัติ' }, { color: STATUS_COLOR.pending, label: 'รออนุมัติ / ร่าง' }, { color: STATUS_COLOR.rejected, label: 'ไม่อนุมัติ / ยกเลิก' }]} /></div>
-            </Card>
-          )}
-
-          {view && people.length > 1 && (
-            <Card>
-              <ChartTitle title={`งบที่อนุมัติรายคน ปี ${be(view.y)}`} sub="เรียงจากมากไปน้อย · ใช้ดูว่าภาระงบกระจุกที่ใคร" />
-              <HBarList ariaLabel="งบที่อนุมัติรายคน"
-                rows={[...people].sort((a, b) => b.est_approved - a.est_approved).slice(0, 10).map((s, i) => ({
-                  key: s.requester, label: s.requester, value: s.est_approved, display: `${shortBaht(s.est_approved)} บาท`, highlight: i === 0,
-                }))} />
-            </Card>
-          )}
-
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {(['draft', 'to_approve', 'approved'] as const).map(state => (
+                <button key={state} type="button" aria-pressed={queue === state} onClick={() => { setQueue(queue === state ? 'all' : state); setOpen(null); }}
+                  className="rounded-xl border bg-white px-4 py-4 text-left transition-colors hover:bg-slate-50"
+                  style={{ borderColor: queue === state ? VIZ.primary : VIZ.muted }}>
+                  <span className="block text-sm" style={{ color: VIZ.lightText }}>{PR_STATE_LABEL[state]}</span>
+                  <span className="mt-2 block text-2xl font-semibold tabular-nums" style={{ color: VIZ.text }}>{int(inYear.filter(p => p.state === state).length)} <span className="text-xs font-normal">ฉบับ</span></span>
+                </button>
+              ))}
+            </div>
+          </section>
           <Card className="!p-0 overflow-hidden">
             <div className="px-4 pt-4 md:px-6">
-              <ChartTitle title="รายละเอียดรายคน" sub="แท่งใช้สเกลเดียวกันทุกแถว (ความยาว = จำนวน PR) · กดชื่อเพื่อดูรายการ PR" />
+              <ChartTitle title={`รายละเอียดรายคน · ${queue === 'all' ? 'ทุกสถานะ' : PR_STATE_LABEL[queue]}`} sub={`แสดง ${int(queued.length)} PR จาก ${int(tablePeople.length)} คน · กดชื่อเพื่อดูรายการ PR · ตัวเลขในตารางคำนวณตามสถานะที่เลือก`} />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -241,24 +206,24 @@ export default function SummaryPage() {
                     <SortHeader label="ผู้เปิด PR" k="requester" sort={sort} onSort={setSort} />
                     <SortHeader label="PR ทั้งหมด" k="total" sort={sort} onSort={setSort} />
                     <SortHeader label="อนุมัติ" k="approved" sort={sort} onSort={setSort} align="right" />
-                    <SortHeader label="ยกเลิก" k="rejected" sort={sort} onSort={setSort} align="right" />
-                    <SortHeader label="% ยกเลิก" k="reject_rate" sort={sort} onSort={setSort} align="right" />
-                    <SortHeader label="รออนุมัติ" k="pending" sort={sort} onSort={setSort} align="right" />
+                    <SortHeader label="ไม่อนุมัติ / ยกเลิก" k="rejected" sort={sort} onSort={setSort} align="right" />
+                    <SortHeader label="สัดส่วน" k="reject_rate" sort={sort} onSort={setSort} align="right" />
+                    <SortHeader label="ร่าง / รออนุมัติ" k="pending" sort={sort} onSort={setSort} align="right" />
                     <SortHeader label="งบที่ขอ" k="est_all" sort={sort} onSort={setSort} align="right" />
                     <SortHeader label="งบที่อนุมัติ" k="est_approved" sort={sort} onSort={setSort} align="right" />
                     <SortHeader label="ยอด PO" k="po_amount" sort={sort} onSort={setSort} align="right" />
                   </tr>
                 </thead>
                 <tbody>
-                  {people.map(s => {
+                  {tablePeople.map(s => {
                     const expanded = open === s.requester;
                     return (
                       <Fragment key={s.requester}>
-                        <tr className="cursor-pointer border-t border-gray-100 hover:bg-gray-50" onClick={() => setOpen(expanded ? null : s.requester)} aria-expanded={expanded}>
+                        <tr className="border-t border-gray-100 hover:bg-gray-50">
                           <td className="px-3 py-2 font-medium whitespace-nowrap">
-                            <span className="inline-flex items-center gap-1" style={{ color: VIZ.primary }}>
+                            <button type="button" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : s.requester)} className="inline-flex items-center gap-1 text-left" style={{ color: VIZ.primary }}>
                               {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}{s.requester}
-                            </span>
+                            </button>
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex min-w-[9rem] items-center gap-2">
@@ -296,12 +261,69 @@ export default function SummaryPage() {
                   })}
                 </tbody>
               </table>
+              {tablePeople.length === 0 && <p className="px-6 py-10 text-center text-sm" style={{ color: VIZ.lightText }}>ไม่มี PR ในสถานะและช่วงเวลาที่เลือก</p>}
             </div>
             <div className="flex flex-wrap items-center gap-4 px-4 py-3">
               <Legend items={[{ color: STATUS_COLOR.approved, label: 'อนุมัติ (รวมที่ออก PO แล้ว)' }, { color: STATUS_COLOR.pending, label: 'รออนุมัติ / ร่าง' }, { color: STATUS_COLOR.rejected, label: 'ไม่อนุมัติ / ยกเลิก' }]} />
-              <span className="text-xs" style={{ color: VIZ.lightText }}>· % ยกเลิก ตั้งแต่ 20% ขึ้นไปแสดงเป็นสีแดง</span>
+              <span className="text-xs" style={{ color: VIZ.lightText }}>สัดส่วน = ไม่อนุมัติ / ยกเลิก ต่อ PR ทั้งหมด · ข้อมูลต้นทางยังแยกสองสถานะนี้ไม่ได้</span>
             </div>
           </Card>
+
+          {view && t && (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Card>
+                <ChartTitle
+                  title={`เปิด PR มากที่สุดเดือน ${MONTHS_TH[busiest]} (${int(view.months[busiest].cur)} ฉบับ)`}
+                  sub={`จำนวน PR ที่เปิดรายเดือน ปี ${be(view.y)}${view.isCurrent ? ` · เดือน ${MONTHS_TH[view.lastMonth]} ยังไม่ครบเดือน (สีจาง)` : ''}`} />
+                <MonthlyBars data={view.months} ariaLabel={`จำนวน PR รายเดือน ปี ${be(view.y)}`} />
+                <div className="mt-2">
+                  <Legend items={[{ color: VIZ.primary, label: `ปี ${be(view.y)}` }, ...(view.hasPrev ? [{ color: '#555', label: `ปี ${be(view.y - 1)} (เดือนเดียวกัน)`, kind: 'tick' as const }] : [])]} />
+                </div>
+              </Card>
+              <Card>
+                <ChartTitle
+                  title={cumPrevSame !== null && cumPrevSame > 0
+                    ? `งบที่อนุมัติสะสม ${shortBaht(cumNow)} บาท — ${cumNow >= cumPrevSame ? 'สูงกว่า' : 'ต่ำกว่า'}ช่วงเดียวกันปีก่อน ${Math.abs(Math.round(((cumNow - cumPrevSame) / cumPrevSame) * 100))}%`
+                    : `งบที่อนุมัติสะสม ${shortBaht(cumNow)} บาท`}
+                  sub="ยอดประมาณการใน PR ที่อนุมัติแล้ว สะสมตามเดือนที่เปิด PR · ขั้นบันไดที่สูงชัน = PR สัญญาใหญ่รายปี" />
+                <CumulativeLines cur={view.cumCur} prev={view.cumPrev} prevSame={view.cumPrevSame} curLabel={be(view.y)} prevLabel={be(view.y - 1)} lastMonth={view.lastMonth} />
+                <div className="mt-2">
+                  <Legend items={[{ color: VIZ.primary, label: `ปี ${be(view.y)}`, kind: 'line' }, ...(view.cumPrev ? [{ color: VIZ.neutral, label: `ปี ${be(view.y - 1)}`, kind: 'line' as const }] : [])]} />
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {!view && byYear.length > 0 && (
+            <Card>
+              <ChartTitle title="จำนวน PR และสถานะรายปี" sub={`ความยาวแท่ง = จำนวน PR · สีแยกสถานะ · กดปีเพื่อดูรายเดือนและเทียบปีก่อน${meta ? ` · ปี ${be(Number(meta.as_of.slice(0, 4)))} ถึง ${thaiDay(meta.as_of, false)}` : ''}`} />
+              <ul className="space-y-1">
+                {byYear.map(s => (
+                  <li key={s.requester}>
+                    <button type="button" disabled={s.requester === '–'} onClick={() => { setYear(Number(s.requester)); setOpen(null); }}
+                      className="grid w-full grid-cols-[4.5rem_1fr_auto] items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-gray-50">
+                      <span className="font-medium hover:underline" style={{ color: VIZ.primary }}>ปี {s.requester === '–' ? '–' : be(Number(s.requester))}</span>
+                      <StackBar parts={statusParts(s)} max={Math.max(...byYear.map(b => b.total))} />
+                      <span className="tabular-nums">{int(s.total)} ฉบับ · ไม่อนุมัติ / ยกเลิก {pctOf(s.rejected, s.total)}%</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3"><Legend items={[{ color: STATUS_COLOR.approved, label: 'อนุมัติ' }, { color: STATUS_COLOR.pending, label: 'รออนุมัติ / ร่าง' }, { color: STATUS_COLOR.rejected, label: 'ไม่อนุมัติ / ยกเลิก' }]} /></div>
+            </Card>
+          )}
+
+          {view && people.length > 1 && (
+            <Card>
+              <ChartTitle title={`งบที่อนุมัติรายคน ปี ${be(view.y)}`} sub="เรียงจากมากไปน้อย · ใช้ดูว่าภาระงบกระจุกที่ใคร" />
+              <HBarList ariaLabel="งบที่อนุมัติรายคน"
+                rows={[...people].sort((a, b) => b.est_approved - a.est_approved).slice(0, 10).map((s, i) => ({
+                  key: s.requester, label: s.requester, value: s.est_approved, display: `${shortBaht(s.est_approved)} บาท`, highlight: i === 0,
+                }))} />
+            </Card>
+          )}
+
+
         </>
       )}
     </div>

@@ -1,27 +1,21 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import Link from 'next/link';
+import { PrDetail } from './detail';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
 import {
-  OPEN_PR_STATES, PRICE_BASIS_LABEL, PR_STATE_LABEL, type PrState, type ProcMeta, type ProcPoLine, type ProcPr, type ProcPrLine,
-  type ProcPrSummary, type ProcQuote, type ProcQuoteItem,
+  OPEN_PR_STATES, PR_STATE_LABEL, type PrState, type ProcMeta, type ProcPrSummary,
 } from '@/lib/procurement/types';
 import {
-  Card, DRIVE_ROOT, ErrorBox, Kpi, Loading, MetaLine, PAGE_SIZE, Pager, PrLink, SortHeader, VIZ, VendorLink,
-  baht, driveLink, inputClass, int, sortRows, thaiDate, useJson, type SortState,
+  Card, ErrorBox, Kpi, Loading, MetaLine, PAGE_SIZE, Pager, PrLink, SortHeader, VIZ,
+  baht, inputClass, int, sortRows, thaiDate, useJson, type SortState,
 } from '../_components/ui';
-import { ChartTitle, HBarList } from '../_components/charts';
-import { offerGroups, type OfferGroup } from '@/lib/procurement/offers';
 import { inRange, periodInfo } from '@/lib/procurement/period';
-import { PeriodBar, usePeriod, usePeriodParam, validPeriod, withPeriod } from '../_components/period';
+import { PeriodBar, usePeriod, validPeriod } from '../_components/period';
 
 type Row = ProcPrSummary & { quote_count: number };
 type ListResp = { prs: Row[]; meta: ProcMeta };
-type Choice = Pick<ProcPr, 'pr_no' | 'requester' | 'company' | 'title' | 'request_date'>;
-type DetailResp = { choices?: Choice[]; pr: ProcPr; lines: ProcPrLine[]; po: ProcPoLine[]; quotes: (ProcQuote & { selected: boolean; vendor_key: string })[]; items: ProcQuoteItem[] };
 type Key = 'pr_no' | 'request_date' | 'requester' | 'title' | 'estimated_cost' | 'po_amount' | 'quote_count' | 'state';
 type Group = 'all' | 'open' | 'done' | 'rejected';
 
@@ -75,7 +69,8 @@ function PrList() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-bold">รายการ PR ทีม SHE</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">รายการ PR</h2>
+        <p className="mt-2 text-sm" style={{ color: VIZ.lightText }}>ติดตามคำขอซื้อ ผู้ขาย และหลักฐานประกอบในที่เดียว</p>
         <div className="mt-1"><MetaLine meta={data?.meta} /></div>
       </div>
       <PeriodBar meta={data?.meta} sel={sel} onChange={s => { setSel(s); setPage(0); }} measure="pr" compare={false} />
@@ -103,7 +98,7 @@ function PrList() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             <Kpi label="PR ที่ตรงเงื่อนไข" value={int(rows.length)} />
             <Kpi label="ประมาณการรวม" value={baht(sumEst)} color={VIZ.secondary} />
-            <Kpi label="ยอด PO รวม (ไม่รวม VAT)" value={baht(sumPo)} color={VIZ.positive} />
+            <Kpi label="มูลค่าตาม PO (ไม่รวม VAT)" value={baht(sumPo)} color={VIZ.primary} />
           </div>
           <Card className="!p-0 overflow-hidden">
             <div className="overflow-x-auto">
@@ -119,6 +114,7 @@ function PrList() {
                   <SortHeader label="ใบเสนอราคา" k="quote_count" sort={sort} onSort={onSort} align="right" />
                 </tr></thead>
                 <tbody>
+                  {!view.length && <tr><td colSpan={8} className="px-4 py-12 text-center" style={{ color: VIZ.lightText }}>ไม่พบ PR ตามเงื่อนไข ลองปรับคำค้น ผู้ขอซื้อ หรือช่วงเวลา</td></tr>}
                   {view.map(p => (
                     <tr key={p.odoo_id} className="border-t border-gray-100 align-top">
                       <td className="px-3 py-2"><PrLink no={p.pr_no} by={p.requester} /></td>
@@ -141,189 +137,6 @@ function PrList() {
           </Card>
         </>
       )}
-    </div>
-  );
-}
-
-function PrDetail({ no, by }: { no: string; by: string }) {
-  const { data, error, loading } = useJson<DetailResp>(`/api/procurement/pr?no=${encodeURIComponent(no)}${by ? `&by=${encodeURIComponent(by)}` : ''}`);
-  const [showDesc, setShowDesc] = useState(false);
-  const y = usePeriodParam();
-  const back = <Link href={withPeriod('/procurement/pr', y)} className="inline-flex items-center gap-1 text-sm hover:underline" style={{ color: VIZ.primary }}><ArrowLeft size={16} />รายการ PR</Link>;
-  if (error) return <div className="space-y-3">{back}<ErrorBox error={error} /></div>;
-  if (loading || !data) return <div className="space-y-3">{back}<Loading /></div>;
-  if (data.choices) return (
-    <div className="space-y-3">{back}
-      <Card>
-        <p className="text-sm">เลข {no} มีในหลายบริษัท (Odoo ออกเลขแยกตามบริษัท) — เลือก PR ที่ต้องการ</p>
-        <ul className="mt-2 divide-y divide-gray-100 text-sm">
-          {data.choices.map(c => <li key={c.requester} className="py-2"><PrLink no={c.pr_no} by={c.requester} /> · {c.requester} · {c.company} · {thaiDate(c.request_date)}<p>{c.title}</p></li>)}
-        </ul>
-      </Card>
-    </div>
-  );
-  const { pr, lines, po, quotes, items } = data;
-  const itemsByQuote = new Map<number, ProcQuoteItem[]>();
-  for (const it of items) itemsByQuote.set(it.quote_id, [...(itemsByQuote.get(it.quote_id) ?? []), it]);
-  // One bar per vendor (lowest offer, before VAT where the document shows it), in separate groups when quotes are priced
-  // per month / per year / one-off — those totals are not comparable.
-  const { groups, mixed } = offerGroups(quotes);
-  const main = groups[0];
-  const totals = quotes.filter(q => !mixed || q.price_basis === main?.basis).map(q => q.total ?? q.subtotal).filter((t): t is number => t !== null && t > 0);
-  const lowest = totals.length ? Math.min(...totals) : null;
-  const chosen = main?.offers.find(o => o.selected);
-  const cheapest = main?.offers[0];
-  const basisNote = mixed && main?.basis ? ` (เทียบเฉพาะ${PRICE_BASIS_LABEL[main.basis]})` : '';
-  const offerTitle = !cheapest ? '' : chosen
-    ? (chosen === cheapest
-      ? `เลือกผู้เสนอราคาต่ำสุด: ${chosen.name}${basisNote}`
-      : `เลือก ${chosen.name} — แพงกว่าราคาต่ำสุด ${baht(chosen.value - cheapest.value)} บาท (${Math.round(((chosen.value - cheapest.value) / cheapest.value) * 100)}%)${basisNote}`)
-    : `ยังไม่มี PO — ราคาต่ำสุดคือ ${cheapest.name} ${baht(cheapest.value)} บาท${basisNote}`;
-  const poVsEst = pr.po_count && pr.estimated_cost > 0 ? Math.round(((pr.po_amount - pr.estimated_cost) / pr.estimated_cost) * 100) : null;
-
-  return (
-    <div className="space-y-4">
-      {back}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-bold">{pr.pr_no}</h2><StateBadge state={pr.state} /></div>
-          <p className="mt-1">{pr.title}</p>
-          <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>{thaiDate(pr.request_date)} · {pr.requester} · {pr.company}{pr.operating_unit && ` · ${pr.operating_unit}`}{pr.request_type && ` · ${pr.request_type}`}</p>
-        </div>
-        <div className="flex flex-col items-end gap-1 text-sm">
-          <a href={driveLink(pr.pr_no, pr.drive_folder_id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 hover:bg-white" style={{ borderColor: VIZ.primary, color: VIZ.primary }}>
-            <ExternalLink size={15} />ไฟล์แนบ {pr.n_attachments ? `(${pr.n_attachments})` : ''} ใน Google Drive
-          </a>
-          <a href={DRIVE_ROOT} target="_blank" rel="noreferrer" className="text-xs hover:underline" style={{ color: VIZ.lightText }}>เปิดโฟลเดอร์รวม Odoo PR</a>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="ประมาณการใน PR" value={baht(pr.estimated_cost)} color={VIZ.secondary} />
-        <Kpi label="ยอด PO (ไม่รวม VAT)" value={pr.po_count ? baht(pr.po_amount) : '–'} color={VIZ.positive}
-          sub={pr.po_count ? `${poVsEst === null ? '' : poVsEst === 0 ? 'เท่ากับประมาณการ · ' : `${poVsEst > 0 ? 'สูง' : 'ต่ำ'}กว่าประมาณการ ${Math.abs(poVsEst)}% · `}${pr.po_list}` : 'ยังไม่มี PO'} />
-        <Kpi label="ใบเสนอราคาที่อ่านได้" value={int(quotes.length)} sub={lowest !== null ? `ต่ำสุด ${baht(lowest)} บาท${mixed && main?.basis ? ` (${PRICE_BASIS_LABEL[main.basis]})` : ''}` : undefined} />
-        <Kpi label="ผู้ขายที่ได้ PO" value={<span className="text-base">{pr.vendors || '–'}</span>} color={VIZ.text} />
-      </div>
-      {pr.description && (
-        <Card>
-          <button className="text-sm font-semibold hover:underline" style={{ color: VIZ.primary }} onClick={() => setShowDesc(v => !v)}>{showDesc ? 'ซ่อนรายละเอียด/เหตุผลการขอซื้อ' : 'แสดงรายละเอียด/เหตุผลการขอซื้อ'}</button>
-          {showDesc && <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{pr.description}</p>}
-        </Card>
-      )}
-      {quotes.length > 0 && (
-        <Card className="!p-0 overflow-hidden">
-          <div className="px-4 pt-4 md:px-6">
-            <ChartTitle title={offerTitle || 'เทียบใบเสนอราคา'} sub="1 แท่ง = ราคาต่ำสุดที่ผู้ขายแต่ละรายเสนอใน PR นี้ (ก่อน VAT ถ้าเอกสารระบุ) · แท่งน้ำเงิน = ผู้ขายที่ได้ PO" />
-            {mixed && (
-              <p className="mt-2 rounded-lg px-3 py-2 text-sm" style={{ background: '#FDF3E7', color: VIZ.text, borderLeft: `4px solid ${VIZ.secondary}` }}>
-                ใบเสนอราคาใน PR นี้คิดราคาต่างฐานกัน ({groups.map(g => (g.basis ? PRICE_BASIS_LABEL[g.basis] : 'ไม่ระบุฐานราคา')).join(' / ')}) — แยกกราฟตามฐานราคา และไม่คำนวณ % ข้ามกลุ่ม
-              </p>
-            )}
-            {groups.map(g => <OfferBars key={g.basis ?? 'none'} group={g} titled={mixed} />)}
-            <h4 className="mt-4 text-sm font-semibold" style={{ color: VIZ.lightText }}>รายละเอียดใบเสนอราคา</h4>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="mt-2 w-full text-sm">
-              <thead style={{ background: VIZ.bg }}><tr>
-                <th className="px-3 py-2 text-left font-semibold">ผู้ขาย</th><th className="px-3 py-2 text-left font-semibold">เลขที่ / วันที่</th>
-                <th className="px-3 py-2 text-right font-semibold">ก่อน VAT</th><th className="px-3 py-2 text-right font-semibold">รวม</th>
-                <th className="px-3 py-2 text-left font-semibold">รายการ</th>
-              </tr></thead>
-              <tbody>
-                {quotes.map(q => (
-                  <tr key={q.id} className="border-t border-gray-100 align-top" style={q.selected ? { background: '#F1F8EF' } : undefined}>
-                    <td className="px-3 py-2 min-w-[12rem]">
-                      <VendorLink name={q.vendor_group || q.vendor} />
-                      {q.selected && <span className="ml-2 rounded-full px-2 py-0.5 text-xs font-medium text-white" style={{ background: VIZ.positive }}>ได้ PO</span>}
-                      {q.doc_type === 'comparison_table' && <p className="text-xs" style={{ color: VIZ.lightText }}>จากตารางเทียบราคา</p>}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">{q.quote_no || '–'}<p className="text-xs" style={{ color: VIZ.lightText }}>{thaiDate(q.quote_date)}</p></td>
-                    <td className="px-3 py-2 text-right tabular-nums">{baht(q.subtotal)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium" style={q.total !== null && q.total === lowest && !mixed ? { color: VIZ.positive } : undefined}>
-                      {baht(q.total)}
-                      {q.price_basis && <p className="text-xs font-normal" style={{ color: q.price_basis === 'month' ? VIZ.secondary : VIZ.lightText }}>{PRICE_BASIS_LABEL[q.price_basis]}</p>}
-                    </td>
-                    <td className="px-3 py-2 min-w-[18rem] text-xs">
-                      <ul className="space-y-1">
-                        {(itemsByQuote.get(q.id) ?? []).slice(0, 6).map(it => (
-                          <li key={it.id}>{it.name} — {it.qty === null ? '' : `${int(it.qty)} ${it.unit || ''} × `}{baht(it.unit_price)}</li>
-                        ))}
-                        {(itemsByQuote.get(q.id)?.length ?? 0) > 6 && <li style={{ color: VIZ.lightText }}>และอีก {(itemsByQuote.get(q.id)?.length ?? 0) - 6} รายการ</li>}
-                      </ul>
-                      {q.notes && <p className="mt-1" style={{ color: VIZ.lightText }}>{q.notes}</p>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="px-4 pb-4 pt-2 text-xs md:px-6" style={{ color: VIZ.lightText }}>อ่านจากไฟล์ที่แนบใน PR (PDF / Excel / รูป) · {mixed ? 'ราคาต่างฐานกัน จึงไม่ไฮไลต์ยอดต่ำสุด' : 'สีเขียว = ยอดรวมต่ำสุด'} · เปิดไฟล์ต้นฉบับใน Google Drive เพื่อยืนยันก่อนใช้อ้างอิง</p>
-        </Card>
-      )}
-      <Card className="!p-0 overflow-hidden">
-        <h3 className="px-4 pt-4 font-semibold md:px-6">รายการใน PR ({int(lines.length)})</h3>
-        <div className="overflow-x-auto">
-          <table className="mt-2 w-full text-sm">
-            <thead style={{ background: VIZ.bg }}><tr>
-              <th className="px-3 py-2 text-left font-semibold">รายการ</th><th className="px-3 py-2 text-right font-semibold">จำนวน</th>
-              <th className="px-3 py-2 text-right font-semibold">ราคาประมาณ/หน่วย</th><th className="px-3 py-2 text-right font-semibold">รวม</th>
-            </tr></thead>
-            <tbody>
-              {lines.map(l => (
-                <tr key={l.odoo_id} className="border-t border-gray-100 align-top">
-                  <td className="px-3 py-2 min-w-[18rem]">{l.name}<p className="text-xs" style={{ color: VIZ.lightText }}>{l.product}{l.specifications && ` · ${l.specifications}`}</p></td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{int(l.qty)} {l.uom}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{baht(l.est_unit_price)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{baht(l.qty * l.est_unit_price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-      {po.length > 0 && (
-        <Card className="!p-0 overflow-hidden">
-          <h3 className="px-4 pt-4 font-semibold md:px-6">รายการใน PO ({int(po.length)})</h3>
-          <div className="overflow-x-auto">
-            <table className="mt-2 w-full text-sm">
-              <thead style={{ background: VIZ.bg }}><tr>
-                <th className="px-3 py-2 text-left font-semibold">PO</th><th className="px-3 py-2 text-left font-semibold">ผู้ขาย</th>
-                <th className="px-3 py-2 text-left font-semibold">รายการ</th><th className="px-3 py-2 text-right font-semibold">จำนวน</th>
-                <th className="px-3 py-2 text-right font-semibold">ราคา/หน่วย</th><th className="px-3 py-2 text-right font-semibold">รวม</th>
-              </tr></thead>
-              <tbody>
-                {po.map(l => (
-                  <tr key={l.odoo_id} className="border-t border-gray-100 align-top" style={l.po_state === 'cancel' ? { color: VIZ.neutral } : undefined}>
-                    <td className="px-3 py-2 whitespace-nowrap">{l.po_no}<p className="text-xs" style={{ color: VIZ.lightText }}>{thaiDate(l.order_date)}{l.po_state === 'cancel' && ' · ยกเลิก'}</p></td>
-                    <td className="px-3 py-2 min-w-[10rem]"><VendorLink name={l.vendor} /></td>
-                    <td className="px-3 py-2 min-w-[16rem] whitespace-pre-line">{l.item}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{int(l.qty)} {l.uom}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{baht(l.unit_price)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{baht(l.subtotal)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-function OfferBars({ group, titled }: { group: OfferGroup; titled: boolean }) {
-  const { offers, basis } = group;
-  const cheapest = offers[0];
-  if (!cheapest || (offers.length < 2 && !titled)) return null;
-  return (
-    <div className="mt-3">
-      {titled && <h4 className="mb-1 text-sm font-semibold" style={{ color: VIZ.text }}>{basis ? PRICE_BASIS_LABEL[basis] : 'ไม่ระบุฐานราคา'} <span className="font-normal" style={{ color: VIZ.lightText }}>({int(offers.length)} ราย)</span></h4>}
-      <HBarList ariaLabel={`เทียบยอดใบเสนอราคา${basis ? ` ${PRICE_BASIS_LABEL[basis]}` : ''}`}
-        rows={offers.map((o, i) => ({
-          key: o.key, label: <VendorLink name={o.name} />, value: o.value, display: `${baht(o.value)} บาท`,
-          highlight: o.selected, color: o.selected ? VIZ.primary : '#B9C2CC',
-          note: [offers.length < 2 ? '' : i === 0 ? 'ต่ำสุด' : `+${Math.round(((o.value - cheapest.value) / cheapest.value) * 100)}% จากต่ำสุด`, o.selected ? 'ได้ PO' : '', o.vatIncl ? 'ยอดรวม VAT' : ''].filter(Boolean).join(' · '),
-        }))} />
     </div>
   );
 }

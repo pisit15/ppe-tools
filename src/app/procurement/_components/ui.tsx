@@ -7,16 +7,16 @@ import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import type { ProcMeta } from '@/lib/procurement/types';
 
 export const VIZ = {
-  primary: '#4E79A7',
-  secondary: '#F28E2B',
-  accent: '#E15759',
-  positive: '#59A14F',
-  neutral: '#BAB0AC',
-  muted: '#D4D4D4',
-  bg: '#EEEEEE',
-  text: '#333333',
-  lightText: '#666666',
-  grid: '#EEEEEE',
+  primary: '#176448',
+  secondary: '#99610D',
+  accent: '#B33D36',
+  positive: '#24704A',
+  neutral: '#687C73',
+  muted: '#DCE5E0',
+  bg: '#F1F5F2',
+  text: '#18332F',
+  lightText: '#526762',
+  grid: '#E8EEE9',
 };
 
 export const PAGE_SIZE = 30;
@@ -24,7 +24,7 @@ export const DRIVE_ROOT = 'https://drive.google.com/drive/folders/1NnL8ESknHZCgU
 export const driveLink = (prNo: string, folderId?: string | null) =>
   folderId ? `https://drive.google.com/drive/folders/${folderId}` : `https://drive.google.com/drive/search?q=${encodeURIComponent(prNo)}`;
 
-const nf2 = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
+const nf2 = new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const nf0 = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 0 });
 export const baht = (v: number | null | undefined) => (v === null || v === undefined ? '–' : nf2.format(v));
 export const int = (v: number | null | undefined) => (v === null || v === undefined ? '–' : nf0.format(v));
@@ -65,14 +65,14 @@ export function useJson<T>(url: string | null, keep = false) {
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`bg-white rounded-xl border border-gray-100 shadow-sm p-4 md:p-6 ${className}`}>{children}</div>;
+  return <div className={`bg-white rounded-lg border p-4 md:p-5 ${className}`} style={{ borderColor: VIZ.muted }}>{children}</div>;
 }
 
 export function Kpi({ label, value, sub, color = VIZ.primary }: { label: string; value: ReactNode; sub?: ReactNode; color?: string }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4" style={{ borderLeft: `4px solid ${color}` }}>
-      <p className="text-xs" style={{ color: VIZ.lightText }}>{label}</p>
-      <p className="text-xl md:text-2xl font-bold mt-1 tabular-nums" style={{ color }}>{value}</p>
+    <div className="min-w-0 bg-white rounded-lg border p-4" style={{ borderColor: VIZ.muted }}>
+      <p className="flex items-center gap-2 text-xs" style={{ color: VIZ.lightText }}><span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />{label}</p>
+      <p className="text-xl md:text-2xl font-semibold mt-2 tabular-nums break-words" style={{ color: VIZ.text }}>{value}</p>
       {sub && <p className="text-xs mt-1" style={{ color: VIZ.lightText }}>{sub}</p>}
     </div>
   );
@@ -80,8 +80,8 @@ export function Kpi({ label, value, sub, color = VIZ.primary }: { label: string;
 
 export function SourceBadge({ source }: { source: 'po' | 'quote' }) {
   return source === 'po'
-    ? <span className="inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium text-white" style={{ background: VIZ.primary }}>จ่ายจริง (PO)</span>
-    : <span className="inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium" style={{ border: `1px solid ${VIZ.secondary}`, color: '#B5600F' }}>ใบเสนอราคา</span>;
+    ? <span className="inline-block whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium" style={{ background: '#E9F3EC', color: VIZ.primary }}>ราคาตาม PO</span>
+    : <span className="inline-block whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium" style={{ background: '#FCF4E7', color: VIZ.secondary }}>ใบเสนอราคา</span>;
 }
 
 /** Raw ?y= value of the current page ('' = all years). Links carry it so the period survives navigation. */
@@ -155,8 +155,8 @@ export function MetaLine({ meta }: { meta?: ProcMeta | null }) {
   return (
     <p className="text-xs" style={{ color: stale ? '#B5600F' : VIZ.lightText }}>
       {meta.imported_at
-        ? <>ข้อมูลจาก Odoo นำเข้าเมื่อ {new Date(meta.imported_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
-            {stale && <b> (ไม่ได้อัปเดตมา {int(Math.floor(ageH / 24))} วัน — งานซิงก์รายวันอาจไม่ได้ทำงาน)</b>} · ราคาต่อหน่วยไม่รวม VAT ตามที่ระบุในเอกสาร</>
+        ? <>ข้อมูล Odoo · อัปเดต {new Date(meta.imported_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' })} (เวลาไทย)
+            {stale && <b> · ไม่ได้อัปเดตมา {int(Math.floor(ageH / 24))} วัน</b>} · ตรวจหน่วยและฐานภาษีจากเอกสารก่อนเปรียบเทียบ</>
         : 'ยังไม่มีการนำเข้าข้อมูล'}
     </p>
   );
@@ -202,4 +202,4 @@ export function Pager({ page, total, onPage }: { page: number; total: number; on
   );
 }
 
-export const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-300';
+export const inputClass = 'w-full min-h-11 rounded-md border border-[#B8C9BF] bg-white px-3 py-2 text-sm text-[#18332F] placeholder:text-[#687C73] focus:outline-none focus:ring-2 focus:ring-[#419B77]';

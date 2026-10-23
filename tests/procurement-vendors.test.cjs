@@ -47,11 +47,13 @@ test('the installed keyer is used for vendor summaries and price points',()=>{
   }finally{A.setVendorKeyer(n=>A.vendorKey(n)||n);}
 });
 
-test('offers are ranked within one price basis; mixed bases are split and flagged',()=>{
-  const q=(vendor,value,basis,selected=false)=>({vendor,vendor_group:vendor,vendor_key:vendor,subtotal:value,total:value*1.07,price_basis:basis,selected});
+test('offers are ranked within known price bases; unknown bases stay separate',()=>{
+  const q=(vendor,value,basis,selected=false)=>({vendor,vendor_group:vendor,vendor_key:vendor,subtotal:value,total:value*1.07,price_basis:basis,currency:'THB',vat:value*0.07,selected});
   let r=O.offerGroups([q('A',100,'year'),q('B',90,null,true),q('A',120,'year')]);
-  assert.equal(r.mixed,false);assert.equal(r.groups.length,1);
-  assert.deepEqual(r.groups[0].offers.map(o=>[o.name,o.value,o.selected]),[['B',90,true],['A',100,false]]);
+  assert.equal(r.mixed,true);assert.equal(r.groups.length,2);
+  assert.equal(r.groups[0].basis,null);
+  assert.equal(r.groups.every(g=>!g.comparable),true);
+  assert.deepEqual(r.groups[1].offers.map(o=>[o.name,o.value,o.selected]),[['A',100,false]]);
   r=O.offerGroups([q('Guard A',100000,'month'),q('Guard B',1150000,'year',true),q('Guard C',1300000,'year'),q('Guard D',95000,'month')]);
   assert.equal(r.mixed,true);
   assert.deepEqual(r.groups.map(g=>g.basis),['year','month'],'the group with the PO vendor comes first');

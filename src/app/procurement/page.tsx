@@ -1,20 +1,16 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search } from 'lucide-react';
-import type { PricePoint, ProcMeta, SearchResult, VendorPriceStat } from '@/lib/procurement/types';
+import { Check, Search } from 'lucide-react';
+import type { PriceGroup, PricePoint, ProcMeta, SearchResult, VendorPriceStat } from '@/lib/procurement/types';
+import { canonicalUnit, taxLabel, unitPriceBasisLabel } from '@/lib/procurement/comparability';
 import { PriceChart } from './_components/PriceChart';
-import {
-  Card, ErrorBox, Kpi, Loading, MetaLine, PAGE_SIZE, Pager, PrLink, SortHeader, SourceBadge, VIZ, VendorLink,
-  baht, inputClass, int, sortRows, thaiDate, type SortState,
-  useJson,
-} from './_components/ui';
-import { median, vendorKey } from '@/lib/procurement/analysis';
-import { ChartTitle, Legend, VendorStrip, type StripRow } from './_components/charts';
+import { Card, ErrorBox, Kpi, Loading, MetaLine, PAGE_SIZE, Pager, PrLink, SortHeader, SourceBadge, VIZ, VendorLink, baht, inputClass, int, sortRows, thaiDate, type SortState, useJson } from './_components/ui';
+import { ChartTitle } from './_components/charts';
 import { PeriodBar, usePeriod, validPeriod } from './_components/period';
-import { be } from '@/lib/procurement/period';
+import { be, type PeriodSel } from '@/lib/procurement/period';
 
 type Resp = SearchResult & { meta: ProcMeta; outside: number };
 type VKey = 'vendor' | 'po_count' | 'quote_count' | 'last_po_price' | 'min_price' | 'median_price' | 'last_quote_price' | 'last';
@@ -25,201 +21,135 @@ type Idle = { meta: ProcMeta; top?: { label: string; prs: number }[] };
 export default function PriceSearchPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const q = params.get('q') || '';
+  const q = (params.get('q') || '').trim().slice(0, 200);
   const unit = params.get('unit') || '';
+  const group = params.get('group') || '';
   const dup = params.get('dup') === '1';
-  const [text, setText] = useState(q);
-  const { sel: requested, setSel } = usePeriod();
+  const { sel: requested } = usePeriod();
   const yq: Record<string, string> = requested !== 'all' ? { y: String(requested) } : {};
-
   const setParams = (next: Record<string, string>) => {
     const sp = new URLSearchParams(params.toString());
-    for (const [k, v] of Object.entries(next)) {
-      if (v) sp.set(k, v); else sp.delete(k);
-    }
-    router.replace(`/procurement${sp.size ? `?${sp}` : ''}`, { scroll: false });
+    for (const [k, v] of Object.entries(next)) { if (v) sp.set(k, v); else sp.delete(k); }
+    router.push(`/procurement${sp.size ? `?${sp}` : ''}`, { scroll: false });
   };
-  useEffect(() => {
-    const t = setTimeout(() => { if (text.trim() !== q) setParams({ q: text.trim(), unit: '' }); }, 350);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text]);
-
-  const url = q ? `/api/procurement/search?${new URLSearchParams({ q, ...(unit ? { unit } : {}), ...(dup ? { dup: '1' } : {}), ...yq })}` : null;
+  const search = (value: string) => setParams({ q: value.trim(), unit: '', group: '' });
+  const setPeriod = (value: PeriodSel) => setParams({ y: value === 'all' ? '' : String(value), group: '' });
+  const url = q ? `/api/procurement/search?${new URLSearchParams({ q, ...(unit ? { unit } : {}), ...(group ? { group } : {}), ...(dup ? { dup: '1' } : {}), ...yq })}` : null;
   const { data, error, loading } = useJson<Resp>(url);
-  const { data: idle } = useJson<Idle>(q ? null : `/api/procurement/search?${new URLSearchParams({ q: '', ...yq })}`, true);
+  const { data: idle, error: idleError, loading: idleLoading } = useJson<Idle>(q ? null : `/api/procurement/search?${new URLSearchParams({ q: '', ...yq })}`);
   const meta = data?.meta ?? idle?.meta;
   const sel = validPeriod(requested, meta);
-
-  return (
-    <div className="space-y-5">
-      <section>
-        <h2 className="text-xl font-bold" style={{ color: VIZ.text }}>ค้นหาราคาสินค้า / บริการ</h2>
-        <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>ใช้ก่อนเปิด PR: ตั้งงบให้สมจริง และเลือกผู้ขายที่ควรขอใบเสนอราคา — แยกคำด้วยเว้นวรรค (ต้องเจอทุกคำ)</p>
-        <div className="relative mt-3">
-          <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: VIZ.neutral }} aria-hidden />
-          <input type="search" value={text} onChange={e => setText(e.target.value)} autoFocus aria-label="คำค้น"
-            placeholder="เช่น อบรม รถยก, กำจัด ขยะ อันตราย, ชื่อผู้ขาย หรือเลข PR" className={`${inputClass} py-3 pl-10 text-base`} />
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-          {!q && EXAMPLES.map(e => (
-            <button key={e} onClick={() => setText(e)} className="rounded-full border px-3 py-1 hover:bg-white" style={{ borderColor: VIZ.muted, color: VIZ.lightText }}>{e}</button>
-          ))}
-          {q && (
-            <label className="inline-flex items-center gap-2" style={{ color: VIZ.lightText }}>
-              <input type="checkbox" checked={dup} onChange={e => setParams({ dup: e.target.checked ? '1' : '' })} />
-              รวมใบเสนอราคาที่แนบซ้ำใน PR อื่น
-            </label>
-          )}
-        </div>
-        <div className="mt-2"><MetaLine meta={meta} /></div>
-        <div className="mt-3"><PeriodBar meta={meta} sel={sel} onChange={setSel} measure="po" compare={false} /></div>
-      </section>
-
-      {!q && idle?.top && idle.top.length > 0 && (
-        <Card>
-          <ChartTitle title={`เริ่มจากรายการที่ทีม SHE ซื้อบ่อย${sel === 'all' ? '' : ` ปี ${be(sel)}`}`} sub="เรียงตามจำนวน PR ที่ออก PO แล้ว · กดเพื่อดูราคาและผู้ขาย" />
-          <div className="flex flex-wrap gap-2">
-            {idle.top.map(t => (
-              <button key={t.label} onClick={() => setText(t.label)} className="rounded-lg border px-3 py-1.5 text-left text-sm hover:bg-gray-50" style={{ borderColor: VIZ.muted }}>
-                {t.label} <span className="tabular-nums" style={{ color: VIZ.lightText }}>· {int(t.prs)} PR</span>
-              </button>
-            ))}
-          </div>
-        </Card>
-      )}
-      {error && <ErrorBox error={error} />}
-      {loading && <Loading text="กำลังค้นหา…" />}
-      {data && !data.points.length && (
-        <Card>
-          <p className="text-sm" style={{ color: VIZ.lightText }}>
-            {data.outside > 0
-              ? <>ไม่พบ “{q}” ในปี {sel === 'all' ? '' : be(sel)} แต่พบในปีอื่น {int(data.outside)} รายการ — <button className="underline" style={{ color: VIZ.primary }} onClick={() => setSel('all')}>ดูทุกปี</button></>
-              : <>ไม่พบรายการที่ตรงกับ “{q}” — ลองใช้คำที่สั้นลง หรือแยกคำด้วยเว้นวรรค</>}
-          </p>
-        </Card>
-      )}
-      {data && data.points.length > 0 && data.outside > 0 && (
-        <p className="text-sm" style={{ color: VIZ.lightText }}>
-          แสดงเฉพาะปี {sel === 'all' ? '' : be(sel)} · มีราคาในปีอื่นอีก {int(data.outside)} รายการ — <button className="underline" style={{ color: VIZ.primary }} onClick={() => setSel('all')}>ดูทุกปีเพื่อเห็นแนวโน้มราคา</button>
-        </p>
-      )}
-      {data && data.points.length > 0 && <Results key={`${q}|${unit}|${dup}|${sel}`} data={data} unit={unit} onUnit={u => setParams({ unit: u })} period={sel === 'all' ? '' : `ปี ${be(sel)}`} />}
-    </div>
-  );
+  return <div className="space-y-6">
+    <section>
+      {!q && <p className="text-xs font-semibold tracking-widest" style={{ color: VIZ.primary }}>PRICE INTELLIGENCE</p>}
+      <h2 className="text-2xl font-semibold tracking-tight" style={{ color: VIZ.text }}>ค้นหาราคาเพื่อวางแผนจัดซื้อ</h2>
+      {!q && <p className="mt-2 text-sm leading-relaxed" style={{ color: VIZ.lightText }}>ค้นหารายการ เลือกกลุ่มสินค้า แล้วตรวจราคาและเอกสารก่อนเปิด PR</p>}
+      <SearchForm key={q} initial={q} onSearch={search} />
+      {!q && <div className="mt-3 flex flex-wrap items-center gap-2 text-sm"><span style={{ color: VIZ.lightText }}>ลองค้นหา</span>{EXAMPLES.map(value => <button type="button" key={value} onClick={() => search(value)} className="rounded-md border px-3 py-1.5 hover:bg-white" style={{ borderColor: VIZ.muted }}>{value}</button>)}</div>}
+      <div className="mt-4"><PeriodBar meta={meta} sel={sel} onChange={setPeriod} measure="po" compare={false} /></div>
+      <div className="mt-3"><MetaLine meta={meta} /></div>
+    </section>
+    {!q && idle?.top && idle.top.length > 0 && <Card>
+      <ChartTitle title={`รายการที่ทีม SHE ซื้อบ่อย${sel === 'all' ? '' : ` ปี ${be(sel)}`}`} sub="เริ่มจากรายการที่เคยออก PO เพื่อค้นหาแหล่งข้อมูลราคา" />
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{idle.top.map(t => <button type="button" key={t.label} onClick={() => search(t.label)} className="rounded-lg border px-4 py-3 text-left text-sm hover:bg-gray-50" style={{ borderColor: VIZ.muted }}>{t.label}<span className="mt-1 block text-xs tabular-nums" style={{ color: VIZ.lightText }}>{int(t.prs)} PR</span></button>)}</div>
+    </Card>}
+    {(error || idleError) && <ErrorBox error={(error || idleError)!} />}
+    {(loading || idleLoading) && <Loading text={q ? 'กำลังค้นหาราคา…' : 'กำลังโหลดรายการ…'} />}
+    {data && <>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <p role="status" style={{ color: VIZ.lightText }}>พบ {int(data.match_total)} รายการ · {int(data.groups.length)} กลุ่มตามข้อมูลที่บันทึก</p>
+        <label className="inline-flex items-center gap-2" style={{ color: VIZ.lightText }}><input type="checkbox" checked={dup} onChange={e => setParams({ dup: e.target.checked ? '1' : '', group: '' })} />รวมใบเสนอราคาที่แนบซ้ำ</label>
+      </div>
+      {data.outside > 0 && <p className="text-sm" style={{ color: VIZ.lightText }}>มีรายการในปีอื่นอีก {int(data.outside)} รายการ · <button type="button" className="underline underline-offset-4" style={{ color: VIZ.primary }} onClick={() => setPeriod('all')}>ดูทุกปี</button></p>}
+      {!data.match_total && <Card><p className="text-sm" style={{ color: VIZ.lightText }}>ไม่พบ “{q}” ในตัวกรองนี้ ลองเปลี่ยนช่วงเวลา ใช้คำที่สั้นลง หรือแยกคำด้วยเว้นวรรค{unit && <> · <button type="button" className="underline" onClick={() => setParams({ unit: '', group: '' })}>ล้างตัวกรองหน่วย</button></>}</p></Card>}
+      {data.match_total > 0 && <Results key={`${q}|${unit}|${group}|${dup}|${sel}`} data={data} unit={unit} onUnit={value => setParams({ unit: value, group: '' })} onGroup={value => setParams({ group: value })} />}
+    </>}
+  </div>;
 }
 
-/** period = '' for all years, or "ปี 2569" — wording must not claim "never" when only one year is shown. */
-function Results({ data, unit, onUnit, period }: { data: Resp; unit: string; onUnit: (u: string) => void; period: string }) {
-  const never = period ? `${period} ยังไม่มี PO` : 'ยังไม่เคยออก PO';
-  const po = data.points.filter(p => p.source === 'po');
-  const lastPo = po[0];
-  const poPrices = po.map(p => p.unit_price);
-  const multiUnit = data.units.length > 1;
-  const oneUnit = !multiUnit || !!unit;
-  const unitName = unit || data.units[0]?.unit || 'หน่วย';
-  const bestVendor = oneUnit ? [...data.vendors].sort((a, b) => a.median_price - b.median_price)[0] : undefined;
-  const poMed = poPrices.length ? median(poPrices) : null;
-  const quoteCount = data.points.length - po.length;
+/** URL-keyed form: back/forward restores the input; no stale debounce can overwrite navigation. */
+function SearchForm({ initial, onSearch }: { initial: string; onSearch: (value: string) => void }) {
+  const [text, setText] = useState(initial);
+  return <form className="mt-5 flex gap-2" role="search" onSubmit={event => { event.preventDefault(); onSearch(text); }}>
+    <div className="relative flex-1"><Search size={19} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2" style={{ color: VIZ.lightText }} aria-hidden /><input type="search" value={text} onChange={event => setText(event.target.value)} maxLength={200} aria-label="ค้นหารายการ ผู้ขาย หรือเลข PR" placeholder="ชื่อสินค้า บริการ ผู้ขาย หรือเลข PR" className={`${inputClass} min-h-12 py-3 pl-11 text-base`} /></div>
+    <button type="submit" className="min-h-12 rounded-lg px-5 text-sm font-semibold text-white" style={{ background: VIZ.primary }}>ค้นหา</button>
+  </form>;
+}
 
-  // One row per vendor, every price as a dot (filled = paid on a PO, hollow = quoted).
-  const strip: (StripRow & { name: string })[] = useMemo(() => {
-    if (!oneUnit) return [];
-    const by = new Map<string, { names: Map<string, number>; po: number[]; quotes: number[] }>();
-    for (const p of data.points) {
-      const k = p.vendor_key || vendorKey(p.vendor) || p.vendor || '–';
-      const g = by.get(k) ?? { names: new Map<string, number>(), po: [], quotes: [] };
-      g.names.set(p.vendor || '–', (g.names.get(p.vendor || '–') || 0) + 1);
-      (p.source === 'po' ? g.po : g.quotes).push(p.unit_price);
-      by.set(k, g);
-    }
-    const rows = [...by.entries()].map(([k, g]) => {
-      const all = [...g.po, ...g.quotes];
-      return { key: k, name: [...g.names.entries()].sort((a, b) => b[1] - a[1])[0][0], po: g.po, quotes: g.quotes, median: median(all), n: all.length };
-    });
-    return rows.sort((a, b) => b.n - a.n).slice(0, 12).sort((a, b) => a.median - b.median).map((r, i) => ({
-      key: r.key, name: r.name, label: <VendorLink name={r.name} short />, po: r.po, quotes: r.quotes, median: r.median, best: i === 0,
-      sub: `มัธยฐาน ${baht(r.median)} · ${r.po.length ? `ซื้อ ${r.po.length}` : period ? 'ไม่ได้ซื้อในช่วงนี้' : 'ยังไม่เคยซื้อ'}${r.quotes.length ? ` · เสนอ ${r.quotes.length}` : ''}`,
-    }));
-  }, [data.points, oneUnit, period]);
-
-  return (
-    <>
-      {data.relaxed && <p className="text-sm" style={{ color: VIZ.secondary }}>ไม่พบคำนี้ตรงตัว จึงแสดงรายการที่มีคำย่อยครบ — ลองเว้นวรรคระหว่างคำเพื่อผลที่แม่นขึ้น</p>}
-      {multiUnit && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span style={{ color: VIZ.lightText }}>หน่วย:</span>
-          <button onClick={() => onUnit('')} className="rounded-full px-3 py-1" style={!unit ? { background: VIZ.primary, color: 'white' } : { border: `1px solid ${VIZ.muted}` }}>ทั้งหมด</button>
-          {data.units.slice(0, 12).map(u => (
-            <button key={u.unit} onClick={() => onUnit(u.unit)} className="rounded-full px-3 py-1" style={unit === u.unit ? { background: VIZ.primary, color: 'white' } : { border: `1px solid ${VIZ.muted}` }}>
-              {u.unit} <span className="opacity-70">({u.count})</span>
-            </button>
-          ))}
-          {!unit && <span className="text-xs" style={{ color: VIZ.secondary }}>มีหลายหน่วย — เลือกหน่วยเดียวก่อนเทียบราคา</span>}
-        </div>
-      )}
-      <Card>
-        {oneUnit ? (
-          <>
-            <p className="text-lg font-bold leading-snug" style={{ color: VIZ.text }}>
-              {poMed !== null
-                ? `${period ? `${period} ` : ''}ราคาที่จ่ายจริงอยู่ที่ราว ${baht(poMed)} บาท/${unitName} (มัธยฐานจาก ${int(po.length)} รายการ PO)`
-                : `${never}รายการนี้ — มีใบเสนอราคา ${int(quoteCount)} รายการ`}
-            </p>
-            <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>
-              {bestVendor && `ผู้ขายที่ราคามัธยฐานต่ำสุด: ${bestVendor.vendor} ${baht(bestVendor.median_price)} บาท`}
-              {lastPo && ` · จ่ายล่าสุด ${baht(lastPo.unit_price)} บาท (${thaiDate(lastPo.date)})`}
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="text-lg font-bold leading-snug" style={{ color: VIZ.text }}>พบ {int(data.points.length)} รายการจาก {int(data.vendors.length)} ผู้ขาย แต่ใช้หลายหน่วย</p>
-            <p className="mt-1 text-sm" style={{ color: '#B5600F' }}>เลือกหน่วยด้านบนก่อน — ราคาต่อ “คู่” กับต่อ “กล่อง” เทียบกันตรงๆ ไม่ได้</p>
-          </>
-        )}
-      </Card>
-      {po.length > 0 && <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Kpi label="จ่ายจริงล่าสุด" value={lastPo ? baht(lastPo.unit_price) : '–'} sub={lastPo ? `${thaiDate(lastPo.date)} · ${lastPo.vendor}` : never} />
-        <Kpi label="จ่ายจริง ต่ำสุด – สูงสุด" value={poPrices.length ? `${baht(Math.min(...poPrices))} – ${baht(Math.max(...poPrices))}` : '–'} sub={`${int(po.length)} รายการ PO`} color={VIZ.primary} />
-        <Kpi label="ผู้ขายที่เกี่ยวข้อง" value={int(data.vendors.length)} sub={`ใบเสนอราคา ${int(quoteCount)} รายการ`} color={VIZ.text} />
+function GroupPicker({ groups, selected, onSelect }: { groups: PriceGroup[]; selected: string | null; onSelect: (id: string) => void }) {
+  const [filter, setFilter] = useState('');
+  const [show, setShow] = useState(8);
+  const [expanded, setExpanded] = useState(!selected);
+  const chosen = groups.find(g => g.id === selected);
+  const showChoices = !chosen || expanded;
+  const filtered = groups.filter(g => `${g.item} ${g.detail} ${g.unit} ${g.currency}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase())).sort((a, b) => Number(b.id === selected) - Number(a.id === selected) || Number(b.ready) - Number(a.ready));
+  return <Card>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><h3 className="font-semibold">{chosen ? 'กลุ่มรายการที่เลือก' : 'เลือกกลุ่มรายการเพื่อดูราคา'}</h3>{!chosen && <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>แยกตามชื่อ รายละเอียด หน่วย สกุลเงิน และฐานราคา โดยไม่แปลงจำนวนต่อบรรจุภัณฑ์</p>}</div>
+      {chosen && <div className="flex flex-wrap items-center gap-4 text-sm">
+        <button type="button" aria-expanded={showChoices} aria-controls="price-group-options" onClick={() => setExpanded(value => !value)} className="font-medium" style={{ color: VIZ.primary }}>{showChoices ? 'ปิดตัวเลือกกลุ่ม' : 'เปลี่ยนกลุ่มรายการ'}</button>
+        <button type="button" onClick={() => onSelect('')} className="underline underline-offset-4" style={{ color: VIZ.lightText }}>ดูทุกรายการ</button>
       </div>}
-      {oneUnit && strip.length > 1 && (
-        <Card>
-          <ChartTitle
-            title={`เทียบราคาต่อ${unitName}รายผู้ขาย — ${strip[0].name} ราคามัธยฐานต่ำสุด`}
-            sub="1 จุด = 1 ราคา · เรียงจากมัธยฐานต่ำไปสูง (บนสุด = ถูกสุด) · จุดกระจายกว้าง = ราคาไม่สม่ำเสมอหรือเป็นคนละรุ่น/สเปก — ใส่คำค้นให้เจาะจงขึ้นก่อนสรุป" />
-          <VendorStrip rows={strip} unit={unitName} />
-          <div className="mt-3">
-            <Legend items={[{ color: VIZ.primary, label: 'จ่ายจริง (PO)', kind: 'dot' }, { color: VIZ.secondary, label: 'ใบเสนอราคา', kind: 'ring' }, { color: VIZ.text, label: 'มัธยฐาน', kind: 'tick' }]} />
-          </div>
-        </Card>
-      )}
-      <Card>
-        <ChartTitle title="ราคาต่อหน่วยตามช่วงเวลา" sub="ดูว่าราคาขยับขึ้นหรือลงเมื่อเวลาผ่านไป" />
-        <PriceChart points={data.points} />
-        <p className="mt-2 text-xs" style={{ color: VIZ.lightText }}>คลิกจุดเพื่อเปิด PR · ราคาอาจต่างกันเพราะขอบเขตงาน จำนวน หรือเงื่อนไข (เช่น รวมอาหาร/ค่าขนส่ง) — ดูรายละเอียดก่อนสรุป</p>
-      </Card>
-      <VendorTable vendors={data.vendors} />
-      <PointTable points={data.points} truncated={data.truncated} />
-    </>
-  );
+    </div>
+    {chosen && <div className="mt-3">
+      <p className="text-sm font-medium">{chosen.item || 'ไม่ระบุชื่อรายการ'}</p>
+      {chosen.detail && chosen.detail !== chosen.item && <p className="mt-1 line-clamp-2 text-xs leading-relaxed" title={chosen.detail} style={{ color: VIZ.lightText }}>{chosen.detail}</p>}
+      <p className="mt-2 text-xs" style={{ color: VIZ.lightText }}>{chosen.unit || 'ไม่ระบุหน่วย'} · {chosen.currency || 'ไม่ระบุสกุลเงิน'} · {taxLabel(chosen.tax_basis)} · {unitPriceBasisLabel(chosen.price_basis)} · {int(chosen.count)} รายการ · {int(chosen.vendors)} ผู้ขาย</p>
+    </div>}
+    <div id="price-group-options" hidden={!showChoices}>
+    {groups.length > 8 && <input type="search" aria-label="กรองกลุ่มรายการ" value={filter} onChange={event => { setFilter(event.target.value); setShow(8); }} placeholder="กรองกลุ่มด้วยชื่อ รายละเอียด หรือหน่วย" className={`${inputClass} mt-4`} />}
+    <div className="mt-4 grid gap-2 sm:grid-cols-2" role="group" aria-label="กลุ่มรายการราคา">{filtered.slice(0, show).map(g => {
+      const active = selected === g.id;
+      return <button type="button" key={g.id} aria-pressed={active} onClick={() => { setExpanded(false); onSelect(g.id); }} className="rounded-lg border p-4 text-left transition-colors hover:bg-gray-50" style={{ borderColor: active ? VIZ.primary : VIZ.muted, background: active ? '#F0F7F4' : undefined }}>
+        <div className="flex items-start justify-between gap-3"><span className="line-clamp-2 text-sm font-medium" title={g.item}>{g.item || 'ไม่ระบุชื่อรายการ'}</span>{active && <Check size={17} className="shrink-0" style={{ color: VIZ.primary }} aria-hidden />}</div>
+        {g.detail && g.detail !== g.item && <p className="mt-1 line-clamp-2 text-xs leading-relaxed" title={g.detail} style={{ color: VIZ.lightText }}>{g.detail}</p>}
+        <p className="mt-3 text-xs font-medium">{g.unit || 'ไม่ระบุหน่วย'} · {g.currency || 'ไม่ระบุสกุลเงิน'} · {taxLabel(g.tax_basis)}</p>
+        <p className="mt-1 text-xs" style={{ color: VIZ.lightText }}>{unitPriceBasisLabel(g.price_basis)} · {int(g.count)} รายการ · {int(g.vendors)} ผู้ขาย</p>
+        {!g.ready && <p className="mt-2 text-xs" style={{ color: VIZ.secondary }}>ดูเอกสารเพื่อยืนยันข้อมูลก่อนเปรียบเทียบ</p>}
+      </button>;
+    })}</div>
+    {!filtered.length && <p className="mt-4 text-sm" style={{ color: VIZ.lightText }}>ไม่พบกลุ่มตามคำกรองนี้</p>}
+    {filtered.length > show && <button type="button" onClick={() => setShow(show + 16)} className="mt-4 text-sm font-medium" style={{ color: VIZ.primary }}>แสดงกลุ่มเพิ่มเติม ({int(filtered.length - show)})</button>}
+    </div>
+  </Card>;
 }
 
-function VendorTable({ vendors }: { vendors: VendorPriceStat[] }) {
+function Results({ data, unit, onUnit, onGroup }: { data: Resp; unit: string; onUnit: (u: string) => void; onGroup: (id: string) => void }) {
+  const selected = data.groups.find(g => g.id === data.selected_group);
+  const summary = data.comparison_ready ? data.summary : null;
+  const basis = selected ? `${selected.currency || 'ไม่ระบุสกุลเงิน'} / ${selected.unit || 'ไม่ระบุหน่วย'} · ${taxLabel(selected.tax_basis)} · ${unitPriceBasisLabel(selected.price_basis)}` : '';
+  return <>
+    {data.relaxed && <p className="text-sm" style={{ color: VIZ.secondary }}>ไม่พบคำนี้ตรงตัว จึงแสดงรายการที่มีคำย่อยครบ ลองเว้นวรรคระหว่างคำเพื่อผลที่แม่นขึ้น</p>}
+    {(data.units.length > 1 || unit) && <div className="flex flex-wrap items-center gap-2 text-sm"><label htmlFor="price-unit" style={{ color: VIZ.lightText }}>หน่วย</label><select id="price-unit" value={canonicalUnit(unit)} onChange={event => onUnit(event.target.value)} className={`${inputClass} !w-auto max-w-full`}><option value="">ทุกหน่วย</option>{data.units.map(u => <option key={u.unit} value={u.unit}>{u.unit} ({int(u.count)})</option>)}</select><span className="text-xs" style={{ color: VIZ.lightText }}>รวมชื่อหน่วยที่มีความหมายเดียวกัน และเก็บหน่วยต้นฉบับในรายการ</span></div>}
+    <GroupPicker groups={data.groups} selected={data.selected_group} onSelect={onGroup} />
+    {data.comparison_ready ? <p className="text-xs leading-relaxed" style={{ color: VIZ.lightText }} role="status">{data.comparison_message}</p> : <div className="rounded-lg border-l-2 px-4 py-3 text-sm leading-relaxed" style={{ background: VIZ.bg, borderColor: VIZ.secondary }} role="status">{data.comparison_message}{selected && <p className="mt-1 font-medium">{basis}</p>}</div>}
+    {summary && selected && <>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Kpi label="ราคาตาม PO ล่าสุด" value={baht(summary.last_po?.unit_price)} sub={summary.last_po ? `${thaiDate(summary.last_po.date)} · ${summary.last_po.vendor}` : 'ไม่มี PO ในกลุ่มและช่วงเวลานี้'} />
+        <Kpi label="มัธยฐานราคาตาม PO" value={baht(summary.po_median)} sub={`${int(summary.po_count)} รายการ · ${basis}`} />
+        <Kpi label="ผู้ขายในกลุ่มนี้" value={int(summary.vendor_count)} sub={`PO ${int(summary.po_count)} รายการ · เสนอราคา ${int(summary.quote_count)} รายการ`} color={VIZ.text} />
+      </div>
+      <VendorTable vendors={data.vendors} basis={basis} />
+      <Card><ChartTitle title="ประวัติราคาของกลุ่มที่เลือก" sub={`${basis}${data.truncated ? ` · กราฟแสดงเฉพาะ ${int(data.points.length)} รายการล่าสุด` : ''}`} /><PriceChart points={data.points} poMedian={summary.po_median} /><p className="mt-3 text-xs leading-relaxed" style={{ color: VIZ.lightText }}>แต่ละจุดอ้างอิงเอกสารหนึ่งรายการ ตรวจจำนวนที่สั่งซื้อ ขนาดบรรจุ และเงื่อนไขก่อนใช้ตั้งงบ{data.truncated && ' · สถิติและเส้นมัธยฐานคำนวณจากทุกรายการในกลุ่ม'}</p></Card>
+    </>}
+    {!!data.points.length && <PointTable points={data.points} truncated={data.truncated} />}
+  </>;
+}
+function VendorTable({ vendors, basis }: { vendors: VendorPriceStat[]; basis: string }) {
   const [sort, setSort] = useState<SortState<VKey>>({ key: 'po_count', dir: 'desc' });
   const rows = useMemo(() => sortRows(vendors, sort, (v, k) => k === 'last' ? (v.last_po_date || v.last_quote_date) : v[k]), [vendors, sort]);
-  const best = Math.min(...vendors.map(v => v.median_price));
   return (
     <Card className="!p-0 overflow-hidden">
-      <h3 className="px-4 pt-4 font-semibold md:px-6">เทียบผู้ขาย</h3>
+      <h3 className="px-4 pt-4 font-semibold md:px-6">ราคาที่บันทึกรายผู้ขาย</h3>
+      <p className="px-4 pt-1 text-xs md:px-6" style={{ color: VIZ.lightText }}>{basis}</p>
       <div className="overflow-x-auto">
         <table className="mt-2 w-full text-sm">
           <thead style={{ background: VIZ.bg }}>
             <tr>
               <SortHeader label="ผู้ขาย" k="vendor" sort={sort} onSort={setSort} />
-              <SortHeader label="ครั้งที่ซื้อ" k="po_count" sort={sort} onSort={setSort} align="right" />
+              <SortHeader label="รายการ PO" k="po_count" sort={sort} onSort={setSort} align="right" />
               <SortHeader label="ราคา PO ล่าสุด" k="last_po_price" sort={sort} onSort={setSort} align="right" />
-              <SortHeader label="ครั้งที่เสนอ" k="quote_count" sort={sort} onSort={setSort} align="right" />
+              <SortHeader label="รายการเสนอราคา" k="quote_count" sort={sort} onSort={setSort} align="right" />
               <SortHeader label="ราคาเสนอล่าสุด" k="last_quote_price" sort={sort} onSort={setSort} align="right" />
               <SortHeader label="ต่ำสุด" k="min_price" sort={sort} onSort={setSort} align="right" />
               <SortHeader label="มัธยฐาน" k="median_price" sort={sort} onSort={setSort} align="right" />
@@ -229,20 +159,20 @@ function VendorTable({ vendors }: { vendors: VendorPriceStat[] }) {
           <tbody>
             {rows.map(v => (
               <tr key={v.vendor} className="border-t border-gray-100">
-                <td className="px-3 py-2"><VendorLink name={v.vendor} /></td>
+                <td className="min-w-56 px-3 py-2"><VendorLink name={v.vendor} /></td>
                 <td className="px-3 py-2 text-right tabular-nums">{int(v.po_count)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{baht(v.last_po_price)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{int(v.quote_count)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{baht(v.last_quote_price)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{baht(v.min_price)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-medium" style={v.median_price === best && vendors.length > 1 ? { color: VIZ.positive } : undefined}>{baht(v.median_price)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-medium">{baht(v.median_price)}</td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">{thaiDate(v.last_po_date && v.last_quote_date ? (v.last_po_date > v.last_quote_date ? v.last_po_date : v.last_quote_date) : v.last_po_date || v.last_quote_date)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="px-4 pb-4 pt-2 text-xs md:px-6" style={{ color: VIZ.lightText }}>สีเขียว = มัธยฐานต่ำที่สุดในกลุ่ม · ราคาต่ำสุดไม่ได้แปลว่าดีที่สุด ให้ดูใบอนุญาต/คุณสมบัติผู้ขายประกอบ</p>
+      <p className="px-4 pb-4 pt-2 text-xs md:px-6" style={{ color: VIZ.lightText }}>สถิติคำนวณจากทุกรายการในกลุ่มที่เลือก · ราคายังขึ้นกับจำนวน ขอบเขตงาน และเงื่อนไขในเอกสาร</p>
     </Card>
   );
 }
@@ -254,7 +184,8 @@ function PointTable({ points, truncated }: { points: PricePoint[]; truncated: bo
   const view = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   return (
     <Card className="!p-0 overflow-hidden">
-      <h3 className="px-4 pt-4 font-semibold md:px-6">รายการทั้งหมด</h3>
+      <h3 className="px-4 pt-4 font-semibold md:px-6">รายการและเอกสารอ้างอิง</h3>
+      <p className="px-4 pt-1 text-xs md:px-6" style={{ color: VIZ.lightText }}>แสดงหน่วยตามต้นฉบับเพื่อให้ตรวจสอบย้อนกลับได้</p>
       <div className="overflow-x-auto">
         <table className="mt-2 w-full text-sm">
           <thead style={{ background: VIZ.bg }}>
@@ -278,8 +209,8 @@ function PointTable({ points, truncated }: { points: PricePoint[]; truncated: bo
                   {p.detail && p.detail !== p.item && <p className="text-xs" style={{ color: VIZ.lightText }}>{p.detail}</p>}
                 </td>
                 <td className="px-3 py-2 min-w-[10rem]"><VendorLink name={p.vendor} /></td>
-                <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{p.qty === null ? '–' : int(p.qty)} {p.unit}</td>
-                <td className="px-3 py-2 text-right font-medium tabular-nums">{baht(p.unit_price)}</td>
+                <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums">{p.qty === null ? '–' : baht(p.qty)} {p.unit || 'ไม่ระบุหน่วย'}{canonicalUnit(p.unit) && canonicalUnit(p.unit) !== p.unit && <p className="text-xs" style={{ color: VIZ.lightText }}>หน่วยมาตรฐาน: {canonicalUnit(p.unit)}</p>}</td>
+                <td className="px-3 py-2 text-right font-medium tabular-nums">{baht(p.unit_price)}<p className="mt-1 whitespace-nowrap text-xs font-normal" style={{ color: VIZ.lightText }}>{p.currency || 'ไม่ระบุสกุลเงิน'} · {taxLabel(p.tax_basis || 'unknown')}</p><p className="mt-1 whitespace-nowrap text-xs font-normal" style={{ color: VIZ.lightText }}>{unitPriceBasisLabel(p.price_basis || 'unknown')}</p></td>
                 <td className="px-3 py-2 whitespace-nowrap"><PrLink no={p.pr_no} by={p.requester} />{p.ref && <p className="text-xs" style={{ color: VIZ.lightText }}>{p.ref}</p>}</td>
               </tr>
             ))}
