@@ -142,12 +142,21 @@ export function ErrorBox({ error }: { error: FetchError }) {
   );
 }
 
+/** Data is synced daily; older than this means the scheduled sync probably did not run. */
+const STALE_HOURS = 36;
+
 export function MetaLine({ meta }: { meta?: ProcMeta | null }) {
+  // Read the clock after mount (in a timer callback) so render stays pure.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { const t = setTimeout(() => setNow(Date.now()), 0); return () => clearTimeout(t); }, [meta?.imported_at]);
   if (!meta) return null;
+  const ageH = meta.imported_at && now ? (now - Date.parse(meta.imported_at)) / 3_600_000 : 0;
+  const stale = ageH > STALE_HOURS;
   return (
-    <p className="text-xs" style={{ color: VIZ.lightText }}>
+    <p className="text-xs" style={{ color: stale ? '#B5600F' : VIZ.lightText }}>
       {meta.imported_at
-        ? <>ข้อมูลจาก Odoo นำเข้าเมื่อ {new Date(meta.imported_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} · ราคาต่อหน่วยไม่รวม VAT ตามที่ระบุในเอกสาร</>
+        ? <>ข้อมูลจาก Odoo นำเข้าเมื่อ {new Date(meta.imported_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+            {stale && <b> (ไม่ได้อัปเดตมา {int(Math.floor(ageH / 24))} วัน — งานซิงก์รายวันอาจไม่ได้ทำงาน)</b>} · ราคาต่อหน่วยไม่รวม VAT ตามที่ระบุในเอกสาร</>
         : 'ยังไม่มีการนำเข้าข้อมูล'}
     </p>
   );

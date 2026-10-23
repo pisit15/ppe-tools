@@ -10,11 +10,12 @@
     "test:chemical": "node --test tests/chemical-integrity.test.cjs tests/chemical-legal.test.cjs tests/chemical-label-versions.test.cjs",
     "test:chemical:e2e": "playwright test --config playwright.chemical.config.cjs",
     "test:home-cards": "node --test tests/home-cards.test.cjs",
-    "test:procurement": "node --test tests/procurement.test.cjs tests/procurement-scope.test.cjs tests/procurement-period.test.cjs",
+    "test:procurement": "node --test tests/procurement.test.cjs tests/procurement-scope.test.cjs tests/procurement-period.test.cjs tests/procurement-sync.test.cjs",
     "test:home-cards:e2e": "playwright test --config playwright.chemical.config.cjs tests/home-cards.spec.cjs",
     "preview:chemical": "node tests/chemical-preview.cjs",
     "build:chemical:legal-seed": "node scripts/build-chemical-legal-seed.cjs",
-    "test:chemical:build": "node tests/chemical-build.cjs"
+    "test:chemical:build": "node tests/chemical-build.cjs",
+    "build:sync-bundle": "node scripts/procurement/bundle-sync.cjs"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",

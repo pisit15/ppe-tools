@@ -4,8 +4,9 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { normalizeSync } from '@/lib/procurement/normalize';
-import { PROC_KEY, PROC_TABLES, type ProcRows, type ProcTable, type RawPoLine, type RawQuotes, type RawSync } from '@/lib/procurement/types';
-import { Card, VIZ, getJson, int } from '../_components/ui';
+import { importPlan, importTables, type FinalizeBody } from '@/lib/procurement/payload';
+import { type ProcRows, type ProcTable, type RawPoLine, type RawQuotes, type RawSync } from '@/lib/procurement/types';
+import { Card, FetchError, VIZ, getJson, int } from '../_components/ui';
 
 const LABEL: Record<ProcTable, string> = {
   proc_pr: 'PR', proc_pr_lines: 'รายการใน PR', proc_po_lines: 'รายการใน PO', proc_quotes: 'ใบเสนอราคา', proc_quote_items: 'รายการในใบเสนอราคา',
@@ -16,20 +17,7 @@ const FILES = [
   { id: 'quotes', label: 'ใบเสนอราคาที่อ่านจาก PDF', hint: '_scripts\\quotes_extracted.json (ไม่เลือก = คงข้อมูลใบเสนอราคาเดิม)', required: false },
 ] as const;
 type FileId = (typeof FILES)[number]['id'];
-const MAX_BATCH_ROWS = 1000;
-const MAX_BATCH_CHARS = 2_000_000;
-
-function batches<T>(rows: T[]) {
-  const out: T[][] = [];
-  let cur: T[] = [], size = 0;
-  for (const r of rows) {
-    const len = JSON.stringify(r).length;
-    if (cur.length && (cur.length >= MAX_BATCH_ROWS || size + len > MAX_BATCH_CHARS)) { out.push(cur); cur = []; size = 0; }
-    cur.push(r); size += len;
-  }
-  if (cur.length) out.push(cur);
-  return out;
-}
+const post = <T,>(body: object) => getJson<T>('/api/procurement/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 export default function ImportPage() {
   const { user } = useAuth();
@@ -39,6 +27,8 @@ export default function ImportPage() {
   const [parseError, setParseError] = useState('');
   const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  // Finalize refused because the new snapshot removes >10% of a table: the admin can confirm after checking the files.
+  const [shrink, setShrink] = useState<{ msg: string; body: FinalizeBody } | null>(null);
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); } }, [toast]);
 
   useEffect(() => {
@@ -63,28 +53,39 @@ export default function ImportPage() {
 
   if (user?.role !== 'admin') return <Card><p className="text-sm">เฉพาะผู้ดูแลระบบเท่านั้นที่นำเข้าข้อมูลได้</p></Card>;
 
-  const tables = PROC_TABLES.filter(t => hasQuotes || (t !== 'proc_quotes' && t !== 'proc_quote_items'));
+  const tables = importTables(hasQuotes);
+  const finish = async (body: FinalizeBody, prCount: number) => {
+    const res = await post<{ deleted: Record<string, number> }>(body);
+    const removed = Object.values(res.deleted).reduce((a, b) => a + b, 0);
+    setProgress(null);
+    setShrink(null);
+    setToast({ type: 'success', msg: `นำเข้าสำเร็จ ${int(prCount)} PR${removed ? ` · ลบแถวเก่า ${int(removed)} แถว` : ''} (หน้าอื่นอาจใช้เวลาไม่เกิน 5 นาทีจึงเห็นข้อมูลใหม่)` });
+  };
+  const fail = (e: unknown) => {
+    setProgress(null);
+    setToast({ type: 'error', msg: `นำเข้าไม่สำเร็จ: ${e instanceof Error ? e.message : 'ไม่ทราบสาเหตุ'} — ลองใหม่ได้ ข้อมูลเดิมยังอยู่` });
+  };
   const run = async () => {
     if (!rows) return;
-    const plan = tables.flatMap(t => batches(rows[t] as object[]).map(b => ({ table: t, rows: b })));
+    const { upserts, finalize } = importPlan(rows, hasQuotes, `import: ${Object.values(files).map(f => f?.name).filter(Boolean).join(', ')}`);
     try {
-      for (let i = 0; i < plan.length; i++) {
-        setProgress({ done: i, total: plan.length + 1, label: `กำลังส่ง ${LABEL[plan[i].table]}` });
-        await getJson('/api/procurement/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'upsert', ...plan[i] }) });
+      for (let i = 0; i < upserts.length; i++) {
+        setProgress({ done: i, total: upserts.length + 1, label: `กำลังส่ง ${LABEL[upserts[i].table]}` });
+        await post(upserts[i]);
       }
-      setProgress({ done: plan.length, total: plan.length + 1, label: 'กำลังลบข้อมูลที่ไม่อยู่ในชุดใหม่' });
-      const keys = Object.fromEntries(tables.map(t => [t, (rows[t] as unknown as Record<string, unknown>[]).map(r => Number(r[PROC_KEY[t]]))]));
-      const res = await getJson<{ deleted: Record<string, number> }>('/api/procurement/import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'finalize', keys, source: `import: ${Object.values(files).map(f => f?.name).filter(Boolean).join(', ')}` }),
-      });
-      const removed = Object.values(res.deleted).reduce((a, b) => a + b, 0);
-      setProgress(null);
-      setToast({ type: 'success', msg: `นำเข้าสำเร็จ ${int(rows.proc_pr.length)} PR${removed ? ` · ลบแถวเก่า ${int(removed)} แถว` : ''} (หน้าอื่นอาจใช้เวลาไม่เกิน 5 นาทีจึงเห็นข้อมูลใหม่)` });
-    } catch (e) {
-      setProgress(null);
-      setToast({ type: 'error', msg: `นำเข้าไม่สำเร็จ: ${e instanceof Error ? e.message : 'ไม่ทราบสาเหตุ'} — ลองใหม่ได้ ข้อมูลเดิมยังอยู่` });
-    }
+      setProgress({ done: upserts.length, total: upserts.length + 1, label: 'กำลังลบข้อมูลที่ไม่อยู่ในชุดใหม่' });
+      try {
+        await finish(finalize, rows.proc_pr.length);
+      } catch (e) {
+        if (e instanceof FetchError && e.status === 409) { setProgress(null); setShrink({ msg: e.message, body: finalize }); return; }
+        throw e;
+      }
+    } catch (e) { fail(e); }
+  };
+  const confirmShrink = async () => {
+    if (!shrink || !rows) return;
+    setProgress({ done: 0, total: 1, label: 'กำลังลบข้อมูลที่ไม่อยู่ในชุดใหม่' });
+    try { await finish({ ...shrink.body, allow_shrink: true }, rows.proc_pr.length); } catch (e) { fail(e); }
   };
 
   return (
@@ -114,6 +115,13 @@ export default function ImportPage() {
           <button onClick={run} disabled={!!progress} className="mt-4 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50" style={{ background: VIZ.primary }}>
             {progress ? 'กำลังนำเข้า…' : 'นำเข้าข้อมูล'}
           </button>
+          {shrink && (
+            <div role="alert" className="mt-4 rounded-lg border p-3 text-sm" style={{ borderColor: VIZ.secondary, background: '#FFF7EE' }}>
+              <p>{shrink.msg}</p>
+              <p className="mt-1 text-xs" style={{ color: VIZ.lightText }}>ข้อมูลใหม่ถูกเพิ่ม/อัปเดตแล้ว แต่ยังไม่ได้ลบแถวเก่า — ตรวจว่าไฟล์ครบทุกคนใน team.json ก่อน ถ้าตั้งใจลบ (เช่น เอาคนออกจากทีม) กดยืนยัน</p>
+              <button onClick={confirmShrink} disabled={!!progress} className="mt-2 rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50" style={{ background: VIZ.secondary }}>ยืนยัน ลบแถวที่ไม่อยู่ในชุดใหม่</button>
+            </div>
+          )}
           {progress && (
             <div className="mt-3" role="status">
               <div className="h-2 w-full rounded-full" style={{ background: VIZ.bg }}><div className="h-2 rounded-full" style={{ width: `${(progress.done / progress.total) * 100}%`, background: VIZ.primary }} /></div>
