@@ -11,12 +11,14 @@ import {
   baht, inputClass, int, sortRows, thaiDate, type SortState,
   useJson,
 } from './_components/ui';
-import { median } from '@/lib/procurement/analysis';
+import { median, vendorKey } from '@/lib/procurement/analysis';
+import { ChartTitle, Legend, VendorStrip, type StripRow } from './_components/charts';
 
 type Resp = SearchResult & { meta: ProcMeta };
 type VKey = 'vendor' | 'po_count' | 'quote_count' | 'last_po_price' | 'min_price' | 'median_price' | 'last_quote_price' | 'last';
 type PKey = 'date' | 'vendor' | 'unit_price' | 'qty' | 'item';
-const EXAMPLES = ['อบรม รถยก', 'กำจัด ขยะ', 'ตรวจวัด สภาพแวดล้อม', 'ถังดับเพลิง', 'ถุงมือ', 'อบรม ดับเพลิง'];
+const EXAMPLES = ['อบรม รถยก', 'กำจัด ขยะ', 'ถังดับเพลิง', 'ถุงมือ'];
+type Idle = { meta: ProcMeta; top?: { label: string; prs: number }[] };
 
 export default function PriceSearchPage() {
   const router = useRouter();
@@ -41,14 +43,14 @@ export default function PriceSearchPage() {
 
   const url = q ? `/api/procurement/search?${new URLSearchParams({ q, ...(unit ? { unit } : {}), ...(dup ? { dup: '1' } : {}) })}` : null;
   const { data, error, loading } = useJson<Resp>(url);
-  const { data: idle } = useJson<{ meta: ProcMeta }>(q ? null : '/api/procurement/search?q=');
+  const { data: idle } = useJson<Idle>(q ? null : '/api/procurement/search?q=');
   const meta = data?.meta ?? idle?.meta;
 
   return (
     <div className="space-y-5">
       <section>
         <h2 className="text-xl font-bold" style={{ color: VIZ.text }}>ค้นหาราคาสินค้า / บริการ</h2>
-        <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>ดูว่าทีม SHE เคยซื้อหรือได้ใบเสนอราคาจากผู้ขายรายใด ราคาเท่าไร — แยกคำด้วยเว้นวรรค (ต้องเจอทุกคำ)</p>
+        <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>ใช้ก่อนเปิด PR: ตั้งงบให้สมจริง และเลือกผู้ขายที่ควรขอใบเสนอราคา — แยกคำด้วยเว้นวรรค (ต้องเจอทุกคำ)</p>
         <div className="relative mt-3">
           <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: VIZ.neutral }} aria-hidden />
           <input type="search" value={text} onChange={e => setText(e.target.value)} autoFocus aria-label="คำค้น"
@@ -68,6 +70,18 @@ export default function PriceSearchPage() {
         <div className="mt-2"><MetaLine meta={meta} /></div>
       </section>
 
+      {!q && idle?.top && idle.top.length > 0 && (
+        <Card>
+          <ChartTitle title="เริ่มจากรายการที่ทีม SHE ซื้อบ่อย" sub="เรียงตามจำนวน PR ที่ออก PO แล้ว · กดเพื่อดูราคาและผู้ขาย" />
+          <div className="flex flex-wrap gap-2">
+            {idle.top.map(t => (
+              <button key={t.label} onClick={() => setText(t.label)} className="rounded-lg border px-3 py-1.5 text-left text-sm hover:bg-gray-50" style={{ borderColor: VIZ.muted }}>
+                {t.label} <span className="tabular-nums" style={{ color: VIZ.lightText }}>· {int(t.prs)} PR</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
       {error && <ErrorBox error={error} />}
       {loading && <Loading text="กำลังค้นหา…" />}
       {data && !data.points.length && <Card><p className="text-sm" style={{ color: VIZ.lightText }}>ไม่พบรายการที่ตรงกับ “{q}” — ลองใช้คำที่สั้นลง หรือแยกคำด้วยเว้นวรรค</p></Card>}
@@ -81,6 +95,33 @@ function Results({ data, unit, onUnit }: { data: Resp; unit: string; onUnit: (u:
   const lastPo = po[0];
   const poPrices = po.map(p => p.unit_price);
   const multiUnit = data.units.length > 1;
+  const oneUnit = !multiUnit || !!unit;
+  const unitName = unit || data.units[0]?.unit || 'หน่วย';
+  const bestVendor = oneUnit ? [...data.vendors].sort((a, b) => a.median_price - b.median_price)[0] : undefined;
+  const poMed = poPrices.length ? median(poPrices) : null;
+  const quoteCount = data.points.length - po.length;
+
+  // One row per vendor, every price as a dot (filled = paid on a PO, hollow = quoted).
+  const strip: (StripRow & { name: string })[] = useMemo(() => {
+    if (!oneUnit) return [];
+    const by = new Map<string, { names: Map<string, number>; po: number[]; quotes: number[] }>();
+    for (const p of data.points) {
+      const k = vendorKey(p.vendor) || p.vendor || '–';
+      const g = by.get(k) ?? { names: new Map<string, number>(), po: [], quotes: [] };
+      g.names.set(p.vendor || '–', (g.names.get(p.vendor || '–') || 0) + 1);
+      (p.source === 'po' ? g.po : g.quotes).push(p.unit_price);
+      by.set(k, g);
+    }
+    const rows = [...by.entries()].map(([k, g]) => {
+      const all = [...g.po, ...g.quotes];
+      return { key: k, name: [...g.names.entries()].sort((a, b) => b[1] - a[1])[0][0], po: g.po, quotes: g.quotes, median: median(all), n: all.length };
+    });
+    return rows.sort((a, b) => b.n - a.n).slice(0, 12).sort((a, b) => a.median - b.median).map((r, i) => ({
+      key: r.key, name: r.name, label: <VendorLink name={r.name} />, po: r.po, quotes: r.quotes, median: r.median, best: i === 0,
+      sub: `มัธยฐาน ${baht(r.median)} · ${r.po.length ? `ซื้อ ${r.po.length}` : 'ยังไม่เคยซื้อ'}${r.quotes.length ? ` · เสนอ ${r.quotes.length}` : ''}`,
+    }));
+  }, [data.points, oneUnit]);
+
   return (
     <>
       {data.relaxed && <p className="text-sm" style={{ color: VIZ.secondary }}>ไม่พบคำนี้ตรงตัว จึงแสดงรายการที่มีคำย่อยครบ — ลองเว้นวรรคระหว่างคำเพื่อผลที่แม่นขึ้น</p>}
@@ -96,14 +137,44 @@ function Results({ data, unit, onUnit }: { data: Resp; unit: string; onUnit: (u:
           {!unit && <span className="text-xs" style={{ color: VIZ.secondary }}>มีหลายหน่วย — เลือกหน่วยเดียวก่อนเทียบราคา</span>}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="ราคาจ่ายจริงล่าสุด" value={lastPo ? baht(lastPo.unit_price) : '–'} sub={lastPo ? `${thaiDate(lastPo.date)} · ${lastPo.vendor}` : 'ยังไม่เคยออก PO'} />
-        <Kpi label="ราคาจ่ายจริง ต่ำสุด / มัธยฐาน" value={poPrices.length ? `${baht(Math.min(...poPrices))} / ${baht(median(poPrices))}` : '–'} sub={`${int(po.length)} รายการ PO`} color={VIZ.positive} />
-        <Kpi label="ใบเสนอราคา" value={int(data.points.length - po.length)} sub="รายการที่ผู้ขายเสนอ" color={VIZ.secondary} />
-        <Kpi label="ผู้ขาย" value={int(data.vendors.length)} sub="ที่เกี่ยวข้องกับคำค้นนี้" color={VIZ.text} />
-      </div>
       <Card>
-        <h3 className="mb-2 font-semibold">ราคาต่อหน่วยตามช่วงเวลา</h3>
+        {oneUnit ? (
+          <>
+            <p className="text-lg font-bold leading-snug" style={{ color: VIZ.text }}>
+              {poMed !== null
+                ? `ราคาที่จ่ายจริงอยู่ที่ราว ${baht(poMed)} บาท/${unitName} (มัธยฐานจาก ${int(po.length)} รายการ PO)`
+                : `ยังไม่เคยออก PO รายการนี้ — มีใบเสนอราคา ${int(quoteCount)} รายการ`}
+            </p>
+            <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>
+              {bestVendor && `ผู้ขายที่ราคามัธยฐานต่ำสุด: ${bestVendor.vendor} ${baht(bestVendor.median_price)} บาท`}
+              {lastPo && ` · จ่ายล่าสุด ${baht(lastPo.unit_price)} บาท (${thaiDate(lastPo.date)})`}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-lg font-bold leading-snug" style={{ color: VIZ.text }}>พบ {int(data.points.length)} รายการจาก {int(data.vendors.length)} ผู้ขาย แต่ใช้หลายหน่วย</p>
+            <p className="mt-1 text-sm" style={{ color: '#B5600F' }}>เลือกหน่วยด้านบนก่อน — ราคาต่อ “คู่” กับต่อ “กล่อง” เทียบกันตรงๆ ไม่ได้</p>
+          </>
+        )}
+      </Card>
+      {po.length > 0 && <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Kpi label="จ่ายจริงล่าสุด" value={lastPo ? baht(lastPo.unit_price) : '–'} sub={lastPo ? `${thaiDate(lastPo.date)} · ${lastPo.vendor}` : 'ยังไม่เคยออก PO'} />
+        <Kpi label="จ่ายจริง ต่ำสุด – สูงสุด" value={poPrices.length ? `${baht(Math.min(...poPrices))} – ${baht(Math.max(...poPrices))}` : '–'} sub={`${int(po.length)} รายการ PO`} color={VIZ.primary} />
+        <Kpi label="ผู้ขายที่เกี่ยวข้อง" value={int(data.vendors.length)} sub={`ใบเสนอราคา ${int(quoteCount)} รายการ`} color={VIZ.text} />
+      </div>}
+      {oneUnit && strip.length > 1 && (
+        <Card>
+          <ChartTitle
+            title={`เทียบราคาต่อ${unitName}รายผู้ขาย — ${strip[0].name} ราคามัธยฐานต่ำสุด`}
+            sub="1 จุด = 1 ราคา · เรียงจากมัธยฐานต่ำไปสูง (บนสุด = ถูกสุด) · จุดกระจายกว้าง = ราคาไม่สม่ำเสมอหรือเป็นคนละรุ่น/สเปก — ใส่คำค้นให้เจาะจงขึ้นก่อนสรุป" />
+          <VendorStrip rows={strip} unit={unitName} />
+          <div className="mt-3">
+            <Legend items={[{ color: VIZ.primary, label: 'จ่ายจริง (PO)', kind: 'dot' }, { color: VIZ.secondary, label: 'ใบเสนอราคา', kind: 'ring' }, { color: VIZ.text, label: 'มัธยฐาน', kind: 'tick' }]} />
+          </div>
+        </Card>
+      )}
+      <Card>
+        <ChartTitle title="ราคาต่อหน่วยตามช่วงเวลา" sub="ดูว่าราคาขยับขึ้นหรือลงเมื่อเวลาผ่านไป" />
         <PriceChart points={data.points} />
         <p className="mt-2 text-xs" style={{ color: VIZ.lightText }}>คลิกจุดเพื่อเปิด PR · ราคาอาจต่างกันเพราะขอบเขตงาน จำนวน หรือเงื่อนไข (เช่น รวมอาหาร/ค่าขนส่ง) — ดูรายละเอียดก่อนสรุป</p>
       </Card>

@@ -157,3 +157,23 @@ export function vendorSummaries(prs: Pick<ProcPr, 'pr_no' | 'requester'>[], po: 
     };
   }).sort((x, y) => y.po_amount - x.po_amount || y.quote_count - x.quote_count);
 }
+
+/** Odoo product names without the code prefix: "[OT06-Site] ค่าบริการจัดการของเสีย - Site" -> "ค่าบริการจัดการของเสีย" */
+export function productLabel(product: string) {
+  return product.replace(/^\[[^\]]*\]\s*/, '').replace(/\s*-\s*Site$/i, '').trim();
+}
+
+/** Most frequently bought products (by number of PRs with a PO line), for the search start page. */
+export function topProducts(po: ProcPoLine[], limit = 12) {
+  const prs = new Map<string, Set<string>>();
+  for (const l of po) {
+    if (l.po_state === 'cancel') continue;
+    const label = productLabel(l.product);
+    if (!label || label.length < 3) continue;
+    const set = prs.get(label) ?? new Set<string>();
+    set.add(`${l.pr_no}|${l.requester}`);
+    prs.set(label, set);
+  }
+  return [...prs.entries()].map(([label, set]) => ({ label, prs: set.size }))
+    .sort((a, b) => b.prs - a.prs).slice(0, limit);
+}

@@ -11,6 +11,7 @@ import {
   Card, ErrorBox, Kpi, Loading, MetaLine, PAGE_SIZE, Pager, PrLink, SortHeader, SourceBadge, VIZ, VendorLink,
   baht, inputClass, int, sortRows, thaiDate, useJson, type SortState,
 } from '../_components/ui';
+import { ChartTitle, HBarList, shortBaht } from '../_components/charts';
 
 type ListResp = { vendors: VendorSummary[]; meta: ProcMeta };
 type DetailResp = { summary: VendorSummary; names: string[]; points: PricePoint[]; prs: ProcPrSummary[]; meta: ProcMeta };
@@ -34,6 +35,14 @@ function VendorList() {
     return sortRows(list, sort, (v, k) => k === 'win' ? winRate(v) : v[k]);
   }, [data, text, sort]);
   const view = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  // Spend concentration: how much of all PO value sits with the top vendors.
+  const spend = useMemo(() => {
+    const list = [...(data?.vendors ?? [])].filter(v => v.po_amount > 0).sort((a, b) => b.po_amount - a.po_amount);
+    const totalAmt = list.reduce((s, v) => s + v.po_amount, 0);
+    const top10 = list.slice(0, 10);
+    const top = top10.map((v, i) => ({ v, cum: totalAmt ? top10.slice(0, i + 1).reduce((s, x) => s + x.po_amount, 0) / totalAmt : 0 }));
+    return { totalAmt, top, count: list.length };
+  }, [data]);
   const onSort = (s: SortState<Key>) => { setSort(s); setPage(0); };
 
   return (
@@ -45,6 +54,18 @@ function VendorList() {
       </div>
       <input type="search" value={text} onChange={e => { setText(e.target.value); setPage(0); }} placeholder="ค้นหาชื่อผู้ขาย หรือสินค้าที่ขายบ่อย" aria-label="ค้นหาผู้ขาย" className={inputClass} />
       {error && <ErrorBox error={error} />}
+      {!text && spend.top.length > 1 && (
+        <Card>
+          <ChartTitle
+            title={`${spend.top[0].v.vendor} รายเดียวคิดเป็น ${Math.round(spend.top[0].cum * 100)}% ของยอด PO · 10 รายแรกรวม ${Math.round(spend.top[spend.top.length - 1].cum * 100)}%`}
+            sub={`ยอด PO รวม ${shortBaht(spend.totalAmt)} บาท จากผู้ขาย ${int(spend.count)} ราย · ผู้ขายที่ยอดสูงคือที่ที่การต่อรองหรือทำสัญญาระยะยาวคุ้มที่สุด`} />
+          <HBarList ariaLabel="ยอด PO รายผู้ขาย 10 รายแรก"
+            rows={spend.top.map(({ v, cum }, i) => ({
+              key: v.vendor, label: <VendorLink name={v.vendor} />, value: v.po_amount, display: `${shortBaht(v.po_amount)} บาท`,
+              highlight: i === 0, note: `${int(v.po_count)} PO · ${int(v.pr_count)} PR · สะสม ${Math.round(cum * 100)}% ของยอดรวม`,
+            }))} />
+        </Card>
+      )}
       {loading && <Loading />}
       {data && (
         <Card className="!p-0 overflow-hidden">

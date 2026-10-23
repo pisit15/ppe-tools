@@ -34,7 +34,7 @@ export default function ProcurementLayout({ children }: { children: React.ReactN
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <Link href="/" className="inline-flex items-center gap-1 text-sm hover:underline" style={{ color: VIZ.lightText }}><ArrowLeft size={16} />หน้าหลัก</Link>
           <h1 className="text-lg font-bold" style={{ color: VIZ.primary }}>PR & Supplier Price</h1>
-          <nav aria-label="เมนู PR" className="order-last flex w-full gap-1 overflow-x-auto md:order-none md:w-auto">
+          <nav aria-label="เมนู PR" className="order-last flex w-full flex-wrap gap-1 md:order-none md:w-auto">
             {nav.map(({ href, label, icon: Icon }) => {
               const active = href === '/procurement' ? pathname === href : pathname.startsWith(href);
               return (

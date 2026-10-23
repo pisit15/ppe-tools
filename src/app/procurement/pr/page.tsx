@@ -13,6 +13,8 @@ import {
   Card, DRIVE_ROOT, ErrorBox, Kpi, Loading, MetaLine, PAGE_SIZE, Pager, PrLink, SortHeader, VIZ, VendorLink,
   baht, driveLink, inputClass, int, sortRows, thaiDate, useJson, type SortState,
 } from '../_components/ui';
+import { ChartTitle, HBarList } from '../_components/charts';
+import { vendorKey } from '@/lib/procurement/analysis';
 
 type Row = ProcPrSummary & { quote_count: number };
 type ListResp = { prs: Row[]; meta: ProcMeta };
@@ -158,6 +160,27 @@ function PrDetail({ no, by }: { no: string; by: string }) {
   for (const it of items) itemsByQuote.set(it.quote_id, [...(itemsByQuote.get(it.quote_id) ?? []), it]);
   const totals = quotes.map(q => q.total ?? q.subtotal).filter((t): t is number => t !== null && t > 0);
   const lowest = totals.length ? Math.min(...totals) : null;
+  // One bar per vendor (lowest offer), before-VAT where the document shows it.
+  const offers = (() => {
+    const by = new Map<string, { name: string; value: number; selected: boolean; vatIncl: boolean }>();
+    for (const q of quotes) {
+      const value = q.subtotal ?? q.total;
+      if (value === null || !(value > 0)) continue;
+      const k = vendorKey(q.vendor_group || q.vendor) || q.vendor;
+      const cur = by.get(k);
+      if (!cur || value < cur.value) by.set(k, { name: q.vendor_group || q.vendor, value, selected: q.selected || !!cur?.selected, vatIncl: q.subtotal === null });
+      else if (q.selected) cur.selected = true;
+    }
+    return [...by.values()].sort((a, b) => a.value - b.value);
+  })();
+  const chosen = offers.find(o => o.selected);
+  const cheapest = offers[0];
+  const offerTitle = !cheapest ? '' : chosen
+    ? (chosen === cheapest
+      ? `เลือกผู้เสนอราคาต่ำสุด: ${chosen.name}`
+      : `เลือก ${chosen.name} — แพงกว่าราคาต่ำสุด ${baht(chosen.value - cheapest.value)} บาท (${Math.round(((chosen.value - cheapest.value) / cheapest.value) * 100)}%)`)
+    : `ยังไม่มี PO — ราคาต่ำสุดคือ ${cheapest.name} ${baht(cheapest.value)} บาท`;
+  const poVsEst = pr.po_count && pr.estimated_cost > 0 ? Math.round(((pr.po_amount - pr.estimated_cost) / pr.estimated_cost) * 100) : null;
 
   return (
     <div className="space-y-4">
@@ -177,7 +200,8 @@ function PrDetail({ no, by }: { no: string; by: string }) {
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="ประมาณการใน PR" value={baht(pr.estimated_cost)} color={VIZ.secondary} />
-        <Kpi label="ยอด PO (ไม่รวม VAT)" value={pr.po_count ? baht(pr.po_amount) : '–'} sub={pr.po_list || 'ยังไม่มี PO'} color={VIZ.positive} />
+        <Kpi label="ยอด PO (ไม่รวม VAT)" value={pr.po_count ? baht(pr.po_amount) : '–'} color={VIZ.positive}
+          sub={pr.po_count ? `${poVsEst === null ? '' : poVsEst === 0 ? 'เท่ากับประมาณการ · ' : `${poVsEst > 0 ? 'สูง' : 'ต่ำ'}กว่าประมาณการ ${Math.abs(poVsEst)}% · `}${pr.po_list}` : 'ยังไม่มี PO'} />
         <Kpi label="ใบเสนอราคาที่อ่านได้" value={int(quotes.length)} sub={lowest !== null ? `ต่ำสุด ${baht(lowest)} บาท` : undefined} />
         <Kpi label="ผู้ขายที่ได้ PO" value={<span className="text-base">{pr.vendors || '–'}</span>} color={VIZ.text} />
       </div>
@@ -189,7 +213,18 @@ function PrDetail({ no, by }: { no: string; by: string }) {
       )}
       {quotes.length > 0 && (
         <Card className="!p-0 overflow-hidden">
-          <h3 className="px-4 pt-4 font-semibold md:px-6">เทียบใบเสนอราคา</h3>
+          <div className="px-4 pt-4 md:px-6">
+            <ChartTitle title={offerTitle || 'เทียบใบเสนอราคา'} sub="1 แท่ง = ราคาต่ำสุดที่ผู้ขายแต่ละรายเสนอใน PR นี้ (ก่อน VAT ถ้าเอกสารระบุ) · แท่งน้ำเงิน = ผู้ขายที่ได้ PO" />
+            {offers.length > 1 && (
+              <HBarList ariaLabel="เทียบยอดใบเสนอราคา"
+                rows={offers.map((o, i) => ({
+                  key: o.name, label: <VendorLink name={o.name} />, value: o.value, display: `${baht(o.value)} บาท`,
+                  highlight: o.selected, color: o.selected ? VIZ.primary : '#B9C2CC',
+                  note: [i === 0 ? 'ต่ำสุด' : `+${Math.round(((o.value - cheapest.value) / cheapest.value) * 100)}% จากต่ำสุด`, o.selected ? 'ได้ PO' : '', o.vatIncl ? 'ยอดรวม VAT' : ''].filter(Boolean).join(' · '),
+                }))} />
+            )}
+            <h4 className="mt-4 text-sm font-semibold" style={{ color: VIZ.lightText }}>รายละเอียดใบเสนอราคา</h4>
+          </div>
           <div className="overflow-x-auto">
             <table className="mt-2 w-full text-sm">
               <thead style={{ background: VIZ.bg }}><tr>
