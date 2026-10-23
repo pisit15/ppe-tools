@@ -37,6 +37,7 @@ type OrderRow = {
   avgV: number;        // N
   reorderPoint: number; // O
   needToOrder: number;  // P = N - G
+  requiresOrder: boolean;
 };
 
 function monthKey(y: number, m0: number): string {
@@ -150,14 +151,17 @@ export default function OrderCalculationPage() {
         const avgV = (maxV + minV) / 2;
         const reorderPoint = avg3 * leadMonths + safetyStock;
         const needToOrder = avgV - stockOnHand;
-        return { product: p, usage, usage3, stockOnHand, avg3, safetyStock, minV, maxV, avgV, reorderPoint, needToOrder };
+        const requiresOrder = stockOnHand <= reorderPoint;
+        return { product: p, usage, usage3, stockOnHand, avg3, safetyStock, minV, maxV, avgV, reorderPoint, needToOrder, requiresOrder };
       })
-      .sort((a, b) => b.needToOrder - a.needToOrder || a.product.name.localeCompare(b.product.name, 'th'));
+      .sort((a, b) => Number(b.requiresOrder) - Number(a.requiresOrder)
+        || b.needToOrder - a.needToOrder
+        || a.product.name.localeCompare(b.product.name, 'th'));
   }, [products, stocks, transactions, months, leadMonths]);
 
   const filtered = useMemo(() => {
     let list = rows;
-    if (onlyNeed) list = list.filter(r => r.needToOrder > 0);
+    if (onlyNeed) list = list.filter(r => r.requiresOrder);
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(r =>
@@ -173,8 +177,8 @@ export default function OrderCalculationPage() {
   const pageRows = filtered.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE);
   useEffect(() => { setPage(1); }, [onlyNeed, search, endMonth]);
 
-  const needCount = rows.filter(r => r.needToOrder > 0).length;
-  const needValue = rows.reduce((s, r) => s + (r.needToOrder > 0 && r.product.unit_price ? r.needToOrder * r.product.unit_price : 0), 0);
+  const needCount = rows.filter(r => r.requiresOrder).length;
+  const needValue = rows.reduce((s, r) => s + (r.requiresOrder && r.product.unit_price ? Math.max(r.needToOrder, 0) * r.product.unit_price : 0), 0);
 
   const saveRemark = async (productId: string) => {
     const cur = remarks[productId] || { remark: '', qty: '' };
@@ -512,7 +516,7 @@ export default function OrderCalculationPage() {
           <p className="text-2xl font-bold" style={{ color: VIZ.primary }}>{rows.length}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4" style={{ borderLeft: `4px solid ${VIZ.secondary}` }}>
-          <p className="text-xs" style={{ color: VIZ.lightText }}>ต้องสั่งซื้อ (Need &gt; 0)</p>
+          <p className="text-xs" style={{ color: VIZ.lightText }}>ต้องสั่งซื้อ (Stock on hand ≤ Re-order point)</p>
           <p className="text-2xl font-bold" style={{ color: VIZ.secondary }}>{needCount}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4" style={{ borderLeft: `4px solid ${VIZ.positive}` }}>
@@ -577,12 +581,19 @@ export default function OrderCalculationPage() {
             ) : (
               pageRows.map((r, i) => {
                 const rm = remarks[r.product.id] || { remark: '', qty: '' };
-                const need = r.needToOrder > 0;
+                const need = r.requiresOrder;
                 return (
                   <tr key={r.product.id} className="border-b border-gray-50 hover:bg-blue-50/30">
                     <td className="px-2 py-2 tabular-nums" style={{ color: VIZ.lightText }}>{(pageSafe - 1) * PAGE_SIZE + i + 1}</td>
                     <td className="px-2 py-2 font-mono" style={{ color: VIZ.lightText }}>{r.product.item_code || '—'}</td>
-                    <td className="px-2 py-2 max-w-[260px] truncate font-medium" title={r.product.name} style={{ color: VIZ.text }}>{r.product.name}</td>
+                    <td className="px-2 py-2 max-w-[260px] font-medium" style={{ color: VIZ.text }}>
+                      <div className="truncate" title={r.product.name}>{r.product.name}</div>
+                      {r.requiresOrder && (
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-800">
+                          <ShoppingCart size={12} aria-hidden="true" /> ต้องสั่งซื้อ
+                        </span>
+                      )}
+                    </td>
                     <td className="px-2 py-2 text-center tabular-nums">{fmt(r.usage[0])}</td>
                     <td className="px-2 py-2 text-center tabular-nums">{fmt(r.usage[1])}</td>
                     <td className="px-2 py-2 text-center tabular-nums">{fmt(r.usage[2])}</td>
@@ -601,7 +612,7 @@ export default function OrderCalculationPage() {
                           ? { backgroundColor: `${VIZ.accent}15`, color: VIZ.accent }
                           : { backgroundColor: `${VIZ.positive}15`, color: VIZ.positive }}
                       >
-                        {need ? Math.ceil(r.needToOrder).toLocaleString('th-TH') : fmt(Math.max(r.needToOrder, 0))}
+                        {Math.ceil(Math.max(r.needToOrder, 0)).toLocaleString('th-TH')}
                       </span>
                     </td>
                     <td className="px-2 py-2 text-center">
@@ -647,6 +658,7 @@ export default function OrderCalculationPage() {
       </div>
 
       <p className="text-xs" style={{ color: VIZ.lightText }}>
+        แสดงแท็ก “ต้องสั่งซื้อ” เมื่อ Stock on hand ≤ Re-order point และเรียงรายการที่เข้าเกณฑ์ขึ้นก่อน ·{' '}
         สูตรตามไฟล์ฝ่ายจัดซื้อ: Safety Stock = เฉลี่ย 3 เดือน × Lead Time · MIN = เฉลี่ย + SS · MAX = (เฉลี่ย × Lead Time) + MIN + SS ·
         AVG. = (MAX + MIN) / 2 · Re-order point = (เฉลี่ย × Lead Time) + SS · ต้องสั่ง = AVG. − Stock on hand ·
         Item Code และราคาแก้ได้ที่หน้า &quot;จัดการสต็อก&quot;
