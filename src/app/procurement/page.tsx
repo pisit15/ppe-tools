@@ -77,17 +77,18 @@ function SearchForm({ initial, onSearch }: { initial: string; onSearch: (value: 
 
 function Results({ data, unit, onUnit }: { data: Resp; unit: string; onUnit: (u: string) => void }) {
   const charts = useMemo(() => {
-    const series = new Map<string, { unit: string; currency: string; points: PricePoint[] }>();
+    const series = new Map<string, { currency: string; points: PricePoint[] }>();
     for (const point of data.points) {
-      const unit = canonicalUnit(point.unit) || 'ไม่ระบุหน่วย';
       const currency = canonicalCurrency(point.currency) || 'ไม่ระบุสกุลเงิน';
-      const key = JSON.stringify([unit, currency]);
-      const entry = series.get(key) ?? { unit, currency, points: [] };
+      const key = currency;
+      const entry = series.get(key) ?? { currency, points: [] };
       entry.points.push(point);
       series.set(key, entry);
     }
-    return [...series.values()];
+    return [...series.values()].sort((a, b) => b.points.length - a.points.length);
   }, [data.points]);
+  const [currency, setCurrency] = useState('');
+  const chart = charts.find(item => item.currency === currency) ?? charts[0];
   return <>
     {data.relaxed && <p className="text-sm" style={{ color: VIZ.secondary }}>ไม่พบคำตรงตัว จึงแสดงรายการที่มีคำย่อยครบ</p>}
     {(data.units.length > 1 || unit) && <div className="flex items-center gap-2 text-sm"><label htmlFor="price-unit">หน่วย</label><select id="price-unit" value={canonicalUnit(unit)} onChange={event => onUnit(event.target.value)} className={`${inputClass} !w-auto`}><option value="">ทุกหน่วย</option>{data.units.map(u => <option key={u.unit} value={u.unit}>{u.unit} ({int(u.count)})</option>)}</select></div>}
@@ -96,13 +97,16 @@ function Results({ data, unit, onUnit }: { data: Resp; unit: string; onUnit: (u:
       <Kpi label="รายการ PO ที่แสดง" value={int(data.points.filter(p => p.source === 'po').length)} />
       <Kpi label="ผู้ขายที่แสดง" value={int(new Set(data.points.map(p => p.vendor_key || p.vendor)).size)} />
     </div>
-    <p className="text-xs leading-relaxed" style={{ color: VIZ.lightText }}>กราฟแสดงราคาตามเอกสารทั้งหมดที่ค้นพบ แยกหน่วยและสกุลเงินอัตโนมัติ · สเปก จำนวน และฐานภาษีอาจต่างกัน โปรดตรวจเอกสารก่อนเปรียบเทียบ{data.truncated && ' · แสดงเฉพาะ 600 รายการล่าสุด'}</p>
-    {charts.map(series => <SearchCharts key={`${series.unit}|${series.currency}`} {...series} />)}
+    <p className="text-xs leading-relaxed" style={{ color: VIZ.lightText }}>ภาพรวมราคาตามเอกสารที่ค้นพบ · หน่วย สเปก และฐานภาษีอาจต่างกัน ดูรายละเอียดแต่ละจุดหรือตารางก่อนเปรียบเทียบ{data.truncated && ' · แสดงเฉพาะ 600 รายการล่าสุด'}</p>
+    {charts.length > 1 && <label className="flex items-center gap-2 text-sm">สกุลเงินในกราฟ<select value={chart.currency} onChange={event => setCurrency(event.target.value)} className={`${inputClass} !w-auto`}>{charts.map(item => <option key={item.currency} value={item.currency}>{item.currency} ({int(item.points.length)} รายการ)</option>)}</select></label>}
+    {chart && <SearchCharts key={chart.currency} {...chart} />}
     {!!data.points.length && <PointTable points={data.points} truncated={data.truncated} />}
   </>;
 }
 
-function SearchCharts({ points, unit, currency }: { points: PricePoint[]; unit: string; currency: string }) {
+function SearchCharts({ points, currency }: { points: PricePoint[]; currency: string }) {
+  const units = [...new Set(points.map(point => canonicalUnit(point.unit) || 'ไม่ระบุหน่วย'))];
+  const unit = units.length === 1 ? units[0] : 'หน่วยตามเอกสาร';
   const vendors = new Map<string, { name: string; po: number[]; quotes: number[] }>();
   for (const point of points) {
     const key = point.vendor_key || vendorKey(point.vendor) || point.vendor || '–';
@@ -113,13 +117,13 @@ function SearchCharts({ points, unit, currency }: { points: PricePoint[]; unit: 
   const rows: StripRow[] = [...vendors].map(([key, row]) => ({ key, label: <VendorLink name={row.name} short />,
     po: row.po, quotes: row.quotes, sub: `PO ${int(row.po.length)} · ใบเสนอราคา ${int(row.quotes.length)}`,
   }));
-  const basis = `${currency} / ${unit} · ${int(points.length)} รายการ`;
+  const basis = `${currency} · ${int(points.length)} รายการ · ${units.length === 1 ? unit : 'หลายหน่วยตามเอกสาร'}`;
   return <>
-    <Card><ChartTitle title="ราคาต่อหน่วยรายผู้ขาย" sub={`${basis} · 1 จุด = 1 ราคาตามเอกสาร`} />
+    <Card><ChartTitle title="ราคาตามผู้ขาย" sub={`${basis} · 1 จุด = 1 ราคาตามเอกสาร`} />
       <VendorStrip rows={rows} unit={unit} currency={currency} />
       <div className="mt-3"><Legend items={[{ color: VIZ.primary, label: 'ราคาตาม PO', kind: 'dot' }, { color: VIZ.secondary, label: 'ใบเสนอราคา', kind: 'ring' }]} /></div>
     </Card>
-    <Card><ChartTitle title="ราคาต่อหน่วยตามช่วงเวลา" sub={`${basis} · กดจุดเพื่อเปิด PR`} /><PriceChart points={points} poMedian={null} /></Card>
+    <Card><ChartTitle title="ประวัติราคาตามเวลา" sub={`${basis} · กดจุดเพื่อเปิด PR`} /><PriceChart points={points} poMedian={null} /></Card>
   </>;
 }
 
