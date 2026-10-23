@@ -35,7 +35,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as CreateProductInput;
-    const { company_id, name, type, unit, image_url, min_stock, is_active } = body;
+    const { company_id, name, type, unit, image_url, min_stock, is_active, can_reorder } = body;
+
+    if (can_reorder !== undefined && typeof can_reorder !== 'boolean') {
+      return NextResponse.json({ error: 'can_reorder must be a boolean' }, { status: 400 });
+    }
 
     if (!company_id || !name || !type) {
       return NextResponse.json(
@@ -58,6 +62,7 @@ export async function POST(request: NextRequest) {
           image_url,
           min_stock: min_stock || 0,
           is_active: is_active !== false,
+          can_reorder: can_reorder ?? true,
         },
       ])
       .select();
@@ -88,6 +93,10 @@ export async function PATCH(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'Missing product id' }, { status: 400 });
+    }
+
+    if ('can_reorder' in updates && typeof updates.can_reorder !== 'boolean') {
+      return NextResponse.json({ error: 'can_reorder must be a boolean' }, { status: 400 });
     }
 
     let db;

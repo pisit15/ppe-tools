@@ -2,7 +2,7 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests',
-  testMatch: 'ppe-order.spec.cjs',
+  testMatch: ['ppe-order.spec.cjs', 'ppe-reorder-setting.spec.cjs'],
   timeout: 90000,
   expect: { timeout: 15000 },
   workers: 1,

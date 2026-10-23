@@ -8,6 +8,7 @@ export type PPEProduct = {
   min_stock: number;
   item_code?: string | null;
   unit_price?: number | null;
+  can_reorder?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;

@@ -75,8 +75,10 @@ export default function InventoryPage() {
     unit: 'piece',
     min_stock: 10,
     image_url: '',
+    can_reorder: true,
   });
   const [imgError, setImgError] = useState(false);
+  const [savingReorderId, setSavingReorderId] = useState<string | null>(null);
 
   // Inline min_stock editor state
   const [editingMin, setEditingMin] = useState<{ id: string; value: string } | null>(null);
@@ -138,7 +140,7 @@ export default function InventoryPage() {
         body: JSON.stringify({ company_id: companyId, ...formData }),
       });
       if (res.ok) {
-        setFormData({ name: '', type: 'gloves', unit: 'piece', min_stock: 10, image_url: '' });
+        setFormData({ name: '', type: 'gloves', unit: 'piece', min_stock: 10, image_url: '', can_reorder: true });
         setShowForm(false);
         setImgError(false);
         setToast({ type: 'success', msg: 'เพิ่มสินค้าสำเร็จ' });
@@ -299,6 +301,27 @@ export default function InventoryPage() {
     }
   };
 
+  async function saveReorderSetting(product: PPEProduct, canReorder: boolean) {
+    if (savingReorderId || canReorder === (product.can_reorder !== false)) return;
+    setSavingReorderId(product.id);
+    try {
+      const res = await fetch('/api/ppe/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: product.id, can_reorder: canReorder }),
+      });
+      if (!res.ok) throw new Error('Unable to save reorder setting');
+      setProducts((prev) => prev.map((p) => (
+        p.id === product.id ? { ...p, can_reorder: canReorder } : p
+      )));
+      setToast({ type: 'success', msg: `บันทึกการสั่งซื้อเพิ่ม "${product.name}" แล้ว` });
+    } catch {
+      setToast({ type: 'error', msg: 'บันทึกการสั่งซื้อเพิ่มไม่สำเร็จ กรุณาลองใหม่' });
+    } finally {
+      setSavingReorderId(null);
+    }
+  }
+
   const filtered = useMemo(() => {
     let list = [...products];
     if (filterType !== 'all') list = list.filter((p) => p.type === filterType);
@@ -420,10 +443,11 @@ export default function InventoryPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: VIZ.text }}>
+                <label htmlFor="new-product-name" className="block text-sm font-medium mb-1.5" style={{ color: VIZ.text }}>
                   ชื่อสินค้า *
                 </label>
                 <input
+                  id="new-product-name"
                   type="text"
                   required
                   value={formData.name}
@@ -476,6 +500,24 @@ export default function InventoryPage() {
                   }
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
                 />
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor="new-product-can-reorder" className="block text-sm font-medium mb-1.5" style={{ color: VIZ.text }}>
+                  การสั่งซื้อเพิ่ม
+                </label>
+                <select
+                  id="new-product-can-reorder"
+                  value={String(formData.can_reorder)}
+                  onChange={(e) => setFormData({ ...formData, can_reorder: e.target.value === 'true' })}
+                  aria-describedby="new-product-can-reorder-help"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none"
+                >
+                  <option value="true">สั่งซื้อเพิ่มได้</option>
+                  <option value="false">ไม่สั่งซื้อเพิ่ม</option>
+                </select>
+                <p id="new-product-can-reorder-help" className="text-xs mt-1.5" style={{ color: VIZ.lightText }}>
+                  เลือก “ไม่สั่งซื้อเพิ่ม” สำหรับของใช้ซ้ำหรือสินค้าที่ยกเลิกการซื้อ ยังรับคืนและเบิกใช้ได้ตามปกติ
+                </p>
               </div>
             </div>
 
@@ -852,6 +894,9 @@ export default function InventoryPage() {
                 <th className="px-4 py-3 text-right font-semibold text-sm" style={{ color: VIZ.text }}>
                   ราคา/หน่วย
                 </th>
+                <th className="px-4 py-3 text-left font-semibold text-sm whitespace-nowrap" style={{ color: VIZ.text }}>
+                  การสั่งซื้อเพิ่ม
+                </th>
                 <th
                   className="px-6 py-3 text-center font-semibold text-sm"
                   style={{ color: VIZ.text }}
@@ -1024,6 +1069,26 @@ export default function InventoryPage() {
                           </button>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-sm">
+                        <select
+                          aria-label={`การสั่งซื้อเพิ่ม ${product.name}`}
+                          value={String(product.can_reorder !== false)}
+                          onChange={(e) => saveReorderSetting(product, e.target.value === 'true')}
+                          disabled={savingReorderId !== null}
+                          aria-busy={savingReorderId === product.id}
+                          className="min-w-40 px-2 py-1.5 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none disabled:opacity-50"
+                          style={{
+                            color: product.can_reorder === false ? VIZ.lightText : VIZ.primary,
+                            background: product.can_reorder === false ? '#F3F4F6' : '#EFF6FF',
+                          }}
+                        >
+                          <option value="true">สั่งซื้อเพิ่มได้</option>
+                          <option value="false">ไม่สั่งซื้อเพิ่ม</option>
+                        </select>
+                        {savingReorderId === product.id && (
+                          <p className="text-xs mt-1" role="status" style={{ color: VIZ.lightText }}>กำลังบันทึก...</p>
+                        )}
+                      </td>
                       <td className="px-6 py-3 text-center">
                         <button
                           onClick={() => setDeleting(product)}
@@ -1046,7 +1111,7 @@ export default function InventoryPage() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center">
+                  <td colSpan={10} className="px-6 py-12 text-center">
                     <Package
                       size={48}
                       className="mx-auto mb-3 opacity-40"

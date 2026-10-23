@@ -37,6 +37,7 @@ type OrderRow = {
   avgV: number;        // N
   reorderPoint: number; // O
   needToOrder: number;  // P = N - G
+  canReorder: boolean;
   requiresOrder: boolean;
   isEmpty: boolean;
 };
@@ -152,11 +153,13 @@ export default function OrderCalculationPage() {
         const avgV = (maxV + minV) / 2;
         const reorderPoint = avg3 * leadMonths + safetyStock;
         const needToOrder = avgV - stockOnHand;
+        const canReorder = p.can_reorder !== false;
         const isEmpty = stockOnHand === 0 && usage.every(quantity => quantity === 0);
-        const requiresOrder = !isEmpty && stockOnHand <= reorderPoint;
-        return { product: p, usage, usage3, stockOnHand, avg3, safetyStock, minV, maxV, avgV, reorderPoint, needToOrder, requiresOrder, isEmpty };
+        const requiresOrder = canReorder && !isEmpty && stockOnHand <= reorderPoint;
+        return { product: p, usage, usage3, stockOnHand, avg3, safetyStock, minV, maxV, avgV, reorderPoint, needToOrder, canReorder, requiresOrder, isEmpty };
       })
       .sort((a, b) => Number(a.isEmpty) - Number(b.isEmpty)
+        || Number(b.canReorder) - Number(a.canReorder)
         || Number(b.requiresOrder) - Number(a.requiresOrder)
         || b.needToOrder - a.needToOrder
         || a.product.name.localeCompare(b.product.name, 'th'));
@@ -262,7 +265,7 @@ export default function OrderCalculationPage() {
     ws.columns = [
       { width: 5.6 }, { width: 13.5 }, { width: 70.7 }, { width: 10.3 }, { width: 10.3 }, { width: 10.3 },
       { width: 15.6 }, { width: 20.2 }, { width: 12.6 }, { width: 11 }, { width: 11 }, { width: 10.6 },
-      { width: 10.6 }, { width: 10.6 }, { width: 13 }, { width: 12 }, { width: 30.3 }, { width: 11 },
+      { width: 10.6 }, { width: 10.6 }, { width: 13 }, { width: 12 }, { width: 30.3 }, { width: 11 }, { width: 24 },
     ];
 
     // Title
@@ -277,7 +280,7 @@ export default function OrderCalculationPage() {
       ['A3', 'No.', C_GRAY], ['B3', 'Item Code', C_GRAY], ['C3', 'Item Name', C_GRAY],
       ['D3', 'Usage / Month', C_CREAM], ['G3', 'Stock on hand', C_CREAM], ['H3', 'Lead Time (Month)', C_GRAY],
       ['I3', 'Stock', C_GRAY], ['O3', 'Re-order point', C_ORANGE], ['P3', 'Need to order', C_GREEN],
-      ['Q3', 'Remark', C_GRAY], ['R3', 'ราคา', C_GRAY],
+      ['Q3', 'Remark', C_GRAY], ['R3', 'ราคา', C_GRAY], ['S3', 'การสั่งซื้อเพิ่ม', C_GRAY],
     ];
     const h4: [string, string, string][] = [
       ['D4', monthLabelTH(months[0]), C_CREAM], ['E4', monthLabelTH(months[1]), C_CREAM], ['F4', monthLabelTH(months[2]), C_CREAM],
@@ -293,7 +296,7 @@ export default function OrderCalculationPage() {
       c.alignment = center;
     });
     // NOTE: G3/G4 are NOT merged in the original — G3 is "Stock on hand", G4 is the cut-off date
-    ['A3:A4', 'B3:B4', 'C3:C4', 'D3:F3', 'H3:H4', 'I3:N3', 'O3:O4', 'P3:P4', 'Q3:Q4', 'R3:R4'].forEach(r => ws.mergeCells(r));
+    ['A3:A4', 'B3:B4', 'C3:C4', 'D3:F3', 'H3:H4', 'I3:N3', 'O3:O4', 'P3:P4', 'Q3:Q4', 'R3:R4', 'S3:S4'].forEach(r => ws.mergeCells(r));
 
     // Data rows
     const list = filtered;
@@ -305,7 +308,7 @@ export default function OrderCalculationPage() {
       const row = ws.getRow(rowN);
       row.height = 50;
       const rm = remarks[r.product.id] || { remark: '', qty: '' };
-      const remarkText = rm.qty !== ''
+      const remarkText = r.canReorder && rm.qty !== ''
         ? `(สั่งซื้อจริง ${rm.qty}${rm.remark ? ' ' + rm.remark : ''})`
         : rm.remark;
 
@@ -324,14 +327,15 @@ export default function OrderCalculationPage() {
       row.getCell(13).value = { formula: `(J${rowN}*H${rowN})+K${rowN}+L${rowN}` };
       row.getCell(14).value = { formula: `(M${rowN}+L${rowN})/2` };
       row.getCell(15).value = { formula: `(J${rowN}*H${rowN})+K${rowN}` };
-      row.getCell(16).value = { formula: `N${rowN}-G${rowN}` };
+      row.getCell(16).value = r.canReorder ? { formula: `N${rowN}-G${rowN}` } : '—';
       row.getCell(17).value = remarkText;
       if (r.product.unit_price != null) row.getCell(18).value = r.product.unit_price;
+      row.getCell(19).value = r.canReorder ? 'สั่งซื้อเพิ่มได้' : 'ไม่สั่งซื้อเพิ่ม';
 
-      for (let col = 1; col <= 18; col++) {
+      for (let col = 1; col <= 19; col++) {
         const c = row.getCell(col);
         c.border = allBorders;
-        c.font = col === 3 || col === 17 ? TAHOMA : TNR();
+        c.font = col === 3 || col === 17 || col === 19 ? TAHOMA : TNR();
         c.alignment = col === 2 || col === 3 || col === 17 ? left : center;
         if (col <= 3) c.fill = fill(C_BLUE_D);
         else if (col <= 17) c.fill = fill(C_BLUE_L);
@@ -364,7 +368,7 @@ export default function OrderCalculationPage() {
       ['ค่า MAX =', '(ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง * Lead Time (Month)) + MIN + Safety Stock'],
       ['ค่า AVG. =', '(MAX + MIN) / 2'],
       ['Re-order point =', '(ปริมาณการใช้งานเฉลี่ย 3 เดือนย้อนหลัง * Lead Time (Month)) + Safety Stock'],
-      ['Need to order =', 'AVG. - Stock on hand'],
+      ['Need to order =', 'AVG. - Stock on hand เฉพาะรายการที่สั่งซื้อเพิ่มได้ (ไม่สั่งซื้อเพิ่มแสดง —)'],
     ];
     ws.getCell(`D${lb}`).value = 'Lead time :';
     ws.getCell(`D${lb}`).font = TNR({ bold: true });
@@ -596,6 +600,11 @@ export default function OrderCalculationPage() {
                           <ShoppingCart size={12} aria-hidden="true" /> ต้องสั่งซื้อ
                         </span>
                       )}
+                      {!r.canReorder && (
+                        <span className="mt-1 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600">
+                          ไม่สั่งซื้อเพิ่ม
+                        </span>
+                      )}
                     </td>
                     <td className="px-2 py-2 text-center tabular-nums">{fmt(r.usage[0])}</td>
                     <td className="px-2 py-2 text-center tabular-nums">{fmt(r.usage[1])}</td>
@@ -609,17 +618,17 @@ export default function OrderCalculationPage() {
                     <td className="px-2 py-2 text-center tabular-nums">{fmt(r.avgV)}</td>
                     <td className="px-2 py-2 text-center tabular-nums">{fmt(r.reorderPoint)}</td>
                     <td className="px-2 py-2 text-center">
-                      <span
+                      {r.canReorder ? <span
                         className="inline-block px-2 py-0.5 rounded-lg font-bold tabular-nums"
                         style={need
                           ? { backgroundColor: `${VIZ.accent}15`, color: VIZ.accent }
                           : { backgroundColor: `${VIZ.positive}15`, color: VIZ.positive }}
                       >
                         {Math.ceil(Math.max(r.needToOrder, 0)).toLocaleString('th-TH')}
-                      </span>
+                      </span> : <span className="text-gray-500">—</span>}
                     </td>
                     <td className="px-2 py-2 text-center">
-                      <input
+                      {r.canReorder ? <input
                         type="number"
                         min={0}
                         value={rm.qty}
@@ -627,7 +636,7 @@ export default function OrderCalculationPage() {
                         onBlur={() => saveRemark(r.product.id)}
                         placeholder="—"
                         className="w-16 px-1.5 py-1 border border-gray-200 rounded-lg text-center text-xs text-gray-900"
-                      />
+                      /> : <span className="text-gray-500" title="รายการนี้ไม่สั่งซื้อเพิ่ม">—</span>}
                     </td>
                     <td className="px-2 py-2">
                       <input
@@ -661,11 +670,11 @@ export default function OrderCalculationPage() {
       </div>
 
       <p className="text-xs" style={{ color: VIZ.lightText }}>
-        แสดงแท็ก “ต้องสั่งซื้อ” เมื่อ Stock on hand ≤ Re-order point ยกเว้นรายการที่สต็อกและยอดใช้ทั้ง 3 เดือนเป็น 0 ·{' '}
-        เรียงรายการที่ต้องสั่งซื้อก่อน แล้วเรียงจำนวน “ต้องสั่ง” จากมากไปน้อย โดยรายการที่ข้อมูลเป็น 0 ทั้งหมดอยู่ท้ายสุด ·{' '}
+        แสดงแท็ก “ต้องสั่งซื้อ” เฉพาะรายการที่สั่งซื้อเพิ่มได้ เมื่อ Stock on hand ≤ Re-order point ยกเว้นรายการที่สต็อกและยอดใช้ทั้ง 3 เดือนเป็น 0 ·{' '}
+        เรียงรายการที่ต้องสั่งซื้อก่อน แล้วเรียงจำนวน “ต้องสั่ง” จากมากไปน้อย รายการที่ไม่สั่งซื้อเพิ่มอยู่หลังรายการที่สั่งซื้อได้ โดยรายการที่ข้อมูลเป็น 0 ทั้งหมดอยู่ท้ายสุด ·{' '}
         สูตรตามไฟล์ฝ่ายจัดซื้อ: Safety Stock = เฉลี่ย 3 เดือน × Lead Time · MIN = เฉลี่ย + SS · MAX = (เฉลี่ย × Lead Time) + MIN + SS ·
         AVG. = (MAX + MIN) / 2 · Re-order point = (เฉลี่ย × Lead Time) + SS · ต้องสั่ง = AVG. − Stock on hand ·
-        Item Code และราคาแก้ได้ที่หน้า &quot;จัดการสต็อก&quot;
+        Item Code ราคา และตัวเลือกสั่งซื้อเพิ่มแก้ได้ที่หน้า &quot;จัดการสต็อก&quot;
       </p>
 
       {toast && (
