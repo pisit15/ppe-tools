@@ -8,7 +8,8 @@ import type { PriceGroup, PricePoint, ProcMeta, SearchResult, VendorPriceStat } 
 import { canonicalUnit, taxLabel, unitPriceBasisLabel } from '@/lib/procurement/comparability';
 import { PriceChart } from './_components/PriceChart';
 import { Card, ErrorBox, Kpi, Loading, MetaLine, PAGE_SIZE, Pager, PrLink, SortHeader, SourceBadge, VIZ, VendorLink, baht, inputClass, int, sortRows, thaiDate, type SortState, useJson } from './_components/ui';
-import { ChartTitle } from './_components/charts';
+import { ChartTitle, Legend, VendorStrip, type StripRow } from './_components/charts';
+import { median, vendorKey } from '@/lib/procurement/analysis';
 import { PeriodBar, usePeriod, validPeriod } from './_components/period';
 import { be, type PeriodSel } from '@/lib/procurement/period';
 
@@ -117,6 +118,20 @@ function GroupPicker({ groups, selected, onSelect }: { groups: PriceGroup[]; sel
 function Results({ data, unit, onUnit, onGroup }: { data: Resp; unit: string; onUnit: (u: string) => void; onGroup: (id: string) => void }) {
   const selected = data.groups.find(g => g.id === data.selected_group);
   const summary = data.comparison_ready ? data.summary : null;
+  const strip: StripRow[] = useMemo(() => {
+    if (!data.comparison_ready) return [];
+    const vendors = new Map<string, { name: string; po: number[]; quotes: number[] }>();
+    for (const point of data.points) {
+      const key = point.vendor_key || vendorKey(point.vendor) || point.vendor || '–';
+      const row = vendors.get(key) ?? { name: point.vendor || '–', po: [], quotes: [] };
+      (point.source === 'po' ? row.po : row.quotes).push(point.unit_price);
+      vendors.set(key, row);
+    }
+    return [...vendors].map(([key, row]) => ({ key, label: <VendorLink name={row.name} short />,
+      po: row.po, quotes: row.quotes, median: median([...row.po, ...row.quotes]),
+      sub: `PO ${int(row.po.length)} · ใบเสนอราคา ${int(row.quotes.length)}`,
+    })).sort((a, b) => a.median - b.median);
+  }, [data.points, data.comparison_ready]);
   const basis = selected ? `${selected.currency || 'ไม่ระบุสกุลเงิน'} / ${selected.unit || 'ไม่ระบุหน่วย'} · ${taxLabel(selected.tax_basis)} · ${unitPriceBasisLabel(selected.price_basis)}` : '';
   return <>
     {data.relaxed && <p className="text-sm" style={{ color: VIZ.secondary }}>ไม่พบคำนี้ตรงตัว จึงแสดงรายการที่มีคำย่อยครบ ลองเว้นวรรคระหว่างคำเพื่อผลที่แม่นขึ้น</p>}
@@ -129,8 +144,13 @@ function Results({ data, unit, onUnit, onGroup }: { data: Resp; unit: string; on
         <Kpi label="มัธยฐานราคาตาม PO" value={baht(summary.po_median)} sub={`${int(summary.po_count)} รายการ · ${basis}`} />
         <Kpi label="ผู้ขายในกลุ่มนี้" value={int(summary.vendor_count)} sub={`PO ${int(summary.po_count)} รายการ · เสนอราคา ${int(summary.quote_count)} รายการ`} color={VIZ.text} />
       </div>
-      <VendorTable vendors={data.vendors} basis={basis} />
+      {strip.length > 0 && <Card>
+        <ChartTitle title="เทียบราคาต่อหน่วยรายผู้ขาย" sub={`${basis} · 1 จุด = 1 ราคา · เรียงตามมัธยฐานของรายการที่แสดง${data.truncated ? ' · ใช้เฉพาะ 600 รายการล่าสุด' : ''}`} />
+        <VendorStrip rows={strip} unit={selected.unit} currency={selected.currency} />
+        <div className="mt-3"><Legend items={[{ color: VIZ.primary, label: 'ราคาตาม PO', kind: 'dot' }, { color: VIZ.secondary, label: 'ใบเสนอราคา', kind: 'ring' }, { color: VIZ.text, label: 'มัธยฐาน', kind: 'tick' }]} /></div>
+      </Card>}
       <Card><ChartTitle title="ประวัติราคาของกลุ่มที่เลือก" sub={`${basis}${data.truncated ? ` · กราฟแสดงเฉพาะ ${int(data.points.length)} รายการล่าสุด` : ''}`} /><PriceChart points={data.points} poMedian={summary.po_median} /><p className="mt-3 text-xs leading-relaxed" style={{ color: VIZ.lightText }}>แต่ละจุดอ้างอิงเอกสารหนึ่งรายการ ตรวจจำนวนที่สั่งซื้อ ขนาดบรรจุ และเงื่อนไขก่อนใช้ตั้งงบ{data.truncated && ' · สถิติและเส้นมัธยฐานคำนวณจากทุกรายการในกลุ่ม'}</p></Card>
+      <VendorTable vendors={data.vendors} basis={basis} />
     </>}
     {!!data.points.length && <PointTable points={data.points} truncated={data.truncated} />}
   </>;

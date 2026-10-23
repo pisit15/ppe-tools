@@ -200,7 +200,7 @@ export function HBarList({ rows, max, ariaLabel }: { rows: HBarRow[]; max?: numb
 
 export type StripRow = { key: string; label: ReactNode; po: number[]; quotes: number[]; median: number; best?: boolean; sub?: ReactNode };
 
-export function VendorStrip({ rows, unit }: { rows: StripRow[]; unit: string }) {
+export function VendorStrip({ rows, unit, currency = 'THB' }: { rows: StripRow[]; unit: string; currency?: string }) {
   const all = rows.flatMap(r => [...r.po, ...r.quotes]).sort((a, b) => a - b);
   // Very large outliers would squash everyone else: cap the axis at ~1.5× the 90th percentile and mark points beyond it.
   const p90 = all[Math.floor(all.length * 0.9)] ?? 1;
@@ -229,18 +229,18 @@ export function VendorStrip({ rows, unit }: { rows: StripRow[]; unit: string }) 
               {ticks.slice(1, -1).map(t => <span key={t} className="absolute inset-y-0 w-px" style={{ left: pct(t), background: '#E3E3E3' }} />)}
               {r.quotes.map((v, i) => (
                 <span key={`q${i}`} className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
-                  style={{ left: pct(v), border: `1.5px solid ${VIZ.secondary}`, background: 'white' }} title={`เสนอ ${baht(v)} บาท/${unit}`} />
+                  style={{ left: pct(v), border: `1.5px solid ${VIZ.secondary}`, background: 'white' }} title={`เสนอ ${baht(v)} ${currency}/${unit}`} />
               ))}
               {r.po.map((v, i) => (
                 <span key={`p${i}`} className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
-                  style={{ left: pct(v), background: VIZ.primary, opacity: 0.85 }} title={`จ่ายจริง ${baht(v)} บาท/${unit}`} />
+                  style={{ left: pct(v), background: VIZ.primary, opacity: 0.85 }} title={`ราคาตาม PO ${baht(v)} ${currency}/${unit}`} />
               ))}
               <span className="absolute inset-y-1 w-0.5" style={{ left: pct(r.median), background: VIZ.text }} title={`มัธยฐาน ${baht(r.median)}`} />
             </div>
           </li>
         ))}
       </ul>
-      {capped && <p className="mt-2 text-xs" style={{ color: VIZ.lightText }}>มีราคาที่สูงกว่า {shortBaht(max)} บาท (แสดงชิดขอบขวา) — ดูค่าจริงในตารางด้านล่าง</p>}
+      {capped && <p className="mt-2 text-xs" style={{ color: VIZ.lightText }}>มีราคาที่สูงกว่า {shortBaht(max)} {currency} (แสดงชิดขอบขวา) — ดูค่าจริงในตารางด้านล่าง</p>}
     </div>
   );
 }
