@@ -74,7 +74,7 @@ async function openReport(page, { savedPurchases } = {}) {
 }
 
 function productRow(page, code) {
-  return page.locator(`article[data-testid="order-item"][data-product-code="${code}"]`);
+  return page.locator(`[data-testid="order-item"][data-product-code="${code}"]`);
 }
 
 async function visibleCodes(page) {
@@ -116,7 +116,7 @@ test('sorts required items by quantity, keeps unused rows last across pagination
   await expect(page.getByText(`หน้า 2 / 2 · ${expectedCodes.length} รายการ`, { exact: true })).toBeVisible();
   expect(await visibleCodes(page)).toEqual(expectedCodes.slice(30));
   await expect(page.getByTestId('order-list').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(0);
-  await expect(page.getByTestId('order-item').last()).toContainText('NO-REORDER-EMPTY');
+  await expect(page.getByTestId('order-item').last()).toHaveAttribute('data-product-code', 'NO-REORDER-EMPTY');
   await expect(productRow(page, 'EDGE-ZERO').getByTestId('order-need')).toHaveText('0');
   // The raw need is -5, but the purchasing display clamps it to zero.
   await expect(productRow(page, 'STOCKED-UNUSED').getByTestId('order-need')).toHaveText('0');
@@ -173,6 +173,7 @@ test('Excel exports every filtered row in the same priority order and retains th
 });
 
 test('non-reorderable products retain stock and remarks but cannot be ordered or included in required export', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await openReport(page);
   const search = page.getByPlaceholder('ค้นหาชื่อสินค้า / Item Code');
   await search.fill('NO-REORDER');
@@ -225,7 +226,15 @@ test('order report fits desktop and small phones with every calculation availabl
   const item = productRow(page, 'EDGE-LOW');
   const toggle = item.getByRole('button', { name: 'รายละเอียด Below threshold gloves', exact: true });
   const details = item.getByTestId('order-details');
-  for (const width of [1280, 390, 320]) {
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await expect(page.getByTestId('order-table')).toBeVisible();
+  await expect(page.getByRole('columnheader')).toHaveCount(15);
+  for (const name of ['Item Code', 'Remark', 'ราคา/หน่วย']) {
+    await expect(page.getByRole('columnheader', { name, exact: true })).toHaveCount(0);
+  }
+  await expectReportFitsViewport(page);
+  await page.screenshot({ path: 'test-results/ppe-order-desktop-table.png' });
+  for (const width of [390, 320]) {
     await test.step(`No horizontal overflow at ${width}px, collapsed or expanded`, async () => {
       await page.setViewportSize({ width, height: 844 });
       await expect(toggle).toHaveAttribute('aria-expanded', 'false');

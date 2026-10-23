@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import PPEOrderItem from '@/components/PPEOrderItem';
+import PPEOrderTable from '@/components/PPEOrderTable';
 import {
   ShoppingCart, Settings2, FileSpreadsheet, Search, ChevronLeft, ChevronRight,
   ChevronDown, ChevronUp, Save,
@@ -59,6 +60,14 @@ export default function OrderCalculationPage() {
   const [onlyNeed, setOnlyNeed] = useState(() => searchParams.get('only_need') === '1');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [desktopTable, setDesktopTable] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)');
+    const sync = () => setDesktopTable(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
   useEffect(() => {
@@ -500,14 +509,9 @@ export default function OrderCalculationPage() {
       <section aria-label="รายการคำนวณสั่งซื้อ" data-testid="order-list" className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 text-xs text-slate-500">
           <span>แสดง {pageRows.length} จาก {filtered.length} รายการ</span>
-          <span>เปิด “รายละเอียด” เพื่อดูยอดใช้รายเดือนและสูตรคำนวณ</span>
+          <span>{desktopTable ? 'ข้อมูลการใช้และการคำนวณสั่งซื้อ · หน่วยตามรายการสินค้า' : 'เปิด “รายละเอียด” เพื่อดูยอดใช้รายเดือนและสูตรคำนวณ'}</span>
         </div>
-        <div aria-hidden="true" className="hidden grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)_minmax(0,.75fr)_minmax(0,1.5fr)_2.75rem] items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-500 xl:grid">
-          <span>สินค้า</span>
-          <div className="grid grid-cols-3 gap-2 text-center"><span>คงเหลือ</span><span>จุดสั่งซื้อ</span><span className="text-orange-700">ต้องสั่ง</span></div>
-          <span>สั่งจริง</span><span>หมายเหตุ</span><span className="sr-only">รายละเอียด</span>
-        </div>
-        <div className="divide-y divide-slate-100">
+        {desktopTable ? <PPEOrderTable rows={pageRows} months={months} startIndex={(pageSafe - 1) * PAGE_SIZE} remarks={remarks} onChange={(id, value) => setRemarks(previous => ({ ...previous, [id]: value }))} onSave={id => { void saveRemark(id); }} /> : <div className="divide-y divide-slate-100">
           {pageRows.length === 0 ? <p className="px-4 py-10 text-center text-sm text-slate-500">ไม่พบรายการ</p> : pageRows.map((row, index) => (
             <PPEOrderItem
               key={row.product.id}
@@ -519,7 +523,7 @@ export default function OrderCalculationPage() {
               onSave={() => { void saveRemark(row.product.id); }}
             />
           ))}
-        </div>
+        </div>}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3">
           <span className="text-xs text-slate-500">หน้า {pageSafe} / {totalPages} · {filtered.length} รายการ</span>
           <div className="flex gap-2">
