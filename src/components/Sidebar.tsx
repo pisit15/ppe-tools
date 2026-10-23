@@ -133,7 +133,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
     <aside
       className={`${
         mode === 'chemical' ? (isOpen ? 'w-full md:w-64' : 'w-full md:w-20') : (isOpen ? 'w-64' : 'w-20')
-      } ${bgColor} text-white transition-colors duration-300 shrink-0 ${isPurple ? `sticky top-0 z-30 max-h-dvh md:h-dvh md:self-start ${mobileOpen ? 'h-dvh' : ''}` : 'min-h-screen'} flex flex-col`}
+      } ${bgColor} text-white transition-colors duration-300 shrink-0 ${isPurple ? `sticky top-0 z-30 max-h-dvh md:h-dvh md:self-start ${mobileOpen ? 'h-dvh' : ''}` : 'sticky top-0 z-30 h-dvh self-start'} flex flex-col`}
     >
       {/* Header */}
       <div className={`flex shrink-0 items-center justify-between p-4 border-b ${borderColor}`}>
