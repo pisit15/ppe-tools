@@ -31,10 +31,10 @@ export default function PPELayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen min-w-0 flex-col bg-gray-50 md:flex-row">
       <Sidebar mode="ppe" />
-      <main className="flex-1">
-        <div className="p-6">{children}</div>
+      <main id="ppe-main-content" className="min-w-0 flex-1">
+        <div className="min-w-0 p-3 sm:p-5 lg:p-6">{children}</div>
       </main>
     </div>
   );

@@ -9,6 +9,9 @@ import {
   ChevronDown, ChevronUp, Save,
 } from 'lucide-react';
 import type { PPEProduct, PPETransaction, PPEStockSummary, PPEOrderSettings, PPEOrderRemark } from '@/lib/types';
+import {
+  calculateOrderRows, isOrderPeriod, leadTimeDays, monthKey, monthLabelTH, orderDateRange, orderMonths,
+} from '@/lib/ppe-order';
 
 const VIZ = {
   primary: '#4E79A7',
@@ -25,33 +28,6 @@ const VIZ = {
 
 const PAGE_SIZE = 30;
 
-type OrderRow = {
-  product: PPEProduct;
-  usage: [number, number, number];
-  usage3: number;
-  stockOnHand: number;
-  avg3: number;        // J: avg usage / month
-  safetyStock: number; // K
-  minV: number;        // L
-  maxV: number;        // M
-  avgV: number;        // N
-  reorderPoint: number; // O
-  needToOrder: number;  // P = N - G
-  canReorder: boolean;
-  requiresOrder: boolean;
-  isEmpty: boolean;
-};
-
-function monthKey(y: number, m0: number): string {
-  const d = new Date(y, m0, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function monthLabelTH(key: string): string {
-  const [y, m] = key.split('-').map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString('th-TH', { month: 'short', year: '2-digit' });
-}
-
 function fmt(n: number): string {
   if (!Number.isFinite(n)) return '—';
   return Number.isInteger(n) ? n.toLocaleString('th-TH') : n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -64,12 +40,12 @@ export default function OrderCalculationPage() {
   const urlCompanyId = searchParams.get('company_id');
   const companyId = isAdmin ? (urlCompanyId || 'all') : (user?.companyId || '');
 
-  const now = new Date();
-  const [endMonth, setEndMonth] = useState<string>(monthKey(now.getFullYear(), now.getMonth()));
-  const months: [string, string, string] = useMemo(() => {
-    const [y, m] = endMonth.split('-').map(Number);
-    return [monthKey(y, m - 3), monthKey(y, m - 2), monthKey(y, m - 1)];
-  }, [endMonth]);
+  const [endMonth, setEndMonth] = useState<string>(() => {
+    const period = searchParams.get('period');
+    const now = new Date();
+    return isOrderPeriod(period) ? period : monthKey(now.getFullYear(), now.getMonth());
+  });
+  const months = useMemo(() => orderMonths(endMonth), [endMonth]);
 
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [stocks, setStocks] = useState<PPEStockSummary[]>([]);
@@ -79,7 +55,7 @@ export default function OrderCalculationPage() {
   const [savedRemarks, setSavedRemarks] = useState<Record<string, { remark: string; qty: string }>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-  const [onlyNeed, setOnlyNeed] = useState(false);
+  const [onlyNeed, setOnlyNeed] = useState(() => searchParams.get('only_need') === '1');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
@@ -92,10 +68,7 @@ export default function OrderCalculationPage() {
     if (!companyId) return;
     setIsLoading(true);
     try {
-      const [y, m] = endMonth.split('-').map(Number);
-      const start = `${months[0]}-01`;
-      const endDate = new Date(y, m, 0);
-      const end = `${endMonth}-${String(endDate.getDate()).padStart(2, '0')}`;
+      const { start, end } = orderDateRange(endMonth);
       const [prodRes, stockRes, txRes, setRes, remRes] = await Promise.all([
         fetch(`/api/ppe/products?company_id=${companyId}`).then(r => r.json()),
         fetch(`/api/ppe/stock?company_id=${companyId}`).then(r => r.json()),
@@ -118,52 +91,15 @@ export default function OrderCalculationPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [companyId, endMonth, months]);
+  }, [companyId, endMonth]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const leadDaysTotal = settings
-    ? settings.quotation_days + settings.pr_days + settings.wams_open_days + settings.wams_process_days + settings.delivery_days
-    : 30;
+  const leadDaysTotal = leadTimeDays(settings);
   const leadMonths = leadDaysTotal / 30;
 
-  const rows: OrderRow[] = useMemo(() => {
-    const stockMap: Record<string, number> = {};
-    stocks.forEach(s => { stockMap[s.product_id] = s.current_stock ?? 0; });
-    const usageMap: Record<string, [number, number, number]> = {};
-    transactions.forEach(t => {
-      if (t.transaction_type !== 'stock_out' && t.transaction_type !== 'borrow') return;
-      if (!t.transaction_date || !t.product_id) return;
-      const key = t.transaction_date.slice(0, 7);
-      const idx = months.indexOf(key);
-      if (idx === -1) return;
-      if (!usageMap[t.product_id]) usageMap[t.product_id] = [0, 0, 0];
-      usageMap[t.product_id][idx] += t.quantity;
-    });
-    return products
-      .filter(p => p.is_active !== false)
-      .map(p => {
-        const usage = usageMap[p.id] || ([0, 0, 0] as [number, number, number]);
-        const usage3 = usage[0] + usage[1] + usage[2];
-        const stockOnHand = stockMap[p.id] ?? 0;
-        const avg3 = usage3 / 3;
-        const safetyStock = leadMonths * avg3;
-        const minV = avg3 + safetyStock;
-        const maxV = avg3 * leadMonths + safetyStock + minV;
-        const avgV = (maxV + minV) / 2;
-        const reorderPoint = avg3 * leadMonths + safetyStock;
-        const needToOrder = avgV - stockOnHand;
-        const canReorder = p.can_reorder !== false;
-        const isEmpty = stockOnHand === 0 && usage.every(quantity => quantity === 0);
-        const requiresOrder = canReorder && !isEmpty && stockOnHand <= reorderPoint;
-        return { product: p, usage, usage3, stockOnHand, avg3, safetyStock, minV, maxV, avgV, reorderPoint, needToOrder, canReorder, requiresOrder, isEmpty };
-      })
-      .sort((a, b) => Number(a.isEmpty) - Number(b.isEmpty)
-        || Number(b.canReorder) - Number(a.canReorder)
-        || Number(b.requiresOrder) - Number(a.requiresOrder)
-        || b.needToOrder - a.needToOrder
-        || a.product.name.localeCompare(b.product.name, 'th'));
-  }, [products, stocks, transactions, months, leadMonths]);
+  const rows = useMemo(() => calculateOrderRows({ products, stocks, transactions, months, leadMonths }),
+    [products, stocks, transactions, months, leadMonths]);
 
   const filtered = useMemo(() => {
     let list = rows;
@@ -420,8 +356,8 @@ export default function OrderCalculationPage() {
     for (let i = 0; i < 18; i++) {
       opts.push(monthKey(d.getFullYear(), d.getMonth() - i));
     }
-    return opts;
-  }, []);
+    return opts.includes(endMonth) ? opts : [endMonth, ...opts];
+  }, [endMonth]);
 
   if (isLoading) {
     return (
