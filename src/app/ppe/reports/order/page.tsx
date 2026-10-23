@@ -38,6 +38,7 @@ type OrderRow = {
   reorderPoint: number; // O
   needToOrder: number;  // P = N - G
   requiresOrder: boolean;
+  isEmpty: boolean;
 };
 
 function monthKey(y: number, m0: number): string {
@@ -151,10 +152,12 @@ export default function OrderCalculationPage() {
         const avgV = (maxV + minV) / 2;
         const reorderPoint = avg3 * leadMonths + safetyStock;
         const needToOrder = avgV - stockOnHand;
-        const requiresOrder = stockOnHand <= reorderPoint;
-        return { product: p, usage, usage3, stockOnHand, avg3, safetyStock, minV, maxV, avgV, reorderPoint, needToOrder, requiresOrder };
+        const isEmpty = stockOnHand === 0 && usage.every(quantity => quantity === 0);
+        const requiresOrder = !isEmpty && stockOnHand <= reorderPoint;
+        return { product: p, usage, usage3, stockOnHand, avg3, safetyStock, minV, maxV, avgV, reorderPoint, needToOrder, requiresOrder, isEmpty };
       })
-      .sort((a, b) => Number(b.requiresOrder) - Number(a.requiresOrder)
+      .sort((a, b) => Number(a.isEmpty) - Number(b.isEmpty)
+        || Number(b.requiresOrder) - Number(a.requiresOrder)
         || b.needToOrder - a.needToOrder
         || a.product.name.localeCompare(b.product.name, 'th'));
   }, [products, stocks, transactions, months, leadMonths]);
@@ -658,7 +661,8 @@ export default function OrderCalculationPage() {
       </div>
 
       <p className="text-xs" style={{ color: VIZ.lightText }}>
-        แสดงแท็ก “ต้องสั่งซื้อ” เมื่อ Stock on hand ≤ Re-order point และเรียงรายการที่เข้าเกณฑ์ขึ้นก่อน ·{' '}
+        แสดงแท็ก “ต้องสั่งซื้อ” เมื่อ Stock on hand ≤ Re-order point ยกเว้นรายการที่สต็อกและยอดใช้ทั้ง 3 เดือนเป็น 0 ·{' '}
+        เรียงรายการที่ต้องสั่งซื้อก่อน แล้วเรียงจำนวน “ต้องสั่ง” จากมากไปน้อย โดยรายการที่ข้อมูลเป็น 0 ทั้งหมดอยู่ท้ายสุด ·{' '}
         สูตรตามไฟล์ฝ่ายจัดซื้อ: Safety Stock = เฉลี่ย 3 เดือน × Lead Time · MIN = เฉลี่ย + SS · MAX = (เฉลี่ย × Lead Time) + MIN + SS ·
         AVG. = (MAX + MIN) / 2 · Re-order point = (เฉลี่ย × Lead Time) + SS · ต้องสั่ง = AVG. − Stock on hand ·
         Item Code และราคาแก้ได้ที่หน้า &quot;จัดการสต็อก&quot;

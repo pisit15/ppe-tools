@@ -14,15 +14,17 @@ const above = Array.from({ length: 35 }, (_, i) => ({
 const qualifying = [
   { id: 'below', name: 'Below threshold gloves', item_code: 'EDGE-LOW', current_stock: 40, usage: 66, unit_price: 10 },
   { id: 'equal', name: 'Boundary gloves', item_code: 'EDGE-EQUAL', current_stock: 44, usage: 66, unit_price: 20 },
-  { id: 'zero', name: 'Zero stock and usage', item_code: 'EDGE-ZERO', current_stock: 0, usage: 0, unit_price: 30 },
+  { id: 'used-zero', name: 'Used product with zero stock', item_code: 'EDGE-USED-ZERO', current_stock: 0, usage: 6, unit_price: 0 },
 ];
+const stockedWithoutUsage = { id: 'stocked-unused', name: 'Stock without recent usage', item_code: 'STOCKED-UNUSED', current_stock: 5, usage: 0, unit_price: 10 };
+const empty = { id: 'zero', name: 'Zero stock and usage', item_code: 'EDGE-ZERO', current_stock: 0, usage: 0, unit_price: 30 };
 const inventory = [
   ...above,
   // Deliberately shuffled: the displayed order must come from the calculation.
-  qualifying[2], qualifying[1], qualifying[0],
+  empty, qualifying[2], stockedWithoutUsage, qualifying[1], qualifying[0],
   { id: 'inactive', name: 'Inactive product', item_code: 'INACTIVE', current_stock: 0, usage: 300, unit_price: 100, is_active: false },
 ];
-const expectedCodes = [...qualifying, ...above].map(item => item.item_code);
+const expectedCodes = [...qualifying, ...above, stockedWithoutUsage, empty].map(item => item.item_code);
 
 async function openReport(page) {
   await page.clock.setFixedTime(new Date('2026-10-23T05:00:00Z'));
@@ -74,43 +76,51 @@ async function exportedSheet(page) {
   return workbook.worksheets[0];
 }
 
-test('badge includes equality and zero, excludes positive quantities above threshold, and preserves quantities', async ({ page }) => {
+test('badge includes equality and zero stock with usage, excludes unused rows, and preserves quantities', async ({ page }) => {
   await openReport(page);
-  for (const code of ['EDGE-LOW', 'EDGE-EQUAL', 'EDGE-ZERO']) {
+  for (const code of ['EDGE-LOW', 'EDGE-EQUAL', 'EDGE-USED-ZERO']) {
     await expect(productRow(page, code).getByText('ต้องสั่งซื้อ', { exact: true })).toBeVisible();
   }
   await expect(productRow(page, 'ABOVE-01').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(0);
   await expect(page.locator('tbody').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(3);
   await expect(productRow(page, 'EDGE-LOW').locator('td').nth(14)).toHaveText('26');
   await expect(productRow(page, 'EDGE-EQUAL').locator('td').nth(14)).toHaveText('22');
-  await expect(productRow(page, 'EDGE-ZERO').locator('td').nth(14)).toHaveText('0');
+  await expect(productRow(page, 'EDGE-USED-ZERO').locator('td').nth(14)).toHaveText('6');
+  await expect(productRow(page, 'EDGE-ZERO')).toHaveCount(0);
   await expect(productRow(page, 'ABOVE-01').locator('td').nth(14)).toHaveText('49');
   await expect(page.getByRole('checkbox', { name: 'เฉพาะที่ต้องสั่งซื้อ (3)' })).toBeVisible();
-  await expect(page.getByText('สินค้าทั้งหมด', { exact: true }).locator('..')).toContainText('38');
+  await expect(page.getByText('สินค้าทั้งหมด', { exact: true }).locator('..')).toContainText('40');
   await expect(page.getByText('มูลค่าโดยประมาณ (เฉพาะที่มีราคา)', { exact: true }).locator('..')).toContainText('฿700');
   await expect(page.getByText('Inactive product', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: 'test-results/ppe-order-reorder-tag.png', fullPage: true });
 });
 
-test('qualifying items precede all other rows across pagination and search works with the reorder filter', async ({ page }) => {
+test('sorts required items by quantity, keeps unused rows last across pagination, and excludes them from the filter', async ({ page }) => {
   await openReport(page);
   expect(await visibleCodes(page)).toEqual(expectedCodes.slice(0, 30));
-  const pagination = page.getByText('หน้า 1 / 2 · 38 รายการ', { exact: true }).locator('..');
+  const pagination = page.getByText('หน้า 1 / 2 · 40 รายการ', { exact: true }).locator('..');
   await pagination.getByRole('button').last().click();
-  await expect(page.getByText('หน้า 2 / 2 · 38 รายการ', { exact: true })).toBeVisible();
+  await expect(page.getByText('หน้า 2 / 2 · 40 รายการ', { exact: true })).toBeVisible();
   expect(await visibleCodes(page)).toEqual(expectedCodes.slice(30));
   await expect(page.locator('tbody').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(0);
+  await expect(page.locator('tbody tr').last()).toContainText('EDGE-ZERO');
+  await expect(productRow(page, 'EDGE-ZERO').locator('td').nth(14)).toHaveText('0');
+  // The raw need is -5, but the purchasing display clamps it to zero.
+  await expect(productRow(page, 'STOCKED-UNUSED').locator('td').nth(14)).toHaveText('0');
 
   await page.getByRole('checkbox', { name: 'เฉพาะที่ต้องสั่งซื้อ (3)' }).check();
   await expect(page.locator('tbody tr')).toHaveCount(3);
-  expect(await visibleCodes(page)).toEqual(['EDGE-LOW', 'EDGE-EQUAL', 'EDGE-ZERO']);
+  expect(await visibleCodes(page)).toEqual(['EDGE-LOW', 'EDGE-EQUAL', 'EDGE-USED-ZERO']);
   const search = page.getByPlaceholder('ค้นหาชื่อสินค้า / Item Code');
   await search.fill('gloves');
   await expect(page.locator('tbody tr')).toHaveCount(2);
   expect(await visibleCodes(page)).toEqual(['EDGE-LOW', 'EDGE-EQUAL']);
   await search.fill('edge-zero');
-  await expect(page.locator('tbody tr')).toHaveCount(1);
-  expect(await visibleCodes(page)).toEqual(['EDGE-ZERO']);
+  await expect(page.getByText('ไม่พบรายการ', { exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'เฉพาะที่ต้องสั่งซื้อ (3)' }).uncheck();
+  await expect(productRow(page, 'EDGE-ZERO')).toBeVisible();
+  await expect(productRow(page, 'EDGE-ZERO').getByText('ต้องสั่งซื้อ', { exact: true })).toHaveCount(0);
+  await page.getByRole('checkbox', { name: 'เฉพาะที่ต้องสั่งซื้อ (3)' }).check();
   await search.fill('ABOVE-01');
   await expect(page.getByText('ไม่พบรายการ', { exact: true })).toBeVisible();
   await page.getByRole('checkbox', { name: 'เฉพาะที่ต้องสั่งซื้อ (3)' }).uncheck();
@@ -121,7 +131,9 @@ test('Excel exports every filtered row in the same priority order and retains th
   await openReport(page);
   const fullSheet = await exportedSheet(page);
   expect(expectedCodes.map((_, i) => fullSheet.getCell(i + 5, 2).value)).toEqual(expectedCodes);
-  expect(fullSheet.getCell('B43').value).toBeNull();
+  expect(fullSheet.getCell('B43').value).toBe('STOCKED-UNUSED');
+  expect(fullSheet.getCell('B44').value).toBe('EDGE-ZERO');
+  expect(fullSheet.getCell('B45').value).toBeNull();
   expect(fullSheet.getCell('G5').value).toBe(40);
   expect(fullSheet.getCell('O5').formula).toBe('(J5*H5)+K5');
   expect(fullSheet.getCell('P5').formula).toBe('N5-G5');
