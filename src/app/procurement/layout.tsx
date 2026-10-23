@@ -25,7 +25,9 @@ export default function ProcurementLayout({ children }: { children: React.ReactN
   }
   if (!user) return <div className="min-h-screen bg-gray-50"><Loading /></div>;
 
-  const nav = user.role === 'admin' ? [...NAV, { href: '/procurement/import', label: 'นำเข้าข้อมูล', icon: Upload }] : NAV;
+  const nav = user.role === 'admin'
+    ? [...NAV, { href: '/procurement/import', label: 'นำเข้าข้อมูล', icon: Upload }]
+    : NAV.map(n => (n.href === '/procurement/summary' ? { ...n, label: 'สรุปของฉัน' } : n));
   return (
     <div className="min-h-screen" style={{ background: '#F7F7F7', color: VIZ.text }}>
       <header className="bg-white border-b border-gray-200">

@@ -8,8 +8,8 @@ import {
   Card, ErrorBox, Kpi, Loading, MetaLine, PrLink, SortHeader, VIZ, baht, int, sortRows, thaiDate, useJson, type SortState,
 } from '../_components/ui';
 
-type Row = ProcPrSummary & { quote_count: number };
-type Resp = { prs: Row[]; meta: ProcMeta };
+type Row = ProcPrSummary;
+type Resp = { prs: Row[]; meta: ProcMeta; scope: 'all' | 'own'; requester: string | null };
 type Key = 'requester' | 'total' | 'approved' | 'rejected' | 'pending' | 'est_all' | 'est_approved' | 'po_amount';
 type PersonStat = {
   requester: string; prs: Row[]; total: number; approved: number; rejected: number; pending: number;
@@ -50,13 +50,16 @@ function StatusBar({ s }: { s: PersonStat }) {
 }
 
 export default function SummaryPage() {
-  const { data, error, loading } = useJson<Resp>('/api/procurement/prs');
+  const { data, error, loading } = useJson<Resp>('/api/procurement/summary');
   const prs = useMemo(() => data?.prs ?? [], [data]);
   const years = useMemo(() => [...new Set(prs.map(yearOf).filter((y): y is number => y !== null))].sort((a, b) => b - a), [prs]);
   const [year, setYear] = useState<number | 'all' | null>(null);
   const activeYear = year ?? years[0] ?? 'all';
   const [sort, setSort] = useState<SortState<Key>>({ key: 'total', dir: 'desc' });
-  const [open, setOpen] = useState<string | null>(null);
+  const [openState, setOpen] = useState<string | null | undefined>(undefined);
+  const own = data?.scope === 'own';
+  // A user sees only their own row, so open it by default.
+  const open = openState === undefined ? (own ? data?.requester ?? null : null) : openState;
 
   const inYear = useMemo(() => prs.filter(p => activeYear === 'all' || yearOf(p) === activeYear), [prs, activeYear]);
   const people = useMemo(() => sortRows(summarize(inYear), sort, (s, k) => s[k]), [inYear, sort]);
@@ -65,13 +68,19 @@ export default function SummaryPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-bold">สรุป PR รายคน รายปี</h2>
+        <h2 className="text-xl font-bold">{own ? 'สรุป PR ของฉัน รายปี' : 'สรุป PR รายคน รายปี'}</h2>
         <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>นับตามวันที่เปิด PR · งบประมาณ = ยอดประมาณการที่ขอใน PR (ไม่รวม VAT ตามที่กรอกใน Odoo)</p>
         <div className="mt-1"><MetaLine meta={data?.meta} /></div>
       </div>
       {error && <ErrorBox error={error} />}
       {loading && <Loading />}
-      {data && (
+      {data && own && !data.requester && (
+        <Card><p className="text-sm">บัญชีนี้ยังไม่ได้จับคู่กับชื่อผู้ขอ PR ใน Odoo จึงยังไม่มีข้อมูลให้แสดง — แจ้งผู้ดูแลระบบให้เพิ่มการจับคู่</p></Card>
+      )}
+      {data && own && data.requester && (
+        <p className="text-sm" style={{ color: VIZ.lightText }}>แสดงเฉพาะ PR ที่ <b style={{ color: VIZ.text }}>{data.requester}</b> เป็นผู้เปิดใน Odoo · ผู้ดูแลระบบเห็นสรุปของทุกคน</p>
+      )}
+      {data && (!own || data.requester) && (
         <>
           <div className="flex flex-wrap gap-2" role="group" aria-label="เลือกปี">
             {[...years, 'all' as const].map(y => (
