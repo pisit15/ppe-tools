@@ -203,7 +203,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
       </div>
     );
     const navigation = (expanded: boolean) => (
-      <nav aria-label="เมนูหลัก PPE" className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
+      <nav aria-label="เมนูหลัก PPE" className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {ppeItems.map(item => (
           <Link key={item.href} href={item.href} aria-label={item.label} aria-current={isActive(item.href) ? 'page' : undefined}
             title={expanded ? undefined : item.label} onClick={() => setMobileOpen(false)}
