@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings2, User } from 'lucide-react';
+import { Settings2, User, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { HomeCardGrid } from '@/components/home/HomeCardGrid';
@@ -34,6 +34,15 @@ export default function HomePage() {
                 <p className="text-sm text-white font-medium">{user.displayName}</p>
                 <p className="text-xs text-blue-300">{user.companyName}</p>
               </div>
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-white/10 border border-white/20 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <ShieldCheck size={15} />
+                  Admin
+                </Link>
+              )}
               <button
                 onClick={logout}
                 className="px-3 py-1.5 text-sm text-blue-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
