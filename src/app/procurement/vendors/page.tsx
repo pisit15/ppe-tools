@@ -373,7 +373,7 @@ function VendorDetail({ name }: { name: string }) {
             {prs.slice(0, 50).map(p => (
               <li key={p.odoo_id} className="flex flex-wrap gap-x-3 py-2">
                 <PrLink no={p.pr_no} by={p.requester} />
-                <span className="whitespace-nowrap" style={{ color: VIZ.lightText }}>{thaiDate(p.request_date)} · {p.requester} · {PR_STATE_LABEL[p.state]}</span>
+                <span className="min-w-0" style={{ color: VIZ.lightText }}>{thaiDate(p.request_date)} · {p.requester} · {PR_STATE_LABEL[p.state]}</span>
                 <span className="min-w-0 flex-1">{p.title}</span>
               </li>
             ))}
