@@ -20,6 +20,10 @@
 - ใช้ `'use client'` + `export const dynamic = 'force-dynamic'` ที่ต้นไฟล์ทุก page
 - Handle Supabase errors ด้วย try/catch + return JSON error response
 - ใช้ `.select('*, ppe_products(name, type, image_url)')` เมื่อ query transactions
+- ทุก migration ที่สร้างตารางใหม่ใน `public` ต้องมี grant ในไฟล์เดียวกัน (ตั้งแต่ 30 ต.ค. 2026 Supabase ไม่ auto-grant ให้ตารางใหม่แล้ว):
+  `grant select, insert, update, delete on public.<table> to service_role;`
+  ถ้ามี serial/identity column ให้เพิ่ม `grant usage, select on sequence public.<table>_id_seq to service_role;`
+  ลืม grant → API ได้ error `permission denied` หลัง deploy (build/tsc จับไม่ได้)
 
 ### NEVER
 - ห้ามใช้ `alert()` / `confirm()` / `prompt()` — ใช้ Toast notification (inline state)
@@ -29,6 +33,7 @@
 - ห้ามสร้าง DB column/table ใหม่โดยไม่อัปเดต `src/lib/types.ts`
 - ห้ามใช้ `focusRingColor` หรือ CSS property ที่ไม่มีจริงใน inline styles
 - ห้ามลบ/เปลี่ยน migration API (`/api/ppe/bulk-import`) โดยไม่ถาม
+- ห้าม grant ตารางให้ `anon` / `authenticated` (แม้ตัวอย่างใน Supabase docs จะทำ) โดยไม่ถาม — API ทุก route ใช้ service_role ผ่าน `getSupabaseServer()`
 
 ## VIZ Color Palette (Tableau-inspired)
 ประกาศใน component level ทุกหน้า:
