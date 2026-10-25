@@ -107,7 +107,7 @@ test('procurement HTTP flow: auth, group evidence, filters and PR documents', as
   await t.test('PR list, one-quote detail, summary and vendor reports remain reachable', async () => {
     const list = await get('/api/procurement/prs');
     assert.equal(list.isAdmin, true);
-    assert.equal(list.prs.length, 18);
+    assert.equal(list.prs.length, 19);
     const pr = await get('/api/procurement/pr?no=PR24000001');
     assert.equal(pr.pr.pr_no, 'PR24000001');
     assert.equal(pr.quotes.length, 1);
@@ -118,11 +118,31 @@ test('procurement HTTP flow: auth, group evidence, filters and PR documents', as
     assert.equal((await request('/api/procurement/pr?no=invalid')).response.status, 400);
     assert.equal((await request('/api/procurement/pr?no=PR99999999')).response.status, 404);
     const summary = await get('/api/procurement/summary');
-    assert.equal(summary.prs.length, 18);
+    assert.equal(summary.prs.length, 19);
     const vendors = await get('/api/procurement/vendors?y=2025');
     assert.equal(vendors.sel, 2025);
     assert.ok(vendors.vendors.length >= 3);
     const idle = await search({ q: '' });
     assert.ok(idle.top.length > 0);
+  });
+
+  await t.test('search overview returns all seven training records without requiring a group', async () => {
+    const result = await search({ q: 'อบรม รถยก', y: '2026' });
+    assert.equal(result.match_total, 7);
+    assert.equal(result.points.length, 7);
+    assert.equal(result.points.filter(point => point.source === 'po').length, 3);
+    assert.equal(result.points.filter(point => point.source === 'quote').length, 4);
+    assert.equal(new Set(result.points.map(point => point.vendor_key)).size, 4);
+    assert.equal(result.points.filter(point => point.date === null).length, 1);
+    assert.equal(result.points.filter(point => point.date?.slice(0, 10) === '2026-03-09' && point.unit_price === 22000).length, 3);
+    assert.equal(result.summary, null, 'unlike units must not receive a pooled price statistic');
+  });
+  await t.test('dense and unconfirmed-currency records remain complete for browser verification', async () => {
+    const dense = await search({ q: 'ตรวจกราฟหลายรายการ' });
+    assert.equal(dense.points.length, 25);
+    assert.equal(new Set(dense.points.map(point => point.id)).size, 25);
+    const unknown = await search({ q: 'สกุลเงินทดสอบ' });
+    assert.equal(unknown.points.length, 2);
+    assert.ok(unknown.points.every(point => !point.currency && point.unit_price === 22000));
   });
 });

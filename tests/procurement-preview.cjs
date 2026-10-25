@@ -67,7 +67,36 @@ async function setupProcurement(db) {
       await insert(db, 'proc_quote_items', { id, quote_id: id, pr_no: prNo, vendor_group: qVendor, quote_date: date, name: item.name, spec: item.name, qty, unit, unit_price: qPrice, amount: qPrice * qty });
     }
   }
-  await insert(db, 'proc_sync_runs', { source: 'synthetic-local-preview', counts: { proc_pr: 18, proc_pr_lines: 18, proc_po_lines: poCount, proc_quotes: quoteCount, proc_quote_items: quoteCount }, imported_by: 'local-test-admin', imported_at: '2026-10-23T03:00:00Z' });
+  // Seven deliberately varied search records: overlapping prices, unlike units and an undated quote.
+  // These records live only in the local in-memory fixture, never the production database.
+  const trainingPr = 'PR26000900'; const trainingWho = 'ผู้ซื้อทดสอบ AMT';
+  const trainingVendors = [...suppliers, 'บริษัท อบรมอุตสาหกรรม ทดสอบ จำกัด'];
+  await insert(db, 'proc_pr', { odoo_id: 90, pr_no: trainingPr, requester: trainingWho, request_date: '2026-02-16', company: 'AMT', state: 'done', title: 'อบรม รถยก', description: 'ข้อมูลสังเคราะห์สำหรับตรวจกราฟเท่านั้น', estimated_cost: 64000, po_amount: 64000, po_count: 3, po_list: 'PO-TEST-9000, PO-TEST-9001, PO-TEST-9002', vendors: trainingVendors.slice(0, 2).join(', '), n_lines: 1 });
+  await insert(db, 'proc_pr_lines', { odoo_id: 1090, pr_odoo_id: 90, pr_no: trainingPr, name: 'อบรม รถยก', product: 'หลักสูตรผู้ขับรถยกสำหรับผู้ปฏิบัติงาน', qty: 1, uom: 'รุ่น', est_unit_price: 22000 });
+  const training = [
+    [0, '2026-02-16', 18000, 'รุ่น'], [0, '2026-03-09', 22000, 'รุ่น'], [1, '2026-07-14', 24000, 'รุ่น'],
+    [0, '2026-03-09', 22000, 'รุ่น'], [0, '2026-03-09', 22000, 'งาน'], [2, '2026-07-14', 1500, 'คน'], [3, null, 24000, ''],
+  ];
+  for (let index = 0; index < training.length; index++) {
+    const [supplierIndex, date, price, unit] = training[index]; const id = 9000 + index; const vendor = trainingVendors[supplierIndex];
+    if (index < 3) {
+      poCount++;
+      await insert(db, 'proc_po_lines', { odoo_id: id, po_no: `PO-TEST-${id}`, pr_odoo_id: 90, pr_no: trainingPr, requester: trainingWho, vendor, product: 'หลักสูตรผู้ขับรถยก', item: 'อบรม รถยก · ข้อมูลทดสอบ', qty: 1, uom: unit, unit_price: price, subtotal: price, order_date: date, currency: 'THB', po_state: 'purchase' });
+    } else {
+      quoteCount++;
+      await insert(db, 'proc_quotes', { id, pr_no: trainingPr, requester: trainingWho, file_path: `synthetic/training-${id}.pdf`, doc_type: 'quotation', vendor, vendor_group: vendor, quote_no: `QT-TEST-${id}`, quote_date: date, currency: 'THB', subtotal: price, total: price, n_items: 1, price_basis: 'once' });
+      await insert(db, 'proc_quote_items', { id, quote_id: id, pr_no: trainingPr, vendor_group: vendor, quote_date: date, name: 'อบรม รถยก · ข้อมูลทดสอบ', spec: 'ตัวอย่างเงื่อนไขอบรม ตรวจหน่วยและฐานภาษีก่อนเทียบราคา', qty: 1, unit, unit_price: price, amount: price });
+    }
+  }
+  // Dense and unknown-currency cases use separate search terms for browser verification.
+  for (let index = 0; index < 27; index++) {
+    const id = 9200 + index; const unknown = index >= 25; const currency = unknown ? '' : 'THB';
+    const name = unknown ? 'สกุลเงินทดสอบ' : 'ตรวจกราฟหลายรายการ';
+    quoteCount++;
+    await insert(db, 'proc_quotes', { id, pr_no: trainingPr, requester: trainingWho, file_path: `synthetic/dense-${id}.pdf`, doc_type: 'quotation', vendor: suppliers[0], vendor_group: suppliers[0], quote_no: `QT-DENSE-${id}`, quote_date: '2026-03-09', currency, subtotal: 22000, total: 22000, n_items: 1, price_basis: 'once' });
+    await insert(db, 'proc_quote_items', { id, quote_id: id, pr_no: trainingPr, vendor_group: suppliers[0], quote_date: '2026-03-09', name, spec: `เอกสารจำลองลำดับ ${index + 1}`, qty: 1, unit: 'งาน', unit_price: 22000, amount: 22000 });
+  }
+  await insert(db, 'proc_sync_runs', { source: 'synthetic-local-preview', counts: { proc_pr: 19, proc_pr_lines: 19, proc_po_lines: poCount, proc_quotes: quoteCount, proc_quote_items: quoteCount }, imported_by: 'local-test-admin', imported_at: '2026-10-23T03:00:00Z' });
   fs.mkdirSync(fixtures, { recursive: true });
   for (const [name, value] of Object.entries({ 'sync.json': rawSync, 'po.json': rawPo, 'quotes.json': rawQuotes })) fs.writeFileSync(path.join(fixtures, name), JSON.stringify(value, null, 2));
 }

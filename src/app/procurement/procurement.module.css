@@ -66,5 +66,6 @@
 @media(min-width:1700px){.shell{border-left:1px solid var(--proc-line);border-right:1px solid var(--proc-line)}}
 @media(max-width:1100px){.shell{grid-template-columns:188px minmax(0,1fr)}.main{padding:24px}.sidebar{padding-inline:10px}.loginMain{gap:40px}}
 @media(max-width:800px){.shell{display:block}.sidebar{min-height:0;padding:12px 16px;border-right:0;border-bottom:1px solid var(--proc-line)}.navLabel,.back{display:none}.navigation{flex-direction:row;flex-wrap:wrap;gap:4px}.navLink{padding:9px 10px;font-size:13px}.adminNav{border:0;margin:0;padding:0}.sidebar>nav{display:flex;flex-wrap:wrap}.main{padding:22px 16px 40px}.topbar{padding:14px 16px;gap:12px}.account{gap:10px}.identity{display:none}.context{margin-bottom:18px}.loginMain{grid-template-columns:1fr;max-width:480px;padding:32px 20px;gap:28px}.intro h1{font-size:28px;margin:8px 0}.intro>p{font-size:14px}.features{display:none}.loginCard{padding:24px}}
+@media(max-width:800px){.sidebar>nav{flex-wrap:nowrap;gap:4px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding-bottom:3px}.navigation{flex-wrap:nowrap;flex-shrink:0}.adminNav{flex:none}.navLink{white-space:nowrap}}
 @media(pointer:coarse){.workspace :is(button,select),.navLink{min-height:44px}}
 @media(prefers-reduced-motion:reduce){.workspace *{scroll-behavior:auto;animation:none!important;transition:none!important}}

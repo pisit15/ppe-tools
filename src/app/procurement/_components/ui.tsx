@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import type { ProcMeta } from '@/lib/procurement/types';
 
@@ -49,19 +49,38 @@ export async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-/** Loads JSON for a URL; null url = idle. keep = show the previous result while the next one loads (filters feel instant). */
+/** Loads JSON for a URL; null url = idle. keep retains the previous result while refreshing. */
 export function useJson<T>(url: string | null, keep = false) {
-  const [state, setState] = useState<{ url: string | null; data: T | null; error: FetchError | null }>({ url: null, data: null, error: null });
+  const [revision, setRevision] = useState(0);
+  // Identity changes even when returning to an earlier URL or retrying the same one.
+  const request = useMemo(() => ({ url, revision }), [url, revision]);
+  const [state, setState] = useState<{ request: typeof request | null; data: T | null; error: FetchError | null }>({ request: null, data: null, error: null });
+  const refetch = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
-    if (!url) return;
-    let cancelled = false;
-    getJson<T>(url)
-      .then(data => { if (!cancelled) setState({ url, data, error: null }); })
-      .catch((e: unknown) => { if (!cancelled) setState({ url, data: null, error: e instanceof FetchError ? e : new FetchError('โหลดข้อมูลไม่สำเร็จ', 0) }); });
-    return () => { cancelled = true; };
-  }, [url]);
-  const ready = state.url === url;
-  return { data: ready || keep ? state.data : null, error: ready ? state.error : null, loading: !!url && !ready };
+    if (!request.url) return;
+    const controller = new AbortController();
+    let active = true;
+    const finish = (data: T | null, error: FetchError | null) => {
+      if (!active) return;
+      active = false;
+      clearTimeout(timeout);
+      setState({ request, data, error });
+    };
+    const timeout = setTimeout(() => {
+      finish(null, new FetchError('ใช้เวลาโหลดนานกว่าปกติ กรุณาลองอีกครั้ง', 408));
+      controller.abort();
+    }, 30_000);
+    getJson<T>(request.url, { signal: controller.signal })
+      .then(data => finish(data, null))
+      .catch((e: unknown) => finish(null, e instanceof FetchError ? e : new FetchError('เชื่อมต่อไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง', 0)));
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [request]);
+  const ready = state.request === request;
+  return { data: ready || keep ? state.data : null, error: ready ? state.error : null, loading: !!url && !ready, refetch };
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -133,11 +152,15 @@ export function Loading({ text = 'กำลังโหลด…' }: { text?: st
   return <p role="status" className="py-10 text-center text-sm" style={{ color: VIZ.lightText }}>{text}</p>;
 }
 
-export function ErrorBox({ error }: { error: FetchError }) {
+export function ErrorBox({ error, onRetry }: { error: FetchError; onRetry?: () => void }) {
+  const canRetry = error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500;
   return (
     <div role="alert" className="rounded-xl border p-4 text-sm" style={{ borderColor: VIZ.accent, color: VIZ.accent, background: '#FDF1F1' }}>
-      {error.message}
-      {error.status === 401 && <span> — <button className="underline" onClick={() => window.location.reload()}>เข้าสู่ระบบอีกครั้ง</button></span>}
+      <p>{error.message}</p>
+      {(error.status === 401 || canRetry) && <button type="button" className="mt-2 min-h-11 rounded-md border border-current px-3 py-2 font-medium focus-visible:outline-2 focus-visible:outline-offset-2"
+        onClick={error.status === 401 ? () => window.location.reload() : onRetry ?? (() => window.location.reload())}>
+        {error.status === 401 ? 'เข้าสู่ระบบอีกครั้ง' : 'ลองอีกครั้ง'}
+      </button>}
     </div>
   );
 }
