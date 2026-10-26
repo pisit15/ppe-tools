@@ -103,8 +103,8 @@ export default function PPERequestCatalog({ stock, requester, loading, busy, onS
         })}</div>
         {!cart.length && <p className="py-4 text-center text-slate-500">ยังไม่ได้เลือกสินค้า</p>}
         {invalid && <p role="alert" className="rounded-lg bg-orange-50 p-3 text-sm text-orange-800">กรุณาปรับจำนวนให้ไม่เกินยอดพร้อมเบิก หรือนำรายการที่หมดออกจากตะกร้า</p>}
-        <label className="block text-sm font-medium">เหตุผลการขอเบิก<textarea required maxLength={1000} disabled={busy} value={reason} onChange={e => setReason(e.target.value)} placeholder="เช่น ใช้สำหรับงานซ่อมบำรุงประจำเดือน" className="mt-2 min-h-24 w-full rounded-xl border border-slate-300 p-3 text-sm" /></label>
-        <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t bg-white py-3"><button type="button" disabled={busy} className="min-h-11 rounded-xl border px-4 text-sm" onClick={() => setMode(null)}>เลือกสินค้าต่อ</button><button type="submit" disabled={busy || invalid || !cart.length || !reason.trim()} className={primary}>{busy ? 'กำลังส่งคำขอ…' : `ส่งคำขอ ${cart.length} รายการ`}</button></div>
+        <label className="block text-sm font-medium">เหตุผลการขอเบิก (ไม่บังคับ)<textarea maxLength={1000} disabled={busy} value={reason} onChange={e => setReason(e.target.value)} placeholder="เช่น ใช้สำหรับงานซ่อมบำรุงประจำเดือน" className="mt-2 min-h-24 w-full rounded-xl border border-slate-300 p-3 text-sm" /></label>
+        <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t bg-white py-3"><button type="button" disabled={busy} className="min-h-11 rounded-xl border px-4 text-sm" onClick={() => setMode(null)}>เลือกสินค้าต่อ</button><button type="submit" disabled={busy || invalid || !cart.length} className={primary}>{busy ? 'กำลังส่งคำขอ…' : `ส่งคำขอ ${cart.length} รายการ`}</button></div>
       </form>}
     </dialog>
   </div>;

@@ -19,7 +19,7 @@ async function createDb() {
     create table ppe_order_settings(company_id text); create table ppe_order_remarks(id integer);
     insert into company_settings values('amt','AMT'),('aab','AAB');`);
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/001_ppe_tables.sql'),'utf8'));
-  for(const file of ['20261023110422_ppe_product_reorder_policy.sql','20261026020248_ppe_request_workflow.sql','20261026020729_ppe_private_stock_view.sql','20261026024306_ppe_request_batch.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',file),'utf8'));
+  for(const file of ['20261023110422_ppe_product_reorder_policy.sql','20261026020248_ppe_request_workflow.sql','20261026020729_ppe_private_stock_view.sql','20261026024306_ppe_request_batch.sql','20261026030118_ppe_optional_request_reason.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',file),'utf8'));
   const hash = await bcrypt.hash('local-test-password',4);
   await db.query(`insert into company_users(username,password,company_id,display_name) values('manager-amt',$1,'amt','ผู้ดูแล AMT'),('manager-aab',$1,'aab','ผู้ดูแล AAB')`,[hash]);
   await db.query(`insert into ppe_products(id,company_id,name,type,unit) values($1,'amt','ถุงมือป้องกันการบาด ขนาด L','gloves','pair'),($2,'aab','สินค้าเฉพาะ AAB','gloves','pair')`,[product,otherProduct]);

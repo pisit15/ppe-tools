@@ -48,14 +48,16 @@ export async function POST(request: NextRequest) {
     if (body.action === 'submit_batch') {
       if (actor.accountTable !== 'ppe_requesters') throw new AccessError('เฉพาะบัญชีผู้ขอเบิกส่งคำขอได้');
       const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-      if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 50 || typeof body.note !== 'string' || !body.note.trim() || body.note.length > 1000) throw new AccessError('กรุณาเลือกสินค้า 1-50 รายการและระบุเหตุผล', 400);
+      const note = body.note ?? '';
+      if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 50) throw new AccessError('กรุณาเลือกสินค้า 1-50 รายการ', 400);
+      if (typeof note !== 'string' || note.length > 1000) throw new AccessError('เหตุผลต้องเป็นข้อความไม่เกิน 1,000 ตัวอักษร', 400);
       for (const item of body.items) {
         if (!item || typeof item.product_id !== 'string' || typeof item.submission_key !== 'string' || !uuid.test(item.product_id) || !uuid.test(item.submission_key) || !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 1000000) throw new AccessError('รายการสินค้าหรือจำนวนไม่ถูกต้อง', 400);
       }
       if (new Set(body.items.map((i: { product_id: string }) => i.product_id)).size !== body.items.length) throw new AccessError('สินค้าในตะกร้าต้องไม่ซ้ำกัน', 400);
       if (new Set(body.items.map((i: { submission_key: string }) => i.submission_key)).size !== body.items.length) throw new AccessError('รหัสรายการในตะกร้าต้องไม่ซ้ำกัน', 400);
       const { data, error } = await getSupabaseServer().rpc('ppe_request_batch', {
-        p_actor_table: actor.accountTable, p_actor_id: actor.id, p_company: company, p_items: body.items, p_note: body.note,
+        p_actor_table: actor.accountTable, p_actor_id: actor.id, p_company: company, p_items: body.items, p_note: note,
       });
       if (error) ppeDatabaseError(error);
       return NextResponse.json({ data });

@@ -155,7 +155,7 @@ test('requester can preview images, keep a multi-item cart across search and sub
   await page.setViewportSize({width:1440,height:1000});
   await page.screenshot({path:'test-results/ppe-cart-desktop.png'});
   await page.getByRole('button',{name:'ตรวจตะกร้า / ส่งคำขอ'}).click();
-  await page.getByLabel('เหตุผลการขอเบิก').fill('ใช้งานซ่อมบำรุง');
+  await expect(page.getByLabel('เหตุผลการขอเบิก (ไม่บังคับ)',{exact:true})).not.toHaveAttribute('required');
   await page.getByLabel('จำนวนในตะกร้า แว่นตานิรภัย สีใส').fill('11');
   await expect(page.getByRole('button',{name:'ส่งคำขอ 2 รายการ',exact:true})).toBeDisabled();
   await page.getByLabel('จำนวนในตะกร้า แว่นตานิรภัย สีใส').fill('3');
@@ -170,10 +170,12 @@ test('requester can preview images, keep a multi-item cart across search and sub
   const payload=(await outgoing).postDataJSON();
   await expect(page.getByRole('status').filter({hasText:'ส่งคำขอแล้ว 2 รายการ'})).toBeVisible();
   const saved=(await (await child.request.get('/api/ppe/requests')).json()).data;
-  expect(saved).toHaveLength(2); expect(saved.every(r=>r.status==='pending')).toBe(true);
+  expect(saved).toHaveLength(2); expect(saved.every(r=>r.status==='pending' && r.reason==='')).toBe(true);
   expect(saved.find(r=>r.product_id===product).quantity).toBe(2);
   expect(saved.find(r=>r.product_id===secondProduct).quantity).toBe(3);
+  delete payload.note; // Omitted optional reason is equivalent to the empty UI field.
   expect((await post(child,payload)).ok()).toBe(true);
+  expect((await post(child,{...payload,note:'x'.repeat(1001)})).status()).toBe(400);
   expect((await (await child.request.get('/api/ppe/requests')).json()).data).toHaveLength(2);
   expect((await (await child.request.get('/api/ppe/catalog')).json()).data).toEqual(before);
   await child.close();

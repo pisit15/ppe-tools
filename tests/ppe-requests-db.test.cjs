@@ -19,6 +19,7 @@ before(async () => {
   await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261026020248_ppe_request_workflow.sql'), 'utf8'));
   await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261026020729_ppe_private_stock_view.sql'), 'utf8'));
   await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261026024306_ppe_request_batch.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261026030118_ppe_optional_request_reason.sql'), 'utf8'));
   product = randomUUID(); otherProduct = randomUUID(); person = randomUUID(); peer = randomUUID(); otherPerson = randomUUID();
   await db.query(`insert into ppe_products(id,company_id,name,type) values ($1,'amt','ถุงมือ L','ppe'),($2,'aab','AAB only','ppe')`, [product, otherProduct]);
   for (const [id, company, code] of [[person,'amt','001'],[peer,'amt','002'],[otherPerson,'aab','003']]) {
@@ -138,4 +139,20 @@ test('batch submissions are atomic, company scoped and idempotent without reserv
   assert.deepEqual((await batch([first,next])).rows[0].result.map(r=>r.id),saved.map(r=>r.id));
   assert.deepEqual(await stock(),before);
   for(const role of ['anon','authenticated']) assert.equal((await db.query("select has_function_privilege($1,'ppe_request_batch(text,text,text,jsonb,text)','EXECUTE') as ok",[role])).rows[0].ok,false);
+});
+
+
+test('optional request reasons accept blank, whitespace and null while preserving manager audit requirements',async()=>{
+  for(const note of ['', '   ', null]) {
+    const key=randomUUID();
+    const call=()=>db.query('select ppe_request_action($1,$2,$3,$4,null,$5,1,$6,$7) as result',['ppe_requesters',person,'amt','submit',product,note,key]);
+    const saved=(await call()).rows[0].result;
+    assert.equal(saved.reason,'');
+    assert.equal((await call()).rows[0].result.id,saved.id);
+    await assert.rejects(action('company_users',1,'reject',saved.id,null,{note:''}),/ระบุเหตุผล/);
+  }
+  await assert.rejects(action('ppe_requesters',person,'submit',null,1,{note:'x'.repeat(1001)}),/ยาวเกินไป/);
+  const items=[{product_id:product,quantity:1,submission_key:randomUUID()}];
+  const saved=(await db.query('select ppe_request_batch($1,$2,$3,$4::jsonb,null) as result',['ppe_requesters',person,'amt',JSON.stringify(items)])).rows[0].result;
+  assert.equal(saved[0].reason,'');
 });
