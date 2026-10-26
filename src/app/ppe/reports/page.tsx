@@ -322,7 +322,7 @@ function HBarChart({
         const barColor = isTop ? accentColor : VIZ.neutral;
         return (
           <div key={i} className="flex items-center gap-2">
-            <span className={`w-24 text-[11px] text-right truncate flex-shrink-0 ${isTop ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+            <span title={d.label} className={`w-24 text-[11px] text-right truncate flex-shrink-0 ${isTop ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
               {d.label}
             </span>
             <div className="flex-1 bg-gray-50 rounded h-4 overflow-hidden">
@@ -1016,7 +1016,7 @@ function DrillDownSection({
                     className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
                   >
                     <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                    <span className="text-sm font-medium text-gray-900 w-36 text-left truncate">{dept}</span>
+                    <span title={dept} className="w-36 shrink-0 whitespace-normal break-words text-left text-sm font-medium leading-6 text-gray-900 sm:w-64">{dept}</span>
                     <div className="flex-1 bg-gray-50 rounded h-3 overflow-hidden">
                       <div className="h-full rounded" style={{ width: `${(data.total / maxDept) * 100}%`, background: '#76B7B2' }} />
                     </div>
@@ -1148,7 +1148,7 @@ function DrillDownSection({
                           <div className="space-y-1">
                             {sortedDepts.slice(0, 10).map(([dept, qty], i) => (
                               <div key={i} className="flex items-center gap-2">
-                                <span className="w-32 text-[11px] text-gray-600 truncate">{dept}</span>
+                                <span title={dept} className="w-32 text-[11px] text-gray-600 truncate">{dept}</span>
                                 <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
                                   <div className="h-full rounded" style={{ width: `${(qty / sortedDepts[0][1]) * 100}%`, background: '#76B7B2' }} />
                                 </div>
