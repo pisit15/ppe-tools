@@ -1,4 +1,4 @@
-// Site rules for PR visibility (src/lib/procurement/scope.ts), compiled on the fly.
+// Company-only summary rules (src/lib/procurement/scope.ts), compiled on the fly.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');const path=require('node:path');const ts=require('typescript');
@@ -18,12 +18,17 @@ test('operating unit decides the site; shared units fall back to the requester',
   assert.deepEqual(prSites({operating_unit:'[D0_SF00] HO','company':'ESM',requester:'Nobody'},req),[]);
 });
 
-test('visibility: own sites, own PRs, admins',()=>{
+test('summary includes responsible companies only, with no own-requester exception',()=>{
   const amt={all:false,sites:['amt'],requester:'Narakorn Lunthat'};
-  assert.equal(canSee(amt,['amt'],'X'),true);
-  assert.equal(canSee(amt,['aab'],'X'),false);
-  assert.equal(canSee(amt,['aab'],'Narakorn Lunthat'),true);
-  assert.equal(canSee(amt,[],'X'),false);
-  assert.equal(canSee({all:true,sites:[],requester:null},[],'X'),true);
-  assert.equal(canSee({all:false,sites:['amt'],requester:null},['aab'],undefined),false);
+  assert.equal(canSee(amt,['amt']),true);
+  assert.equal(canSee(amt,['aab']),false);
+  // Even a legacy caller passing the matching requester must not broaden the summary.
+  assert.equal(canSee(amt,['aab'],'Narakorn Lunthat'),false);
+  assert.equal(canSee(amt,[],'Narakorn Lunthat'),false);
+  assert.equal(canSee(amt,[]),false);
+  assert.equal(canSee({all:false,sites:[]},['amt']),false);
+  assert.equal(canSee({all:false,sites:['amt','aab']},['aab']),true);
+  assert.equal(canSee({all:false,sites:['amt']},['aab','amt']),true);
+  assert.equal(canSee({all:true,sites:[]},[]),true);
+  assert.equal(canSee({all:true,sites:[]},['aab']),true);
 });

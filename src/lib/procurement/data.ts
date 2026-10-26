@@ -108,7 +108,7 @@ export function invalidateDataset() {
 }
 
 /**
- * Sites a login may see: admins see everything; others see the companies of every active account
+ * Summary responsibility: admins see everything; others see the companies of every active account
  * with the same username, plus every account linked to the same Odoo requester (one person, several sites).
  */
 export function actorScope(actor: ToolsActor, d: Pick<Dataset, 'accountSites' | 'requesterOf'>): ActorScope {

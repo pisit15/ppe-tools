@@ -22,7 +22,7 @@ test('procurement HTTP flow: auth, group evidence, filters and PR documents', as
   const search = values => get('/api/procurement/search?' + new URLSearchParams(values));
 
   await t.test('anonymous search and PR access are rejected', async () => {
-    for (const path of ['/api/procurement/search?q=glove', '/api/procurement/pr?no=PR24000001', '/api/procurement/prs']) {
+    for (const path of ['/api/procurement/search?q=glove', '/api/procurement/pr?no=PR24000001', '/api/procurement/prs', '/api/procurement/summary', '/api/procurement/vendors']) {
       assert.equal((await request(path)).response.status, 401);
     }
   });
@@ -39,8 +39,22 @@ test('procurement HTTP flow: auth, group evidence, filters and PR documents', as
     assert.ok(cookie, 'session cookie issued');
   });
 
+  let directVendorKey;
+  await t.test('a cold direct PR request learns Thai and English vendor aliases before marking the chosen quotation', async () => {
+    // This must be the first authenticated procurement request after a fresh fixture server start.
+    const detail = await get('/api/procurement/pr?no=PR24000001');
+    assert.equal(detail.po.length, 1);
+    assert.equal(detail.quotes.length, 1);
+    assert.ok(detail.po[0].vendor.includes('(Siam Safety Test Co., Ltd.)'));
+    assert.equal(detail.quotes[0].vendor, 'Siam Safety Test Co., Ltd.');
+    assert.equal(detail.quotes[0].selected, true, 'English-only quotation must match the PO supplier alias on first request');
+    directVendorKey = detail.quotes[0].vendor_key;
+    assert.ok(directVendorKey);
+  });
+
   const initial = await search({ q: 'ถุงมือ' });
   assert.equal(initial.meta.imported_by, 'local-test-admin', 'only the synthetic procurement fixture is allowed');
+  assert.ok(initial.points.filter(point => point.pr_no === 'PR24000001').every(point => point.vendor_key === directVendorKey), 'direct PR and search use the same resolved vendor identity');
   let cotton;
   await t.test('mixed search has groups and raw records, without pooled statistics', () => {
     assert.ok(initial.total > 0);
@@ -107,7 +121,7 @@ test('procurement HTTP flow: auth, group evidence, filters and PR documents', as
   await t.test('PR list, one-quote detail, summary and vendor reports remain reachable', async () => {
     const list = await get('/api/procurement/prs');
     assert.equal(list.isAdmin, true);
-    assert.equal(list.prs.length, 19);
+    assert.equal(list.prs.length, 21);
     const pr = await get('/api/procurement/pr?no=PR24000001');
     assert.equal(pr.pr.pr_no, 'PR24000001');
     assert.equal(pr.quotes.length, 1);
@@ -118,7 +132,9 @@ test('procurement HTTP flow: auth, group evidence, filters and PR documents', as
     assert.equal((await request('/api/procurement/pr?no=invalid')).response.status, 400);
     assert.equal((await request('/api/procurement/pr?no=PR99999999')).response.status, 404);
     const summary = await get('/api/procurement/summary');
-    assert.equal(summary.prs.length, 19);
+    assert.equal(summary.prs.length, 21);
+    assert.equal(summary.scope, 'all');
+    assert.ok(summary.prs.some(pr => pr.odoo_id === 92), 'admin summary includes unresolved sites');
     const vendors = await get('/api/procurement/vendors?y=2025');
     assert.equal(vendors.sel, 2025);
     assert.ok(vendors.vendors.length >= 3);
@@ -144,5 +160,60 @@ test('procurement HTTP flow: auth, group evidence, filters and PR documents', as
     const unknown = await search({ q: 'สกุลเงินทดสอบ' });
     assert.equal(unknown.points.length, 2);
     assert.ok(unknown.points.every(point => !point.currency && point.unit_price === 22000));
+  });
+
+  await t.test('all active user account types read every PR, while summaries stay within assigned companies', async t => {
+    const accounts = [
+      { username: 'audit-amt', sites: ['amt'], count: 10 },
+      { username: 'audit-aab', sites: ['aab'], count: 10 },
+      { username: 'amt', sites: ['amt'], count: 10 }, // Shared company login.
+      { username: 'audit-restricted', sites: ['amt'], count: 10 }, // Other module limited to PPE.
+      { username: 'audit-tools', sites: ['aab'], count: 10 },
+      { username: 'audit-multi', company_id: 'amt', sites: ['aab', 'amt'], count: 20 },
+      { username: 'audit-linked', sites: ['aab', 'amt'], count: 20 }, // Linked account names, same requester.
+      { username: 'audit-unassigned', sites: ['unknown'], count: 0 },
+    ];
+    for (const account of accounts) await t.test(account.username, async () => {
+      cookie = '';
+      const login = await request('/api/auth/login', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: account.username, password: 'local-test-only', company_id: account.company_id }),
+      });
+      assert.equal(login.response.status, 200);
+      assert.equal(login.data.success, true);
+      assert.equal(login.data.user.role, 'user');
+      cookie = login.response.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+      assert.ok(cookie);
+
+      const list = await get('/api/procurement/prs');
+      assert.equal(list.isAdmin, false);
+      assert.equal(list.prs.length, 21, 'PR list includes every company and unmapped PR');
+      for (const no of ['PR24000001', 'PR24000002', 'PR26000901', 'PR26000902']) {
+        const detail = await get('/api/procurement/pr?' + new URLSearchParams({ no }));
+        assert.equal(detail.pr.pr_no, no, 'direct links work across companies and unmapped sites');
+      }
+      const summary = await get('/api/procurement/summary');
+      assert.equal(summary.scope, 'company');
+      assert.equal(summary.prs.length, account.count);
+      assert.deepEqual(summary.sites.map(site => site.id).sort(), account.sites);
+      assert.ok(summary.prs.every(pr => pr.sites.some(site => account.sites.includes(site))), 'every summary PR intersects assigned sites');
+      assert.ok(!summary.prs.some(pr => pr.odoo_id === 92), 'unresolved PR is excluded from nonadmin summaries');
+      if (account.username === 'audit-amt') {
+        assert.ok(!summary.prs.some(pr => pr.odoo_id === 91), 'own PR for AAB must not enter the AMT summary');
+      }
+      const forged = await get('/api/procurement/summary?company_id=aab&site=aab&scope=all&isAdmin=true');
+      assert.deepEqual(forged.prs.map(pr => pr.odoo_id), summary.prs.map(pr => pr.odoo_id), 'client parameters cannot broaden summary access');
+
+      const results = await search({ q: 'ถุงมือ' });
+      assert.equal(results.points.length, initial.points.length, 'price search is global for every user');
+      const vendor = await get('/api/procurement/vendors?' + new URLSearchParams({ name: 'บริษัท สยามเซฟตี้ ทดสอบ จำกัด', y: 'all' }));
+      assert.ok(vendor.prs.some(pr => pr.company === 'AMT'));
+      assert.ok(vendor.prs.some(pr => pr.company === 'AAB'), 'vendor related PRs include all companies');
+
+      const deniedImport = await request('/api/procurement/import', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'upsert', table: 'proc_pr', rows: [] }),
+      });
+      assert.equal(deniedImport.response.status, 403, 'read access never grants import permission');
+    });
   });
 });

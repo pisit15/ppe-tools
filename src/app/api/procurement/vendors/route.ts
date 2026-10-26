@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiError } from '@/lib/toolsSession';
 import { requireProcurementActor } from '@/lib/procurement/access';
-import { actorScope, getDataset } from '@/lib/procurement/data';
-import { canSee } from '@/lib/procurement/scope';
+import { getDataset } from '@/lib/procurement/data';
 import { prKey, vendorId } from '@/lib/procurement/analysis';
 import { isSpendCat } from '@/lib/procurement/categories';
 import { inRange, parsePeriod, periodInfo } from '@/lib/procurement/period';
@@ -14,7 +13,7 @@ export const dynamic = 'force-dynamic';
 // GET ?name=...&y=2026   -> one vendor in the period: row, yearly trend, price points, related PRs
 export async function GET(request: NextRequest) {
   try {
-    const actor = await requireProcurementActor(request);
+    await requireProcurementActor(request);
     const d = await getDataset();
     const p = request.nextUrl.searchParams;
     const sel = parsePeriod(p.get('y'), d.meta.years);
@@ -32,8 +31,7 @@ export async function GET(request: NextRequest) {
     const mine = d.points.filter(pt => pt.vendor_key === key && !pt.duplicate && inRange(pt.period_date, range))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const prNos = new Set(mine.map(pt => prKey(pt.pr_no, pt.requester)));
-    const scope = actorScope(actor, d);
-    const prs = d.prs.filter(pr => prNos.has(prKey(pr.pr_no, pr.requester)) && canSee(scope, d.sitesByPr.get(pr.odoo_id) ?? [], pr.requester))
+    const prs = d.prs.filter(pr => prNos.has(prKey(pr.pr_no, pr.requester)))
       .sort((a, b) => (b.request_date || '').localeCompare(a.request_date || ''));
     const names = [...new Set([
       ...d.po.filter(l => vendorId(l.vendor) === key).map(l => l.vendor),

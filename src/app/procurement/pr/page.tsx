@@ -70,7 +70,7 @@ function PrList() {
     <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">รายการ PR</h2>
-        <p className="mt-2 text-sm" style={{ color: VIZ.lightText }}>ติดตามคำขอซื้อ ผู้ขาย และหลักฐานประกอบในที่เดียว</p>
+        <p className="mt-2 text-sm" style={{ color: VIZ.lightText }}>ดู PR ของทุกคน ทุกบริษัท พร้อมผู้ขายและหลักฐานประกอบ</p>
         <div className="mt-1"><MetaLine meta={data?.meta} /></div>
       </div>
       <PeriodBar meta={data?.meta} sel={sel} onChange={s => { setSel(s); setPage(0); }} measure="pr" compare={false} />

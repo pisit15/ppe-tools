@@ -1,4 +1,4 @@
-// Which tools.eashe.org company (site) a PR belongs to, and which sites a login may see.
+// Which tools.eashe.org company (site) a PR belongs to for the per-person summary.
 // Odoo companies are legal entities that span several sites, so the operating unit decides;
 // when the unit is a shared/head-office unit, the PR belongs to the requester's own site(s).
 
@@ -40,6 +40,6 @@ export function prSites(pr: { operating_unit: string; company: string; requester
 }
 
 export type ActorScope = { all: boolean; sites: string[]; requester: string | null };
-/** Visible when the login has rights to one of the PR's sites, or opened the PR itself. */
-export const canSee = (scope: ActorScope, sites: string[], requester?: string) =>
-  scope.all || sites.some(s => scope.sites.includes(s)) || (!!scope.requester && scope.requester === requester);
+/** Summary membership depends only on assigned sites, never on who opened the PR. */
+export const canSee = (scope: ActorScope, sites: string[]) =>
+  scope.all || sites.some(s => scope.sites.includes(s));

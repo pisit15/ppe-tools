@@ -15,7 +15,27 @@ async function setupProcurement(db) {
   for (const file of fs.readdirSync(migrationDir).filter(file => /procurement.*\.sql$/.test(file)).sort()) {
     await db.exec(fs.readFileSync(path.join(migrationDir, file), 'utf8'));
   }
-  await db.exec("insert into proc_requester_accounts (username, requester) values ('audit-amt', 'ผู้ซื้อทดสอบ AMT'), ('audit-aab', 'ผู้ซื้อทดสอบ AAB')");
+  await db.exec(`
+    alter table company_users add column allowed_modules text[];
+    alter table tools_users add column allowed_modules text[];
+    insert into company_users (username, password, company_id, company_name, allowed_modules)
+      select account.username, source.password, account.company_id, upper(account.company_id), account.modules
+      from company_users source cross join (values
+        ('amt', 'amt', null::text[]),
+        ('audit-restricted', 'amt', array['ppe']),
+        ('audit-multi', 'amt', null::text[]),
+        ('audit-multi', 'aab', null::text[]),
+        ('audit-unassigned', 'unknown', null::text[])
+      ) account(username, company_id, modules) where source.username = 'audit-amt';
+    insert into tools_users (username, password, company_id, company_name)
+      select account.username, source.password, account.company_id, upper(account.company_id)
+      from company_users source cross join (values
+        ('audit-tools', 'aab'), ('audit-linked', 'amt'), ('audit-linked-alt', 'aab')
+      ) account(username, company_id) where source.username = 'audit-amt';
+    insert into proc_requester_accounts (username, requester) values
+      ('audit-amt', 'ผู้ซื้อทดสอบ AMT'), ('audit-aab', 'ผู้ซื้อทดสอบ AAB'),
+      ('audit-linked', 'ผู้รับผิดชอบหลายบริษัท'), ('audit-linked-alt', 'ผู้รับผิดชอบหลายบริษัท');
+  `);
   const suppliers = ['บริษัท สยามเซฟตี้ ทดสอบ จำกัด', 'บริษัท พรีซิชั่นซัพพลาย ทดสอบ จำกัด', 'บริษัท กรีนอินดัสทรี ทดสอบ จำกัด'];
   const items = [
     { name: 'ถุงมือผ้าฝ้าย 7 ขีด', product: '[07-SPXX-0001] ถุงมือผ้าฝ้าย 7 ขีด', unit: 'คู่', price: 25 },
@@ -36,14 +56,14 @@ async function setupProcurement(db) {
     const who = n % 2 ? 'ผู้ซื้อทดสอบ AMT' : 'ผู้ซื้อทดสอบ AAB';
     const company = n % 2 ? 'AMT' : 'AAB';
     const item = items[(n - 1) % items.length];
-    const vendor = suppliers[(n - 1) % suppliers.length];
+    const vendor = suppliers[(n - 1) % suppliers.length] + (n === 1 ? ' (Siam Safety Test Co., Ltd.)' : '');
     const qty = item.unit === 'เดือน' ? 12 : item.unit === 'งาน' ? 1 : 100;
     const price = item.price * (year === 2024 ? 0.92 : year === 2025 ? 0.96 : 1);
     const amount = Math.round(price * qty * 100) / 100;
     const poNo = `PO${String(year).slice(2)}${String(n).padStart(6, '0')}`;
     const unit = n === 7 ? 'pair' : n === 13 ? 'PRS' : item.unit;
     const unitRef = [1, unit];
-    const sourcePr = { id: n, name: prNo, date_start: date, title: item.name, description: 'ข้อมูลสังเคราะห์สำหรับตรวจหน้าจอ ไม่มีการสั่งซื้อจริง', company_id: [n % 2 + 1, company], operating_unit_id: [1, `[D8_SF00] ${company} : Safety`], request_type: [1, 'สินค้าและบริการ'], state, estimated_cost: amount, po_ids: state === 'done' ? [n * 10] : [], line_count: 1 };
+    const sourcePr = { id: n, name: prNo, date_start: date, title: item.name, description: 'ข้อมูลสังเคราะห์สำหรับตรวจหน้าจอ ไม่มีการสั่งซื้อจริง', company_id: [n % 2 + 1, company], operating_unit_id: [1, `[${n % 2 ? 'D8' : 'D9'}_SF00] ${company} : Safety`], request_type: [1, 'สินค้าและบริการ'], state, estimated_cost: amount, po_ids: state === 'done' ? [n * 10] : [], line_count: 1 };
     const sourceLine = { id: 1000 + n, request_id: [n, prNo], name: item.name, product_id: [n, item.product], product_qty: qty, product_uom_id: unitRef, estimated_cost: price, analytic_account_id: false, date_required: date, specifications: item.name };
     rawSync[who] ||= { prs: [], lines: [], att: [], pos: [] };
     rawSync[who].prs.push(sourcePr); rawSync[who].lines.push(sourceLine);
@@ -56,7 +76,7 @@ async function setupProcurement(db) {
       await insert(db, 'proc_po_lines', { odoo_id: 2000 + n, po_no: poNo, pr_odoo_id: n, pr_no: prNo, requester: who, vendor, product: item.product, item: item.name, qty, uom: unit, unit_price: price, subtotal: amount, order_date: date, currency: 'THB', po_state: 'purchase' });
     }
     for (let q = 0; q < (n === 1 ? 1 : 2); q++) {
-      const id = n * 10 + q; const qVendor = suppliers[((n - 1) + q) % 3]; const qPrice = Math.round(price * (q ? 1.06 : 1) * 100) / 100;
+      const id = n * 10 + q; const qVendor = n === 1 ? 'Siam Safety Test Co., Ltd.' : suppliers[((n - 1) + q) % 3]; const qPrice = Math.round(price * (q ? 1.06 : 1) * 100) / 100;
       quoteCount++;
       const basis = item.unit === 'เดือน' ? (q ? 'year' : 'month') : 'once';
       const subtotal = qPrice * (basis === 'month' ? 1 : qty);
@@ -96,7 +116,11 @@ async function setupProcurement(db) {
     await insert(db, 'proc_quotes', { id, pr_no: trainingPr, requester: trainingWho, file_path: `synthetic/dense-${id}.pdf`, doc_type: 'quotation', vendor: suppliers[0], vendor_group: suppliers[0], quote_no: `QT-DENSE-${id}`, quote_date: '2026-03-09', currency, subtotal: 22000, total: 22000, n_items: 1, price_basis: 'once' });
     await insert(db, 'proc_quote_items', { id, quote_id: id, pr_no: trainingPr, vendor_group: suppliers[0], quote_date: '2026-03-09', name, spec: `เอกสารจำลองลำดับ ${index + 1}`, qty: 1, unit: 'งาน', unit_price: 22000, amount: 22000 });
   }
-  await insert(db, 'proc_sync_runs', { source: 'synthetic-local-preview', counts: { proc_pr: 19, proc_pr_lines: 19, proc_po_lines: poCount, proc_quotes: quoteCount, proc_quote_items: quoteCount }, imported_by: 'local-test-admin', imported_at: '2026-10-23T03:00:00Z' });
+  // A personal PR outside the requester's company and an unresolved site must stay readable,
+  // but neither may enter that requester's company-only summary.
+  await insert(db, 'proc_pr', { odoo_id: 91, pr_no: 'PR26000901', requester: trainingWho, request_date: '2026-08-01', company: 'AAB', operating_unit: '[D9_SF00] AAB : Safety', state: 'draft', title: 'PR ข้ามบริษัทสำหรับตรวจสิทธิ์', estimated_cost: 12345 });
+  await insert(db, 'proc_pr', { odoo_id: 92, pr_no: 'PR26000902', requester: 'ผู้ซื้อที่ยังไม่ผูกบริษัท', request_date: '2026-08-02', company: 'ESM', operating_unit: '[D0_SF00] HO : Safety', state: 'draft', title: 'PR ไม่ทราบบริษัทสำหรับตรวจสิทธิ์', estimated_cost: 54321 });
+  await insert(db, 'proc_sync_runs', { source: 'synthetic-local-preview', counts: { proc_pr: 21, proc_pr_lines: 19, proc_po_lines: poCount, proc_quotes: quoteCount, proc_quote_items: quoteCount }, imported_by: 'local-test-admin', imported_at: '2026-10-23T03:00:00Z' });
   fs.mkdirSync(fixtures, { recursive: true });
   for (const [name, value] of Object.entries({ 'sync.json': rawSync, 'po.json': rawPo, 'quotes.json': rawQuotes })) fs.writeFileSync(path.join(fixtures, name), JSON.stringify(value, null, 2));
 }

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     const scope = actorScope(actor, d);
     const prs = d.prs
       .map(p => ({ ...p, sites: d.sitesByPr.get(p.odoo_id) ?? [] }))
-      .filter(p => canSee(scope, p.sites, p.requester));
+      .filter(p => canSee(scope, p.sites));
     const sites = (scope.all ? [...new Set(prs.flatMap(p => p.sites))].sort() : scope.sites)
       .map(id => ({ id, name: d.siteNames.get(id) ?? id.toUpperCase() }));
     return NextResponse.json({ prs, meta: d.meta, scope: scope.all ? 'all' : 'company', sites });

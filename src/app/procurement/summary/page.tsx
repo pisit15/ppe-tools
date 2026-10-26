@@ -138,10 +138,10 @@ export default function SummaryPage() {
       {error && <ErrorBox error={error} />}
       {loading && <Loading />}
       {data && limited && (
-        <p className="text-sm" style={{ color: VIZ.lightText }}>แสดงเฉพาะ PR ของบริษัทที่บัญชีคุณมีสิทธิ์: <b style={{ color: VIZ.text }}>{data.sites.map(s => s.name).join(', ') || '–'}</b> และ PR ที่คุณเป็นผู้เปิดเอง</p>
+        <p className="text-sm" style={{ color: VIZ.lightText }}>สรุปเฉพาะบริษัทที่คุณรับผิดชอบ: <b style={{ color: VIZ.text }}>{data.sites.map(s => s.name).join(', ') || 'ยังไม่ได้ระบุบริษัท'}</b> · ดู PR ของทุกบริษัทได้ที่เมนูรายการ PR</p>
       )}
       {data && limited && !allPrs.length && (
-        <Card><p className="text-sm">ยังไม่มี PR ของบริษัทที่คุณมีสิทธิ์ในข้อมูลที่นำเข้า</p></Card>
+        <Card><p className="text-sm">ยังไม่มี PR ของบริษัทที่คุณรับผิดชอบในข้อมูลที่นำเข้า</p></Card>
       )}
       {data && allPrs.length > 0 && (
         <>
@@ -149,7 +149,7 @@ export default function SummaryPage() {
             <PeriodBar meta={data.meta} sel={activeYear} onChange={y => { setYear(y); setOpen(null); }} measure="pr" />
             {data.sites.length > 1 && (
               <div className="flex flex-wrap gap-2" role="group" aria-label="เลือกบริษัท">
-                {[{ id: 'all', name: 'ทุกบริษัท' }, ...data.sites].map(s => (
+                {[{ id: 'all', name: limited ? 'ทุกบริษัทที่รับผิดชอบ' : 'ทุกบริษัท' }, ...data.sites].map(s => (
                   <button key={s.id} aria-pressed={site === s.id} onClick={() => { setSite(s.id); setOpen(null); }} className="rounded-lg px-3 py-1 text-sm"
                     style={site === s.id ? { background: VIZ.text, color: 'white' } : { border: `1px solid ${VIZ.muted}`, background: 'white' }}>
                     {s.name}
