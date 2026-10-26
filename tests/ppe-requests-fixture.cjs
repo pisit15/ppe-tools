@@ -54,6 +54,8 @@ async function startFixture(port=4328) {
           params.push(val==='true'?true:val==='false'?false:val);
           if(op==='eq')predicates.push(`${column}=$${params.length}`);
           else if(op==='ilike')predicates.push(`${column} ilike $${params.length}`);
+          else if(op==='gte')predicates.push(`${column}>=$${params.length}`);
+          else if(op==='lte')predicates.push(`${column}<=$${params.length}`);
           else throw new Error('Unsupported filter '+op);
         }
         const where=predicates.length?' where '+predicates.join(' and '):'';
@@ -72,6 +74,8 @@ async function startFixture(port=4328) {
           rows=(await tx.query(`update ${table} set ${assignments.join(',')}${where} returning *`,params)).rows;
         } else throw new Error('Unsupported method');
         const selection=url.searchParams.get('select')||'*';
+        // PostgREST serializes PostgreSQL DATE as YYYY-MM-DD, unlike PGlite's Date object.
+        for(const row of rows) if(row.transaction_date instanceof Date) row.transaction_date=row.transaction_date.toISOString().slice(0,10);
         if(selection.includes('ppe_products(')) for(const row of rows) row.ppe_products=(await tx.query('select name,unit from ppe_products where id=$1',[row.product_id])).rows[0];
         if(selection.includes('ppe_requesters(')) for(const row of rows) row.ppe_requesters=(await tx.query('select display_name,employee_code,department from ppe_requesters where id=$1',[row.requester_id])).rows[0];
         if(selection.includes('ppe_request_events(')) for(const row of rows) row.ppe_request_events=(await tx.query('select id,action,actor_name,quantity,note,created_at from ppe_request_events where request_id=$1',[row.id])).rows;

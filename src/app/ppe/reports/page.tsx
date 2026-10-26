@@ -4,9 +4,11 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
-import { BarChart3, ArrowUp, ArrowDown, Minus, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, X, ChevronDown, Users, Building2, Package, ChevronsUpDown } from 'lucide-react';
-import type { PPEStockSummary, PPETransaction } from '@/lib/types';
-import { PPE_TYPES, UNIT_TYPES } from '@/lib/constants';
+import { BarChart3, ArrowUp, ArrowDown, Minus, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, ChevronsUpDown } from 'lucide-react';
+import type { PPEStockSummary } from '@/lib/types';
+import { PPE_TYPES } from '@/lib/constants';
+import { reportPeriod, usageRows, usageTotals, usageUnit, type UsageMovement } from '@/lib/ppe-usage';
+import UsageReport from '@/components/ppe/UsageReport';
 
 /* ── Professional Palette (Tableau-inspired) ── */
 const VIZ = {
@@ -43,10 +45,15 @@ function monthKeyToFullLabel(key: string) {
   return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
 }
 function makeMonthKey(year: number, month: number) {
-  return `${year}-${String(month + 1).padStart(2, '0')}`;
+  return new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7);
 }
 
 const THAI_MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+function quantityLabel(rows: {unit:string;quantity:number}[]) {
+  return usageTotals(rows.map(r=>({unit:usageUnit(r.unit),issued:r.quantity,borrowed:0})))
+    .map(r=>`${fmtNum(r.issued)} ${r.unit}`).join(' · ') || '0';
+}
 
 /* ── Sortable table-header cell (shared by detail stock table) ── */
 type SortKeyLike = string;
@@ -176,7 +183,6 @@ function MonthRangePicker({
 
   // Display label
   const fromLabel = monthKeyToFullLabel(range.from);
-  const toLabel = monthKeyToFullLabel(range.to);
   const isSameMonth = range.from === range.to;
   const displayLabel = isSameMonth ? fromLabel : `${monthKeyToLabel(range.from)} — ${monthKeyToLabel(range.to)}`;
 
@@ -189,6 +195,7 @@ function MonthRangePicker({
     <div ref={ref} className="relative">
       {/* Trigger button */}
       <button
+        aria-label="เลือกช่วงเดือนรายงาน"
         onClick={() => { setOpen(!open); setSelecting(null); setTempFrom(range.from); setTempTo(range.to); }}
         className={`
           flex items-center gap-2 px-3 py-2 rounded-lg border text-sm
@@ -449,7 +456,8 @@ function MiniSpark({ data, color }: { data: number[]; color: string }) {
 
 interface ReportData {
   stocks: PPEStockSummary[];
-  transactions: PPETransaction[];
+  transactions: UsageMovement[];
+  firstDate?: string | null;
 }
 
 export default function ReportsPage() {
@@ -461,7 +469,8 @@ export default function ReportsPage() {
     ? (urlCompanyId || 'all')
     : (user?.companyId || '');
   const [reportData, setReportData] = useState<ReportData>({ stocks: [], transactions: [] });
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadedRequest, setLoadedRequest] = useState<{key:string;error:string}|null>(null);
+  const [retry, setRetry] = useState(0);
 
   // Default: last 6 months (current month inclusive)
   const now = new Date();
@@ -470,6 +479,9 @@ export default function ReportsPage() {
     to: makeMonthKey(now.getFullYear(), now.getMonth()),
   };
   const [dateRange, setDateRange] = useState<DateRange>(defaultRange);
+  const requestKey = `${companyId}/${dateRange.from}/${dateRange.to}/${retry}`;
+  const isLoading = loadedRequest?.key !== requestKey;
+  const loadError = loadedRequest?.key === requestKey ? loadedRequest.error : '';
 
   // ── Sort state for detailed stock table ──
   type StockSortKey = 'name' | 'type' | 'total_in' | 'total_out' | 'current_stock' | 'min_stock' | 'status';
@@ -485,18 +497,23 @@ export default function ReportsPage() {
   }
 
   useEffect(() => {
-    Promise.all([
-      fetch(`/api/ppe/stock?company_id=${companyId}`),
-      fetch(`/api/ppe/transactions?company_id=${companyId}&limit=2000`),
-    ])
-      .then(async ([stockRes, transRes]) => {
-        const stockData = await stockRes.json();
-        const transData = await transRes.json();
-        setReportData({ stocks: stockData.data || [], transactions: transData.data || [] });
+    if (!companyId) return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({company_id:companyId,from:dateRange.from,to:dateRange.to});
+    fetch(`/api/ppe/reports?${query}`,{signal:controller.signal,cache:'no-store'})
+      .then(async res => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'โหลดรายงานไม่สำเร็จ');
+        if (!controller.signal.aborted) {
+          setReportData(data);
+          setLoadedRequest({key:requestKey,error:''});
+        }
       })
-      .catch(console.error)
-      .finally(() => setIsLoading(false));
-  }, [companyId]);
+      .catch(error => { if (!controller.signal.aborted) setLoadedRequest({key:requestKey,error:error instanceof Error ? error.message : 'โหลดรายงานไม่สำเร็จ'}); });
+    return () => controller.abort();
+  }, [companyId,dateRange.from,dateRange.to,requestKey]);
+
+  const detailedRows = useMemo(() => usageRows(reportData.transactions,reportData.stocks,dateRange.from,dateRange.to),[reportData,dateRange.from,dateRange.to]);
 
   /* ── computed analytics ── */
   const analytics = useMemo(() => {
@@ -505,24 +522,12 @@ export default function ReportsPage() {
     // Parse date range to cutoff dates
     const [fromY, fromM] = dateRange.from.split('-').map(Number);
     const [toY, toM] = dateRange.to.split('-').map(Number);
-    const cutoffStart = new Date(fromY, fromM - 1, 1);
-    const cutoffEnd = new Date(toY, toM, 0, 23, 59, 59); // last day of "to" month
-
-    const transactions = allTransactions.filter((t) => {
-      if (!t.transaction_date) return false;
-      const d = new Date(t.transaction_date);
-      return d >= cutoffStart && d <= cutoffEnd;
-    });
+    const period = reportPeriod(dateRange.from,dateRange.to);
+    const transactions = allTransactions.filter(t => t.transaction_date >= period.start && t.transaction_date <= period.end);
 
     // Previous period of same length for comparison
     const monthCount = (toY - fromY) * 12 + (toM - fromM) + 1;
-    const prevStart = new Date(fromY, fromM - 1 - monthCount, 1);
-    const prevEnd = new Date(fromY, fromM - 1, 0, 23, 59, 59);
-    const prevTransactions = allTransactions.filter((t) => {
-      if (!t.transaction_date) return false;
-      const d = new Date(t.transaction_date);
-      return d >= prevStart && d <= prevEnd;
-    });
+    const prevTransactions = allTransactions.filter(t => t.transaction_date >= period.previousStart && t.transaction_date < period.start);
 
     // type breakdown (from current stock)
     const typeMap: Record<string, { count: number; total: number }> = {};
@@ -565,9 +570,10 @@ export default function ReportsPage() {
     const outByProduct: Record<string, { name: string; qty: number }> = {};
     transactions.filter(t => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow').forEach(t => {
       const prod = stocks.find(s => s.product_id === t.product_id);
-      const name = prod?.name || t.product_id;
-      if (!outByProduct[name]) outByProduct[name] = { name, qty: 0 };
-      outByProduct[name].qty += t.quantity;
+      const name = t.ppe_products?.name || prod?.name || t.product_id;
+      const key = JSON.stringify([t.company_id,t.product_id]);
+      if (!outByProduct[key]) outByProduct[key] = { name, qty: 0 };
+      outByProduct[key].qty += t.quantity;
     });
 
     // department usage
@@ -591,56 +597,14 @@ export default function ReportsPage() {
     const topDeptName = topDept ? topDept[0] : '';
     const topProduct = Object.values(outByProduct).sort((a, b) => b.qty - a.qty)[0];
 
-    // ── Drill-down data ──
-    // Department → products breakdown
-    const outTx = transactions.filter(t => t.transaction_type === 'stock_out' || t.transaction_type === 'borrow');
-
-    const deptDetail: Record<string, { total: number; products: Record<string, { name: string; qty: number }>; employees: Record<string, { name: string; qty: number; code: string }> }> = {};
-    outTx.forEach(t => {
-      const dept = t.department || 'ไม่ระบุ';
-      if (!deptDetail[dept]) deptDetail[dept] = { total: 0, products: {}, employees: {} };
-      deptDetail[dept].total += t.quantity;
-      const prod = stocks.find(s => s.product_id === t.product_id);
-      const pName = prod?.name || t.product_id;
-      if (!deptDetail[dept].products[pName]) deptDetail[dept].products[pName] = { name: pName, qty: 0 };
-      deptDetail[dept].products[pName].qty += t.quantity;
-      const empKey = t.employee_name || t.employee_code || 'ไม่ระบุ';
-      if (!deptDetail[dept].employees[empKey]) deptDetail[dept].employees[empKey] = { name: empKey, qty: 0, code: t.employee_code || '' };
-      deptDetail[dept].employees[empKey].qty += t.quantity;
-    });
-
-    // Employee ranking (all)
-    const empUsage: Record<string, { name: string; code: string; dept: string; qty: number; products: Record<string, { name: string; qty: number }> }> = {};
-    outTx.forEach(t => {
-      const empKey = t.employee_name || t.employee_code || 'ไม่ระบุ';
-      if (!empUsage[empKey]) empUsage[empKey] = { name: empKey, code: t.employee_code || '', dept: t.department || 'ไม่ระบุ', qty: 0, products: {} };
-      empUsage[empKey].qty += t.quantity;
-      const prod = stocks.find(s => s.product_id === t.product_id);
-      const pName = prod?.name || t.product_id;
-      if (!empUsage[empKey].products[pName]) empUsage[empKey].products[pName] = { name: pName, qty: 0 };
-      empUsage[empKey].products[pName].qty += t.quantity;
-    });
-
-    // Product → who withdrew
-    const productDetail: Record<string, { name: string; totalOut: number; depts: Record<string, number>; employees: Record<string, { name: string; qty: number }> }> = {};
-    outTx.forEach(t => {
-      const prod = stocks.find(s => s.product_id === t.product_id);
-      const pName = prod?.name || t.product_id;
-      if (!productDetail[pName]) productDetail[pName] = { name: pName, totalOut: 0, depts: {}, employees: {} };
-      productDetail[pName].totalOut += t.quantity;
-      const dept = t.department || 'ไม่ระบุ';
-      productDetail[pName].depts[dept] = (productDetail[pName].depts[dept] || 0) + t.quantity;
-      const empKey = t.employee_name || t.employee_code || 'ไม่ระบุ';
-      if (!productDetail[pName].employees[empKey]) productDetail[pName].employees[empKey] = { name: empKey, qty: 0 };
-      productDetail[pName].employees[empKey].qty += t.quantity;
-    });
-
     return {
       typeMap, transMap, months, monthlyIn, monthlyOut, monthCount,
       outByProduct, deptUsage, lowStock,
       totalIn, totalOut, prevTotalIn, prevTotalOut,
       topTypeName, topDeptName, topProduct,
-      deptDetail, empUsage, productDetail,
+      receivedLabel:quantityLabel(transactions.filter(t=>t.transaction_type==='stock_in'||t.transaction_type==='return')),
+      issuedLabel:quantityLabel(transactions.filter(t=>t.transaction_type==='stock_out')),
+      borrowedLabel:quantityLabel(transactions.filter(t=>t.transaction_type==='borrow')),
     };
   }, [reportData, dateRange]);
 
@@ -652,8 +616,10 @@ export default function ReportsPage() {
     );
   }
 
+  if (loadError) return <div role="alert" className="rounded-xl border border-red-100 bg-white p-6 text-sm text-red-700"><p>{loadError}</p><button type="button" onClick={()=>setRetry(r=>r+1)} className="mt-3 rounded-lg border border-red-200 px-4 py-2">ลองโหลดอีกครั้ง</button></div>;
+
   const { stocks } = reportData;
-  const totalStock = stocks.reduce((s, st) => s + st.current_stock, 0);
+  const stockLabel = quantityLabel(stocks.map(s=>({unit:s.unit,quantity:s.current_stock})));
 
   // Sorted view of stocks for the detail table.
   // When no user sort is selected, default to low-stock first then by current_stock asc.
@@ -689,12 +655,8 @@ export default function ReportsPage() {
     return arr;
   })();
 
-  const inChange = analytics.prevTotalIn > 0 ? ((analytics.totalIn - analytics.prevTotalIn) / analytics.prevTotalIn * 100) : 0;
-  const outChange = analytics.prevTotalOut > 0 ? ((analytics.totalOut - analytics.prevTotalOut) / analytics.prevTotalOut * 100) : 0;
-
   // Find data range for picker
-  const allDates = reportData.transactions.filter(t => t.transaction_date).map(t => t.transaction_date!.slice(0, 7));
-  const minDate = allDates.length > 0 ? allDates.sort()[0] : makeMonthKey(now.getFullYear(), 0);
+  const minDate = reportData.firstDate?.slice(0,7) || makeMonthKey(now.getFullYear(), 0);
   const maxDate = makeMonthKey(now.getFullYear(), now.getMonth());
 
   // Range label for subtitles
@@ -715,34 +677,31 @@ export default function ReportsPage() {
       </div>
 
       {/* ── KPI cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
         <KPICard
           label="สต็อกคงเหลือ"
-          value={fmtNum(totalStock)}
-          suffix="ชิ้น"
+          value={stockLabel}
+          suffix=""
           color={VIZ.primary}
           sparkData={null}
           note={analytics.lowStock.length > 0 ? `${analytics.lowStock.length} รายการต่ำกว่าขั้นต่ำ` : 'สต็อกปกติทุกรายการ'}
           noteColor={analytics.lowStock.length > 0 ? VIZ.accent : VIZ.positive}
         />
         <KPICard
-          label="รับเข้า"
-          value={fmtNum(analytics.totalIn)}
-          suffix="ชิ้น"
+          label="รับเข้า + คืน (ช่วงที่เลือก)"
+          value={analytics.receivedLabel}
+          suffix=""
           color={VIZ.positive}
-          sparkData={analytics.monthlyIn}
-          change={inChange}
-          changePeriod="vs ช่วงก่อนหน้า"
+          sparkData={null}
         />
         <KPICard
-          label="เบิกออก"
-          value={fmtNum(analytics.totalOut)}
-          suffix="ชิ้น"
+          label="เบิกออก (ช่วงที่เลือก)"
+          value={analytics.issuedLabel}
+          suffix=""
           color={VIZ.secondary}
-          sparkData={analytics.monthlyOut}
-          change={outChange}
-          changePeriod="vs ช่วงก่อนหน้า"
+          sparkData={null}
         />
+        <KPICard label="ยืม (ช่วงที่เลือก)" value={analytics.borrowedLabel} suffix="" color={VIZ.primary} sparkData={null} />
         <KPICard
           label="สต็อกต่ำ"
           value={String(analytics.lowStock.length)}
@@ -756,15 +715,19 @@ export default function ReportsPage() {
         />
       </div>
 
+      <UsageReport rows={detailedRows} from={dateRange.from} to={dateRange.to} rangeLabel={rangeLabel} company={companyId} />
+
+      <p className="text-xs text-gray-500">กราฟภาพรวมด้านล่างแสดงจำนวนรวมทุกหน่วยนับ · ดูยอดแยกหน่วย เบิกออก และยืมในตารางด้านบน</p>
+
       {/* ── Row 1: Trend + Stock by type ── */}
       <div className="grid lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3 bg-white rounded-lg border border-gray-100 p-5">
           <h2 className="text-sm font-bold text-gray-900">
             {analytics.totalOut > analytics.totalIn
-              ? `เบิกออกมากกว่ารับเข้า ${fmtNum(analytics.totalOut - analytics.totalIn)} ชิ้น`
+              ? `เบิกและยืมมากกว่ารับเข้าและคืน ${fmtNum(analytics.totalOut - analytics.totalIn)} หน่วยรวม`
               : analytics.totalIn > analytics.totalOut
-                ? `รับเข้ามากกว่าเบิกออก ${fmtNum(analytics.totalIn - analytics.totalOut)} ชิ้น`
-                : `รับเข้า-เบิกออกสมดุล`}
+                ? `รับเข้าและคืนมากกว่าเบิกและยืม ${fmtNum(analytics.totalIn - analytics.totalOut)} หน่วยรวม`
+                : `รับเข้าและคืนเท่ากับเบิกและยืม`}
           </h2>
           <p className="text-[11px] text-gray-400 mb-3">{rangeLabel}</p>
           <DualLineChart
@@ -868,14 +831,6 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* ── Drill-down Analysis ── */}
-      <DrillDownSection
-        deptDetail={analytics.deptDetail}
-        empUsage={analytics.empUsage}
-        productDetail={analytics.productDetail}
-        rangeLabel={rangeLabel}
-      />
-
       {/* ── Detailed stock table ── */}
       <details className="bg-white rounded-lg border border-gray-100">
         <summary className="px-5 py-3 cursor-pointer text-sm font-bold text-gray-900 hover:bg-gray-50 select-none">
@@ -909,6 +864,7 @@ export default function ReportsPage() {
                         ) : (
                           <span>{getTypeEmoji(s.type)} {s.name}</span>
                         )}
+                        <span className="block text-xs font-normal text-gray-500">หน่วย: {usageUnit(s.unit)}</span>
                       </td>
                       <td className="px-3 py-2 text-gray-500">{getTypeLabel(s.type)}</td>
                       <td className="px-3 py-2 text-center tabular-nums" style={{ color: VIZ.positive }}>{fmtNum(s.total_in)}</td>
@@ -935,256 +891,6 @@ export default function ReportsPage() {
   );
 }
 
-/* ═══════════════════════════ Drill-Down Section ═══════════════════════════ */
-
-type DeptDetailMap = Record<string, { total: number; products: Record<string, { name: string; qty: number }>; employees: Record<string, { name: string; qty: number; code: string }> }>;
-type EmpUsageMap = Record<string, { name: string; code: string; dept: string; qty: number; products: Record<string, { name: string; qty: number }> }>;
-type ProductDetailMap = Record<string, { name: string; totalOut: number; depts: Record<string, number>; employees: Record<string, { name: string; qty: number }> }>;
-
-function DrillDownSection({
-  deptDetail,
-  empUsage,
-  productDetail,
-  rangeLabel,
-}: {
-  deptDetail: DeptDetailMap;
-  empUsage: EmpUsageMap;
-  productDetail: ProductDetailMap;
-  rangeLabel: string;
-}) {
-  const [activeTab, setActiveTab] = useState<'dept' | 'emp' | 'product'>('dept');
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-
-  const tabs = [
-    { key: 'dept' as const, label: 'แผนก', icon: <Building2 size={14} />, count: Object.keys(deptDetail).length },
-    { key: 'emp' as const, label: 'พนักงาน', icon: <Users size={14} />, count: Object.keys(empUsage).length },
-    { key: 'product' as const, label: 'สินค้า', icon: <Package size={14} />, count: Object.keys(productDetail).length },
-  ];
-
-  function toggle(key: string) {
-    setExpandedRow(expandedRow === key ? null : key);
-  }
-
-  // Sort helpers
-  const sortedDepts = Object.entries(deptDetail).sort((a, b) => b[1].total - a[1].total);
-  const sortedEmps = Object.values(empUsage).sort((a, b) => b.qty - a.qty);
-  const sortedProducts = Object.values(productDetail).sort((a, b) => b.totalOut - a.totalOut);
-
-  const maxDept = sortedDepts[0]?.[1]?.total || 1;
-  const maxEmp = sortedEmps[0]?.qty || 1;
-  const maxProd = sortedProducts[0]?.totalOut || 1;
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-100">
-      {/* Tab header */}
-      <div className="flex items-center border-b border-gray-100 px-4">
-        <span className="text-sm font-bold text-gray-900 mr-4 py-3">วิเคราะห์การเบิก</span>
-        <div className="flex gap-1">
-          {tabs.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => { setActiveTab(tab.key); setExpandedRow(null); }}
-              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors -mb-[1px]
-                ${activeTab === tab.key
-                  ? 'border-blue-600 text-blue-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-            >
-              {tab.icon}
-              {tab.label}
-              <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{tab.count}</span>
-            </button>
-          ))}
-        </div>
-        <span className="ml-auto text-[10px] text-gray-400">{rangeLabel}</span>
-      </div>
-
-      {/* Tab content */}
-      <div className="p-4">
-        {/* ── Department tab ── */}
-        {activeTab === 'dept' && (
-          <div className="space-y-1">
-            {sortedDepts.length === 0 && <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูลการเบิกในช่วงนี้</p>}
-            {sortedDepts.map(([dept, data]) => {
-              const isOpen = expandedRow === `dept-${dept}`;
-              const sortedProds = Object.values(data.products).sort((a, b) => b.qty - a.qty);
-              const sortedEmp = Object.values(data.employees).sort((a, b) => b.qty - a.qty);
-              return (
-                <div key={dept} className="border border-gray-100 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => toggle(`dept-${dept}`)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                  >
-                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                    <span title={dept} className="w-36 shrink-0 whitespace-normal break-words text-left text-sm font-medium leading-6 text-gray-900 sm:w-64">{dept}</span>
-                    <div className="flex-1 bg-gray-50 rounded h-3 overflow-hidden">
-                      <div className="h-full rounded" style={{ width: `${(data.total / maxDept) * 100}%`, background: '#76B7B2' }} />
-                    </div>
-                    <span className="text-sm font-bold text-gray-700 tabular-nums w-16 text-right">{fmtNum(data.total)}</span>
-                    <span className="text-[10px] text-gray-400">ชิ้น</span>
-                  </button>
-
-                  {isOpen && (
-                    <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
-                      <div className="grid md:grid-cols-2 gap-4">
-                        {/* Products this dept withdrew */}
-                        <div>
-                          <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">สินค้าที่เบิก</h4>
-                          <div className="space-y-1">
-                            {sortedProds.slice(0, 10).map((p, i) => (
-                              <div key={i} className="flex items-center gap-2">
-                                <span title={p.name} className="w-32 text-[11px] text-gray-600 truncate">{p.name}</span>
-                                <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
-                                  <div className="h-full rounded" style={{ width: `${(p.qty / sortedProds[0].qty) * 100}%`, background: VIZ.secondary }} />
-                                </div>
-                                <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(p.qty)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        {/* Employees in this dept */}
-                        <div>
-                          <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">พนักงานที่เบิก</h4>
-                          <div className="space-y-1">
-                            {sortedEmp.slice(0, 10).map((e, i) => (
-                              <div key={i} className="flex items-center gap-2">
-                                <span className="w-32 text-[11px] text-gray-600 truncate">
-                                  {e.name}
-                                  {e.code && <span className="text-gray-400 ml-1">({e.code})</span>}
-                                </span>
-                                <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
-                                  <div className="h-full rounded" style={{ width: `${(e.qty / sortedEmp[0].qty) * 100}%`, background: VIZ.primary }} />
-                                </div>
-                                <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(e.qty)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ── Employee tab ── */}
-        {activeTab === 'emp' && (
-          <div className="space-y-1">
-            {sortedEmps.length === 0 && <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูลการเบิกในช่วงนี้</p>}
-            {sortedEmps.map((emp) => {
-              const isOpen = expandedRow === `emp-${emp.name}`;
-              const sortedProds = Object.values(emp.products).sort((a, b) => b.qty - a.qty);
-              return (
-                <div key={emp.name} className="border border-gray-100 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => toggle(`emp-${emp.name}`)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                  >
-                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                    <div className="w-40 text-left flex-shrink-0">
-                      <span className="text-sm font-medium text-gray-900 truncate block">{emp.name}</span>
-                      <span className="text-[10px] text-gray-400">{emp.dept}{emp.code ? ` · ${emp.code}` : ''}</span>
-                    </div>
-                    <div className="flex-1 bg-gray-50 rounded h-3 overflow-hidden">
-                      <div className="h-full rounded" style={{ width: `${(emp.qty / maxEmp) * 100}%`, background: VIZ.primary }} />
-                    </div>
-                    <span className="text-sm font-bold text-gray-700 tabular-nums w-16 text-right">{fmtNum(emp.qty)}</span>
-                    <span className="text-[10px] text-gray-400">ชิ้น</span>
-                  </button>
-
-                  {isOpen && (
-                    <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
-                      <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">สินค้าที่เบิก</h4>
-                      <div className="grid md:grid-cols-2 gap-x-6 gap-y-1">
-                        {sortedProds.map((p, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <span title={p.name} className="w-36 text-[11px] text-gray-600 truncate">{p.name}</span>
-                            <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
-                              <div className="h-full rounded" style={{ width: `${(p.qty / sortedProds[0].qty) * 100}%`, background: VIZ.secondary }} />
-                            </div>
-                            <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(p.qty)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ── Product tab ── */}
-        {activeTab === 'product' && (
-          <div className="space-y-1">
-            {sortedProducts.length === 0 && <p className="text-gray-400 text-sm py-4 text-center">ไม่มีข้อมูลการเบิกในช่วงนี้</p>}
-            {sortedProducts.map((prod) => {
-              const isOpen = expandedRow === `prod-${prod.name}`;
-              const sortedDepts = Object.entries(prod.depts).sort((a, b) => b[1] - a[1]);
-              const sortedEmps = Object.values(prod.employees).sort((a, b) => b.qty - a.qty);
-              return (
-                <div key={prod.name} className="border border-gray-100 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => toggle(`prod-${prod.name}`)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                  >
-                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                    <span title={prod.name} className="w-36 shrink-0 whitespace-normal break-words text-left text-sm font-medium leading-6 text-gray-900 sm:w-80">{prod.name}</span>
-                    <div className="flex-1 bg-gray-50 rounded h-3 overflow-hidden">
-                      <div className="h-full rounded" style={{ width: `${(prod.totalOut / maxProd) * 100}%`, background: VIZ.secondary }} />
-                    </div>
-                    <span className="text-sm font-bold text-gray-700 tabular-nums w-16 text-right">{fmtNum(prod.totalOut)}</span>
-                    <span className="text-[10px] text-gray-400">ชิ้น</span>
-                  </button>
-
-                  {isOpen && (
-                    <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
-                      <div className="grid md:grid-cols-2 gap-4">
-                        {/* Departments */}
-                        <div>
-                          <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">แผนกที่เบิก</h4>
-                          <div className="space-y-1">
-                            {sortedDepts.slice(0, 10).map(([dept, qty], i) => (
-                              <div key={i} className="flex items-center gap-2">
-                                <span title={dept} className="w-32 text-[11px] text-gray-600 truncate">{dept}</span>
-                                <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
-                                  <div className="h-full rounded" style={{ width: `${(qty / sortedDepts[0][1]) * 100}%`, background: '#76B7B2' }} />
-                                </div>
-                                <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(qty)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        {/* Employees */}
-                        <div>
-                          <h4 className="text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">พนักงานที่เบิก</h4>
-                          <div className="space-y-1">
-                            {sortedEmps.slice(0, 10).map((e, i) => (
-                              <div key={i} className="flex items-center gap-2">
-                                <span className="w-32 text-[11px] text-gray-600 truncate">{e.name}</span>
-                                <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
-                                  <div className="h-full rounded" style={{ width: `${(e.qty / sortedEmps[0].qty) * 100}%`, background: VIZ.primary }} />
-                                </div>
-                                <span className="text-[11px] font-semibold text-gray-700 tabular-nums w-10 text-right">{fmtNum(e.qty)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ── KPI Card ── */
 function KPICard({
   label, value, suffix, color, sparkData, change, changePeriod, note, noteColor,
@@ -1206,7 +912,7 @@ function KPICard({
         {sparkData && <MiniSpark data={sparkData} color={color} />}
       </div>
       <div className="flex items-baseline gap-1">
-        <span className="text-2xl font-bold tabular-nums" style={{ color }}>{value}</span>
+        <span className="min-w-0 whitespace-normal break-words text-lg font-bold leading-7 tabular-nums" style={{ color }}>{value}</span>
         <span className="text-[11px] text-gray-400">{suffix}</span>
       </div>
       {change !== undefined && change !== 0 && (
