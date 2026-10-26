@@ -4,10 +4,10 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
-import { BarChart3, ArrowUp, ArrowDown, Minus, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, ChevronsUpDown } from 'lucide-react';
+import { BarChart3, ArrowUp, ArrowDown, AlertTriangle, ChevronLeft, ChevronRight, CalendarRange, ChevronsUpDown } from 'lucide-react';
 import type { PPEStockSummary } from '@/lib/types';
 import { PPE_TYPES } from '@/lib/constants';
-import { reportPeriod, usageRows, usageTotals, usageUnit, type UsageMovement } from '@/lib/ppe-usage';
+import { reportPeriod, usageRows, usageUnit, type UsageMovement } from '@/lib/ppe-usage';
 import UsageReport from '@/components/ppe/UsageReport';
 
 /* ── Professional Palette (Tableau-inspired) ── */
@@ -49,11 +49,6 @@ function makeMonthKey(year: number, month: number) {
 }
 
 const THAI_MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-
-function quantityLabel(rows: {unit:string;quantity:number}[]) {
-  return usageTotals(rows.map(r=>({unit:usageUnit(r.unit),issued:r.quantity,borrowed:0})))
-    .map(r=>`${fmtNum(r.issued)} ${r.unit}`).join(' · ') || '0';
-}
 
 /* ── Sortable table-header cell (shared by detail stock table) ── */
 type SortKeyLike = string;
@@ -435,25 +430,6 @@ function DualLineChart({
   );
 }
 
-/** Mini sparkline for KPI cards */
-function MiniSpark({ data, color }: { data: number[]; color: string }) {
-  if (!data.length || data.every(d => d === 0)) return null;
-  const W = 64, H = 20, PX = 1, PY = 2;
-  const max = Math.max(...data, 1);
-  const pts = data.map((v, i) => ({
-    x: PX + (i / Math.max(data.length - 1, 1)) * (W - 2 * PX),
-    y: PY + (1 - v / max) * (H - 2 * PY),
-  }));
-  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-16 h-5 flex-shrink-0">
-      <path d={line} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/* ═══════════════════════════ Page ═══════════════════════════ */
-
 interface ReportData {
   stocks: PPEStockSummary[];
   transactions: UsageMovement[];
@@ -602,9 +578,6 @@ export default function ReportsPage() {
       outByProduct, deptUsage, lowStock,
       totalIn, totalOut, prevTotalIn, prevTotalOut,
       topTypeName, topDeptName, topProduct,
-      receivedLabel:quantityLabel(transactions.filter(t=>t.transaction_type==='stock_in'||t.transaction_type==='return')),
-      issuedLabel:quantityLabel(transactions.filter(t=>t.transaction_type==='stock_out')),
-      borrowedLabel:quantityLabel(transactions.filter(t=>t.transaction_type==='borrow')),
     };
   }, [reportData, dateRange]);
 
@@ -619,7 +592,6 @@ export default function ReportsPage() {
   if (loadError) return <div role="alert" className="rounded-xl border border-red-100 bg-white p-6 text-sm text-red-700"><p>{loadError}</p><button type="button" onClick={()=>setRetry(r=>r+1)} className="mt-3 rounded-lg border border-red-200 px-4 py-2">ลองโหลดอีกครั้ง</button></div>;
 
   const { stocks } = reportData;
-  const stockLabel = quantityLabel(stocks.map(s=>({unit:s.unit,quantity:s.current_stock})));
 
   // Sorted view of stocks for the detail table.
   // When no user sort is selected, default to low-stock first then by current_stock asc.
@@ -674,45 +646,6 @@ export default function ReportsPage() {
           <span className="text-sm text-gray-400 ml-1">{stocks.length} รายการ</span>
         </div>
         <MonthRangePicker range={dateRange} onChange={setDateRange} minDate={minDate} maxDate={maxDate} />
-      </div>
-
-      {/* ── KPI cards ── */}
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-        <KPICard
-          label="สต็อกคงเหลือ"
-          value={stockLabel}
-          suffix=""
-          color={VIZ.primary}
-          sparkData={null}
-          note={analytics.lowStock.length > 0 ? `${analytics.lowStock.length} รายการต่ำกว่าขั้นต่ำ` : 'สต็อกปกติทุกรายการ'}
-          noteColor={analytics.lowStock.length > 0 ? VIZ.accent : VIZ.positive}
-        />
-        <KPICard
-          label="รับเข้า + คืน (ช่วงที่เลือก)"
-          value={analytics.receivedLabel}
-          suffix=""
-          color={VIZ.positive}
-          sparkData={null}
-        />
-        <KPICard
-          label="เบิกออก (ช่วงที่เลือก)"
-          value={analytics.issuedLabel}
-          suffix=""
-          color={VIZ.secondary}
-          sparkData={null}
-        />
-        <KPICard label="ยืม (ช่วงที่เลือก)" value={analytics.borrowedLabel} suffix="" color={VIZ.primary} sparkData={null} />
-        <KPICard
-          label="สต็อกต่ำ"
-          value={String(analytics.lowStock.length)}
-          suffix="รายการ"
-          color={analytics.lowStock.length > 0 ? VIZ.accent : VIZ.neutral}
-          sparkData={null}
-          note={analytics.lowStock.length > 0
-            ? analytics.lowStock.slice(0, 2).map(s => s.name).join(', ')
-            : 'ไม่มีรายการที่ต้องเติม'}
-          noteColor={analytics.lowStock.length > 0 ? VIZ.accent : VIZ.positive}
-        />
       </div>
 
       <UsageReport rows={detailedRows} from={dateRange.from} to={dateRange.to} rangeLabel={rangeLabel} company={companyId} />
@@ -887,56 +820,6 @@ export default function ReportsPage() {
           </table>
         </div>
       </details>
-    </div>
-  );
-}
-
-/* ── KPI Card ── */
-function KPICard({
-  label, value, suffix, color, sparkData, change, changePeriod, note, noteColor,
-}: {
-  label: string;
-  value: string;
-  suffix: string;
-  color: string;
-  sparkData: number[] | null;
-  change?: number;
-  changePeriod?: string;
-  note?: string;
-  noteColor?: string;
-}) {
-  return (
-    <div className="bg-white rounded-lg border border-gray-100 p-3.5">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[11px] text-gray-500">{label}</span>
-        {sparkData && <MiniSpark data={sparkData} color={color} />}
-      </div>
-      <div className="flex items-baseline gap-1">
-        <span className="min-w-0 whitespace-normal break-words text-lg font-bold leading-7 tabular-nums" style={{ color }}>{value}</span>
-        <span className="text-[11px] text-gray-400">{suffix}</span>
-      </div>
-      {change !== undefined && change !== 0 && (
-        <div className="flex items-center gap-1 mt-1">
-          {change > 0 ? (
-            <ArrowUp size={11} style={{ color: VIZ.accent }} />
-          ) : (
-            <ArrowDown size={11} style={{ color: VIZ.positive }} />
-          )}
-          <span className="text-[10px]" style={{ color: change > 0 ? VIZ.accent : VIZ.positive }}>
-            {Math.abs(change).toFixed(0)}%
-          </span>
-          {changePeriod && <span className="text-[10px] text-gray-400">{changePeriod}</span>}
-        </div>
-      )}
-      {change === 0 && changePeriod && (
-        <div className="flex items-center gap-1 mt-1">
-          <Minus size={11} className="text-gray-400" />
-          <span className="text-[10px] text-gray-400">ไม่เปลี่ยนแปลง</span>
-        </div>
-      )}
-      {note && (
-        <p className="text-[10px] mt-1 truncate" style={{ color: noteColor || VIZ.lightText }}>{note}</p>
-      )}
     </div>
   );
 }
