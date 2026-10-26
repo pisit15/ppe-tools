@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, getSupabaseServer } from '@/lib/supabase';
 import type { CreateTransactionInput } from '@/lib/types';
+import { ppeDatabaseError } from '@/lib/ppe-access';
+import { apiError } from '@/lib/toolsSession';
 
 export async function GET(request: NextRequest) {
   try {
@@ -110,15 +112,10 @@ export async function POST(request: NextRequest) {
       ])
       .select();
 
-    if (error) throw error;
+    if (error) ppeDatabaseError(error);
 
-    return NextResponse.json({ data: data[0] }, { status: 201 });
+    return NextResponse.json({ data: data![0] }, { status: 201 });
   } catch (error: unknown) {
-    console.error('Error creating transaction:', error);
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { error: 'Failed to create transaction', detail: msg },
-      { status: 500 }
-    );
+    return apiError(error);
   }
 }

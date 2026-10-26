@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseServer } from '@/lib/supabase';
+import { requirePPEActor } from '@/lib/ppe-access';
+import { assertCompany, apiError } from '@/lib/toolsSession';
 import type { PPEStockSummary } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
   try {
+    const actor = await requirePPEActor(request, true);
     const searchParams = request.nextUrl.searchParams;
     const companyId = searchParams.get('company_id') || 'default';
     const showLowStock = searchParams.get('low_stock') === 'true';
     const showOutOfStock = searchParams.get('out_of_stock') === 'true';
 
-    let query = supabase.from('ppe_stock_summary').select('*');
+    assertCompany(actor, companyId === 'admin' && actor.isAdmin ? 'all' : companyId);
+    let query = getSupabaseServer().from('ppe_stock_availability').select('*');
 
     // Admin view: companyId 'all' or 'admin' returns data across all companies
     if (companyId !== 'all' && companyId !== 'admin') {
@@ -35,10 +39,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: rows });
   } catch (error) {
-    console.error('Error fetching stock summary:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch stock summary' },
-      { status: 500 }
-    );
+    return apiError(error);
   }
 }

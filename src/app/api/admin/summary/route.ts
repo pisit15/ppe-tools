@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireToolsActor, AccessError, apiError } from '@/lib/toolsSession';
 import { createClient } from '@supabase/supabase-js';
 
 function getSupabase() {
@@ -10,8 +11,10 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const actor = await requireToolsActor(request);
+    if (!actor.isAdmin) throw new AccessError('เฉพาะผู้ดูแลระบบ');
     const supabase = getSupabase();
 
     // Get all products grouped by company
@@ -90,7 +93,6 @@ export async function GET() {
 
     return NextResponse.json({ companies });
   } catch (err) {
-    console.error('Admin summary error:', err);
-    return NextResponse.json({ companies: [] }, { status: 500 });
+    return apiError(err);
   }
 }

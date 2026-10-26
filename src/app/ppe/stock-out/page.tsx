@@ -27,7 +27,7 @@ function getTypeLabel(v: string) { return PPE_TYPES.find(t => t.value === v)?.la
 function getTypeEmoji(v: string) { return PPE_TYPES.find(t => t.value === v)?.icon ?? '📦'; }
 function getUnitLabel(v: string) { return UNIT_TYPES.find(u => u.value === v)?.label ?? v; }
 
-type StockInfo = { product_id: string; current_stock: number; min_stock: number };
+type StockInfo = { product_id: string; current_stock: number; min_stock: number; available_stock: number; reserved_quantity: number };
 type RecentTx = { id: string; product_name: string; employee_name: string; quantity: number; unit: string; transaction_date: string; transaction_type: string };
 
 export default function StockOutPage() {
@@ -75,7 +75,7 @@ export default function StockOutPage() {
       if (deptData?.data) setDeptList((deptData.data as { name: string }[]).map(d => d.name));
       if (prodData.data) setProducts(prodData.data);
       if (empData.data) setEmployees(empData.data);
-      if (stockData.data) setStockInfo(stockData.data.map((s: Record<string, unknown>) => ({ product_id: s.product_id, current_stock: s.current_stock, min_stock: s.min_stock })));
+      if (stockData.data) setStockInfo(stockData.data.map((s: Record<string, unknown>) => ({ product_id: s.product_id, current_stock: s.current_stock, min_stock: s.min_stock, available_stock: s.available_stock ?? s.current_stock, reserved_quantity: s.reserved_quantity ?? 0 })));
       if (txData.data) {
         setAllRecentRaw(txData.data || []);
         setRecentTx(txData.data
@@ -155,6 +155,7 @@ export default function StockOutPage() {
     e.preventDefault();
     if (!formData.product_id) { showToast('error', 'กรุณาเลือกสินค้า'); return; }
     if (!formData.quantity || parseInt(formData.quantity) < 1) { showToast('error', 'กรุณากรอกจำนวน'); return; }
+    if (currentStock && Number(formData.quantity) > currentStock.available_stock) { showToast('error', 'จำนวนเกินสต็อกพร้อมเบิก กรุณาตรวจยอดจอง'); return; }
 
     setIsSubmitting(true);
     try {
@@ -182,11 +183,11 @@ export default function StockOutPage() {
         }, ...prev].slice(0, 50));
 
         // Update local stock info
-        setStockInfo(prev => prev.map(s => s.product_id === formData.product_id ? { ...s, current_stock: s.current_stock - parseInt(formData.quantity) } : s));
+        setStockInfo(prev => prev.map(s => s.product_id === formData.product_id ? { ...s, current_stock: s.current_stock - parseInt(formData.quantity), available_stock: s.available_stock - parseInt(formData.quantity) } : s));
 
         setFormData({ product_id: '', transaction_type: 'stock_out', quantity: '', unit: '', transaction_date: new Date().toISOString().split('T')[0], employee_code: '', employee_name: '', department: '', notes: '', recorded_by: '' });
         setProductSearch(''); setEmployeeSearch('');
-      } else { showToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่'); }
+      } else { const result = await res.json(); showToast('error', result.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่'); }
     } catch { showToast('error', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์'); }
     finally { setIsSubmitting(false); }
   }
@@ -271,7 +272,8 @@ export default function StockOutPage() {
                     <div className="text-[11px] text-gray-500">{getTypeLabel(selectedProduct.type)} · หน่วย: {getUnitLabel(selectedProduct.unit)}</div>
                   </div>
                   {currentStock && (
-                    <div className="text-right">
+                      <div className="text-right">
+                        <div className="text-xs text-blue-700">พร้อมเบิก {currentStock.available_stock} · จองแล้ว {currentStock.reserved_quantity}</div>
                       <div className="text-lg font-bold tabular-nums" style={{ color: isLowStock ? VIZ.accent : VIZ.positive }}>{currentStock.current_stock}</div>
                       <div className="text-[10px]" style={{ color: VIZ.lightText }}>คงเหลือ (ขั้นต่ำ {currentStock.min_stock})</div>
                     </div>

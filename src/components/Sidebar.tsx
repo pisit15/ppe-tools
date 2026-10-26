@@ -126,9 +126,13 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
   // Nav query: keep company_id in URL so pages can read it
   const q = `?company_id=${encodeURIComponent(activeCompanyId)}`;
 
-  const ppeItems: NavItem[] = [
+  const ppeItems: NavItem[] = user?.ppeRole === 'requester' ? [
+    { label: 'ขอเบิก / ยืนยันรับ PPE', href: '/ppe/requests', icon: <Package size={20} /> },
+  ] : [
     { label: 'แดชบอร์ด', href: `/ppe${q}`, icon: <Home size={20} /> },
     { label: 'จัดการสต็อก', href: `/ppe/inventory${q}`, icon: <Package size={20} /> },
+    { label: 'คำขอเบิก PPE', href: `/ppe/requests${q}`, icon: <TrendingDown size={20} /> },
+    { label: 'ผู้ใช้งาน PPE', href: `/ppe/requesters${q}`, icon: <Users size={20} /> },
     { label: 'รับเข้า', href: `/ppe/stock-in${q}`, icon: <TrendingUp size={20} /> },
     { label: 'เบิกออก', href: `/ppe/stock-out${q}`, icon: <TrendingDown size={20} /> },
     { label: 'พนักงาน', href: `/ppe/employees${q}`, icon: <Users size={20} /> },
@@ -219,7 +223,7 @@ export default function Sidebar({ mode = 'ppe' }: SidebarProps) {
           className={`flex min-h-11 w-full items-center ${expanded ? 'gap-3 px-3' : 'justify-center px-2'} rounded-lg py-2 text-sm text-blue-200 hover:bg-blue-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70`}>
           <LogOut size={18} />{expanded && <span>ออกจากระบบ</span>}
         </button>}
-        <Link href="/" aria-label="กลับหน้าหลัก" title={expanded ? undefined : 'กลับหน้าหลัก'} onClick={() => setMobileOpen(false)}
+        <Link href={user?.ppeRole === 'requester' ? '/ppe/requests' : '/'} aria-label="กลับหน้าหลัก" title={expanded ? undefined : 'กลับหน้าหลัก'} onClick={() => setMobileOpen(false)}
           className={`flex min-h-11 items-center ${expanded ? 'gap-3 px-3' : 'justify-center px-2'} rounded-lg py-2 text-sm text-blue-200 hover:bg-blue-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70`}>
           <ArrowLeft size={18} />{expanded && <span>กลับหน้าหลัก</span>}
         </Link>

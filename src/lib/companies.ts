@@ -85,6 +85,7 @@ export type AuthUser = {
   nickname: string;
   position: string;
   role: 'admin' | 'user';
+  ppeRole?: 'manager' | 'requester';
   token?: string; // admin API token, present only for admin logins
   // null/undefined = ทุกระบบ (default เดิม); ['ppe'] = เข้าได้เฉพาะ PPE Inventory
   allowedModules?: string[] | null;

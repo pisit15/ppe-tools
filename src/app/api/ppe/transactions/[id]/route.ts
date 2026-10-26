@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, getSupabaseServer } from '@/lib/supabase';
+import { ppeDatabaseError } from '@/lib/ppe-access';
+import { apiError } from '@/lib/toolsSession';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,12 +38,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .select('*, ppe_products(name, type, image_url)')
       .single();
 
-    if (error) throw error;
+    if (error) ppeDatabaseError(error);
     return NextResponse.json({ data });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error('Error updating transaction:', msg);
-    return NextResponse.json({ error: 'Failed to update transaction', detail: msg }, { status: 500 });
+    return apiError(error);
   }
 }
 
@@ -59,11 +59,9 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) ppeDatabaseError(error);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error('Error deleting transaction:', msg);
-    return NextResponse.json({ error: 'Failed to delete transaction', detail: msg }, { status: 500 });
+    return apiError(error);
   }
 }

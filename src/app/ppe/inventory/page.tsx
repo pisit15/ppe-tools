@@ -1006,6 +1006,7 @@ export default function InventoryPage() {
                         >
                           {current.toLocaleString('th-TH')}
                         </span>
+                        {(stock?.reserved_quantity ?? 0) > 0 && <div className="mt-1 text-[11px] text-blue-700">จอง {stock!.reserved_quantity} · พร้อมเบิก {stock!.available_stock}</div>}
                       </td>
                       <td
                         className="px-6 py-3 text-center text-sm tabular-nums"

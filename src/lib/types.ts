@@ -25,11 +25,14 @@ export type PPEStockSummary = {
   total_in: number;
   total_out: number;
   current_stock: number;
+  reserved_quantity?: number;
+  available_stock?: number;
 };
 
 export type TransactionType = 'stock_in' | 'return' | 'stock_out' | 'borrow';
 
 export type PPETransaction = {
+  ppe_request_id?: string | null;
   id: string;
   company_id: string;
   product_id: string;
@@ -44,6 +47,22 @@ export type PPETransaction = {
   notes: string | null;
   recorded_by: string | null;
   created_at: string;
+};
+
+export type PPERequester = {
+  id: string; company_id: string; username: string; display_name: string;
+  employee_code: string; department: string; is_active: boolean; created_at: string;
+};
+export type PPERequestStatus = 'pending' | 'approved' | 'ready' | 'received' | 'rejected' | 'cancelled';
+export type PPERequestEvent = { id: string; action: string; actor_name: string; quantity: number | null; note: string; created_at: string };
+export type PPERequest = {
+  id: string; company_id: string; requester_id: string; product_id: string; quantity: number;
+  approved_quantity: number; received_quantity: number; status: PPERequestStatus;
+  reason: string; manager_note: string; submission_key: string; created_at: string; updated_at: string;
+  approved_at: string | null; dispatched_at: string | null; received_at: string | null;
+  ppe_products: { name: string; unit: string };
+  ppe_requesters: Pick<PPERequester, 'display_name' | 'employee_code' | 'department'>;
+  ppe_request_events: PPERequestEvent[];
 };
 
 export type PPEEmployee = {

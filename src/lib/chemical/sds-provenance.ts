@@ -8,6 +8,7 @@ export function sdsSourceKey(source: Pick<ChemSubstance, 'sds_file_path' | 'sds_
 }
 
 export function sdsImporter(actor: ToolsActor, method: SdsImport['method']): SdsImport {
+  if (actor.accountTable === 'ppe_requesters') throw new Error('PPE requester cannot import SDS');
   return {
     actor_id: actor.id,
     account_table: actor.accountTable,

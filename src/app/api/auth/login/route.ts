@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     assertSameOrigin(request);
     const { username, password, company_id: requestedCompanyId } = await request.json();
 
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password || username.length > 100 || password.length > 256) {
       return NextResponse.json(
         { success: false, error: 'กรุณาใส่ชื่อผู้ใช้และรหัสผ่าน' },
         { status: 400 }
@@ -46,13 +46,14 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabase();
     // Preserve case to match DB stored usernames; use ilike for case-insensitive lookup.
     const trimmedUsername = username.trim();
+    const exactUsernamePattern = trimmedUsername.replace(/[\\%_]/g, '\\$&');
 
     // 1) Check admin_accounts first (case-insensitive).
     // Fetch all matches — .single() throws on duplicate usernames.
     const { data: adminRows } = await supabase
       .from('admin_accounts')
       .select('*')
-      .ilike('username', trimmedUsername)
+      .ilike('username', exactUsernamePattern)
       .eq('is_active', true);
 
     const adminData = (adminRows || []).find(a => passwordMatches(password, a.password));
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
     const { data: cuRows } = await supabase
       .from('company_users')
       .select('*')
-      .ilike('username', trimmedUsername)
+      .ilike('username', exactUsernamePattern)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
@@ -93,10 +94,17 @@ export async function POST(request: NextRequest) {
       const { data: tuRows } = await supabase
         .from('tools_users')
         .select('*')
-        .ilike('username', trimmedUsername)
+        .ilike('username', exactUsernamePattern)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
       matches = (tuRows || []).filter(r => passwordMatches(password, r.password));
+    }
+
+    if (matches.length === 0) {
+      accountTable = 'ppe_requesters';
+      const { data: ppeRows, error: ppeError } = await supabase.from('ppe_requesters').select('*').eq('username', trimmedUsername.toLowerCase()).eq('is_active', true);
+      if (ppeError) throw ppeError;
+      matches = (ppeRows || []).filter(r => passwordMatches(password, r.password));
     }
 
     if (matches.length === 0) {
@@ -171,7 +179,8 @@ export async function POST(request: NextRequest) {
         nickname: (userData.nickname as string) || '',
         position: (userData.position as string) || '',
         role: 'user',
-        allowedModules: (userData.allowed_modules as string[] | null) ?? null,
+        allowedModules: accountTable === 'ppe_requesters' ? ['ppe'] : (userData.allowed_modules as string[] | null) ?? null,
+        ppeRole: accountTable === 'ppe_requesters' ? 'requester' : 'manager',
       },
     }, userData, accountTable);
   } catch (err) {

@@ -4,7 +4,7 @@ import { getSupabaseServer } from '@/lib/supabase';
 
 export const TOOLS_COOKIE = 'ea_tools_session';
 export const TOOLS_COOKIE_OPTIONS = { httpOnly: true, sameSite: 'lax' as const, secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 12 * 60 * 60 };
-export type AccountTable = 'admin_accounts' | 'company_users' | 'tools_users';
+export type AccountTable = 'admin_accounts' | 'company_users' | 'tools_users' | 'ppe_requesters';
 type Session = { id: string; table: AccountTable; companyId: string; credential: string; exp: number };
 export type ToolsActor = { id: string; accountTable: AccountTable; username: string; companyId: string; isAdmin: boolean; displayName: string; row: Record<string, unknown> };
 export class AccessError extends Error {
@@ -32,7 +32,7 @@ export function verifyToolsSession(token: string | undefined): Session | null {
     const actual = Buffer.from(signature);
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
     const data = JSON.parse(Buffer.from(body, 'base64url').toString()) as Session;
-    if (!['admin_accounts', 'company_users', 'tools_users'].includes(data.table) || !data.id || !data.companyId || !data.credential || !Number.isFinite(data.exp) || data.exp <= Date.now()) return null;
+    if (!['admin_accounts', 'company_users', 'tools_users', 'ppe_requesters'].includes(data.table) || !data.id || !data.companyId || !data.credential || !Number.isFinite(data.exp) || data.exp <= Date.now()) return null;
     return data;
   } catch { return null; }
 }
@@ -42,9 +42,10 @@ export function assertSameOrigin(request: NextRequest) {
   const expected = new URL(request.nextUrl.protocol + '//' + (request.headers.get('host') || request.nextUrl.host)).origin;
   if ((origin && origin !== expected) || request.headers.get('sec-fetch-site') === 'cross-site') throw new AccessError('ไม่อนุญาตคำขอจากเว็บไซต์อื่น');
 }
-export async function requireToolsActor(request: NextRequest): Promise<ToolsActor> {
+export async function requireToolsActor(request: NextRequest, allowPPERequester = false): Promise<ToolsActor> {
   const session = verifyToolsSession(request.cookies.get(TOOLS_COOKIE)?.value);
   if (!session) throw new AccessError('กรุณาเข้าสู่ระบบใหม่', 401);
+  if (session.table === 'ppe_requesters' && !allowPPERequester) throw new AccessError('บัญชีนี้ใช้ได้เฉพาะการขอเบิก PPE');
   if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
     assertSameOrigin(request);
   }

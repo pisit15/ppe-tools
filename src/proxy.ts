@@ -9,7 +9,8 @@
 // every API route re-verifies the session AND the account server-side.
 import { NextResponse, type NextRequest } from 'next/server';
 import { SA_COOKIE, verifySessionToken } from '@/lib/superAdminSession';
-import { requireToolsActor, apiError } from '@/lib/toolsSession';
+import { apiError, TOOLS_COOKIE, verifyToolsSession } from '@/lib/toolsSession';
+import { requirePPEActor, guardLegacyPPE } from '@/lib/ppe-access';
 
 const ADMIN_HOST_PREFIX = 'admin.';
 
@@ -22,6 +23,15 @@ export default async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const isAdminHost = host.startsWith(ADMIN_HOST_PREFIX);
   const local = isLocalHost(host);
+  const toolsSession = verifyToolsSession(request.cookies.get(TOOLS_COOKIE)?.value);
+  if (toolsSession?.table === 'ppe_requesters') {
+    const allowedAPI = ['/api/auth/session', '/api/auth/login', '/api/ppe/catalog', '/api/ppe/requests'];
+    if (pathname.startsWith('/api/') && !allowedAPI.includes(pathname)) return NextResponse.json({ error: 'บัญชีนี้ใช้ได้เฉพาะการขอเบิก PPE' }, { status: 403 });
+    if (!pathname.startsWith('/api/') && !pathname.startsWith('/_next/') && !['/ppe/requests'].includes(pathname) && !pathname.includes('.')) {
+      const url = request.nextUrl.clone(); url.pathname = '/ppe/requests'; url.search = '';
+      return NextResponse.redirect(url);
+    }
+  }
 
   // --- The admin console host -------------------------------------------
   if (isAdminHost) {
@@ -65,7 +75,7 @@ export default async function proxy(request: NextRequest) {
   // Legacy PPE handlers use privileged database access. They must require a
   // current staff account; a dedicated Work Permit contractor cookie is not one.
   if (pathname.startsWith('/api/ppe/')) {
-    try { await requireToolsActor(request); } catch (error) { return apiError(error); }
+    try { const actor = await requirePPEActor(request); await guardLegacyPPE(request, actor); } catch (error) { return apiError(error); }
   }
 
   return NextResponse.next();

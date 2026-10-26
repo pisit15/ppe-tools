@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import { useAuth } from '@/components/AuthProvider';
 import PPELoginPage from '@/components/PPELoginPage';
@@ -10,6 +11,11 @@ import { canAccessModule } from '@/lib/companies';
 export default function PPELayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [loginDone, setLoginDone] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const requesterRedirect = user?.ppeRole === 'requester' && pathname !== '/ppe/requests';
+  useEffect(() => { if (requesterRedirect) router.replace('/ppe/requests'); }, [requesterRedirect, router]);
+  if (requesterRedirect) return <p className="p-6">กำลังเปิดหน้าขอเบิก PPE…</p>;
 
   // Show login page if not authenticated
   if (!user && !loginDone) {
