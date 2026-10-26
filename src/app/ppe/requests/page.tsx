@@ -119,7 +119,7 @@ export default function PPERequestsPage() {
     finally { setBusy(false); }
   }
   if (!company || company === 'all') return <div className="rounded-xl border bg-white p-6 text-slate-900">เลือกบริษัทจากเมนูด้านซ้ายเพื่อจัดการคำขอเบิก PPE</div>;
-  const visibleStock = stock.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
+  const visibleStock = stock.filter(s => s.available_stock > 0 && s.name.toLowerCase().includes(search.toLowerCase()));
   return <div className="min-w-0 space-y-5 text-slate-900">
     <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold">{requester ? 'ขอเบิกและรับอุปกรณ์ PPE' : 'คำขอเบิก PPE'}</h1><p className="mt-1 text-sm text-slate-500">จองเมื่ออนุมัติ · ตัดสต็อกเมื่อผู้ขอเบิกยืนยันรับ</p></div><button type="button" className="flex min-h-11 items-center gap-2 rounded-lg border bg-white px-3 text-sm" disabled={loading || busy} onClick={() => void load()}><RefreshCw size={16} />รีเฟรช</button></header>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
@@ -127,9 +127,10 @@ export default function PPERequestsPage() {
     <div className="flex flex-wrap gap-2"><button className={tab === 'requests' ? button : 'min-h-11 rounded-lg border bg-white px-4 text-sm'} onClick={() => setTab('requests')}>{requester ? 'คำขอของฉัน / ยืนยันรับ' : 'รายการคำขอ'}</button><button className={tab === 'catalog' ? button : 'min-h-11 rounded-lg border bg-white px-4 text-sm'} onClick={() => setTab('catalog')}>{requester ? 'เลือกอุปกรณ์ขอเบิก' : 'สต็อกพร้อมเบิก'}</button></div>
     {loading && <p role="status" className="text-sm text-slate-500">กำลังโหลดข้อมูล…</p>}
     {tab === 'catalog' && <>
+      <p className="text-sm text-slate-600">แสดงเฉพาะอุปกรณ์ที่พร้อมเบิกมากกว่า 0 โดยหักยอดจองแล้ว</p>
       <label className="flex items-center gap-2 rounded-xl border bg-white px-3"><Search size={18} className="text-slate-400" /><input aria-label="ค้นหาอุปกรณ์" placeholder="ค้นหาชื่ออุปกรณ์ / ขนาด" value={search} onChange={e => setSearch(e.target.value)} className="min-h-12 min-w-0 flex-1 bg-transparent text-sm outline-none" /></label>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{visibleStock.map(s => <article key={s.product_id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4"><h2 className="flex items-start gap-2 font-semibold"><Package size={18} className="mt-1 shrink-0 text-blue-600" /><span className="break-words">{s.name}</span></h2><dl className="my-4 grid grid-cols-3 gap-2 text-center"><div><dt className="text-xs text-slate-500">คงเหลือ</dt><dd className="mt-1 text-lg font-semibold">{s.current_stock}</dd></div><div><dt className="text-xs text-slate-500">จองแล้ว</dt><dd className="mt-1 text-lg font-semibold text-amber-700">{s.reserved_quantity}</dd></div><div><dt className="text-xs text-slate-500">พร้อมเบิก</dt><dd className="mt-1 text-lg font-semibold text-blue-700">{Math.max(0, s.available_stock)}</dd></div></dl><div className="flex items-center justify-between gap-2"><span className="text-xs text-slate-500">หน่วย: {unitName(s.unit)}</span>{requester && <button className={button} disabled={busy} onClick={() => { setSelected(s); setQuantity('1'); setReason(''); submissionKey.current = crypto.randomUUID(); setError(''); }}>ขอเบิก</button>}</div></article>)}</div>
-      {!loading && !visibleStock.length && <p className="py-8 text-center text-slate-500">ไม่พบอุปกรณ์</p>}
+      {!loading && !visibleStock.length && <p className="py-8 text-center text-slate-500">{search ? 'ไม่พบอุปกรณ์พร้อมเบิกที่ตรงกับการค้นหา' : 'ขณะนี้ยังไม่มีอุปกรณ์พร้อมเบิก'}</p>}
     </>}
     {tab === 'requests' && <>
       <label className="block max-w-sm text-sm">สถานะคำขอ<select className={`${input} mt-1`} value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="all">ทุกสถานะ</option>{Object.entries(statuses).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>

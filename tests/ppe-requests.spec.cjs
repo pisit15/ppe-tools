@@ -8,6 +8,26 @@ async function login(context,username) {
   expect((await response.json()).success).toBe(true);
 }
 async function post(context,data){return context.request.post('/api/ppe/requests?company_id=amt',{data});}
+test('catalog displays only positive available stock and handles fully reserved and empty results',async({page,context})=>{
+  await login(context,'manager-amt');
+  let available=3;
+  await page.route('**/api/ppe/catalog?*',route=>route.fulfill({json:{data:[
+    {product_id:product,name:'อุปกรณ์พร้อมเบิก',unit:'pair',current_stock:5,reserved_quantity:2,available_stock:available},
+    {product_id:'empty',name:'อุปกรณ์หมด',unit:'pair',current_stock:0,reserved_quantity:0,available_stock:0},
+    {product_id:'reserved',name:'อุปกรณ์จองครบ',unit:'pair',current_stock:5,reserved_quantity:5,available_stock:0},
+  ]}}));
+  await page.goto('/ppe/requests');
+  await page.getByRole('button',{name:'สต็อกพร้อมเบิก',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'อุปกรณ์พร้อมเบิก',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'อุปกรณ์หมด',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'อุปกรณ์จองครบ',exact:true})).toHaveCount(0);
+  await page.getByLabel('ค้นหาอุปกรณ์').fill('อุปกรณ์หมด');
+  await expect(page.getByText('ไม่พบอุปกรณ์พร้อมเบิกที่ตรงกับการค้นหา')).toBeVisible();
+  await page.getByLabel('ค้นหาอุปกรณ์').fill('');
+  available=0;
+  await page.getByRole('button',{name:'รีเฟรช',exact:true}).click();
+  await expect(page.getByText('ขณะนี้ยังไม่มีอุปกรณ์พร้อมเบิก')).toBeVisible();
+});
 test('main user creates PPE-only account; approve/reserve, dispatch, partial receipt and company isolation through real routes and SQL',async({browser,page,context})=>{
   await login(context,'manager-amt');
   await page.goto('/ppe/requesters');
