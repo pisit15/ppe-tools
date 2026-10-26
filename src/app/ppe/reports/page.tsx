@@ -840,7 +840,7 @@ export default function ReportsPage() {
                 const pct = s.min_stock > 0 ? Math.round((s.current_stock / s.min_stock) * 100) : 0;
                 return (
                   <div key={s.product_id} className="flex items-center gap-2">
-                    <span className="w-24 text-[11px] text-gray-600 truncate flex-shrink-0">
+                    <span title={s.name} className="w-24 text-[11px] text-gray-600 truncate flex-shrink-0">
                       {getTypeEmoji(s.type)} {s.name}
                     </span>
                     <div className="flex-1 bg-gray-50 rounded h-4 overflow-hidden">
@@ -1033,7 +1033,7 @@ function DrillDownSection({
                           <div className="space-y-1">
                             {sortedProds.slice(0, 10).map((p, i) => (
                               <div key={i} className="flex items-center gap-2">
-                                <span className="w-32 text-[11px] text-gray-600 truncate">{p.name}</span>
+                                <span title={p.name} className="w-32 text-[11px] text-gray-600 truncate">{p.name}</span>
                                 <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
                                   <div className="h-full rounded" style={{ width: `${(p.qty / sortedProds[0].qty) * 100}%`, background: VIZ.secondary }} />
                                 </div>
@@ -1100,7 +1100,7 @@ function DrillDownSection({
                       <div className="grid md:grid-cols-2 gap-x-6 gap-y-1">
                         {sortedProds.map((p, i) => (
                           <div key={i} className="flex items-center gap-2">
-                            <span className="w-36 text-[11px] text-gray-600 truncate">{p.name}</span>
+                            <span title={p.name} className="w-36 text-[11px] text-gray-600 truncate">{p.name}</span>
                             <div className="flex-1 bg-gray-100 rounded h-2.5 overflow-hidden">
                               <div className="h-full rounded" style={{ width: `${(p.qty / sortedProds[0].qty) * 100}%`, background: VIZ.secondary }} />
                             </div>
@@ -1131,7 +1131,7 @@ function DrillDownSection({
                     className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
                   >
                     <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                    <span className="text-sm font-medium text-gray-900 w-44 text-left truncate">{prod.name}</span>
+                    <span title={prod.name} className="w-36 shrink-0 whitespace-normal break-words text-left text-sm font-medium leading-6 text-gray-900 sm:w-80">{prod.name}</span>
                     <div className="flex-1 bg-gray-50 rounded h-3 overflow-hidden">
                       <div className="h-full rounded" style={{ width: `${(prod.totalOut / maxProd) * 100}%`, background: VIZ.secondary }} />
                     </div>
