@@ -2,13 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
 import { requirePPEActor, ppeCompany, ppeDatabaseError } from '@/lib/ppe-access';
 import { AccessError, apiError } from '@/lib/toolsSession';
+import type { PPERequest } from '@/lib/types';
+
+const selection = '*,ppe_products(name,unit),ppe_requesters(display_name,employee_code,department),ppe_request_events(id,action,actor_name,quantity,note,created_at)';
 
 export async function GET(request: NextRequest) {
   try {
     const actor = await requirePPEActor(request);
     const company = ppeCompany(request, actor);
+    if (request.nextUrl.searchParams.get('format') === 'pdf') {
+      const id = request.nextUrl.searchParams.get('id');
+      if (!id || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) throw new AccessError('เลขที่คำขอไม่ถูกต้อง', 400);
+      const db = getSupabaseServer();
+      let query = db.from('ppe_requests').select(selection).eq('company_id', company).eq('id', id);
+      if (actor.accountTable === 'ppe_requesters') query = query.eq('requester_id', actor.id);
+      const { data, error } = await query.maybeSingle();
+      if (error) throw error;
+      if (!data) throw new AccessError('ไม่พบคำขอหรือไม่มีสิทธิ์', 404);
+      if (!data.approved_at) throw new AccessError('ออกใบจองได้หลังอนุมัติคำขอแล้ว', 409);
+      const { data: settings, error: companyError } = await db.from('company_settings').select('company_name').eq('company_id', company).maybeSingle();
+      if (companyError) throw companyError;
+      const { createReservationPDF } = await import('@/lib/ppe-reservation-pdf');
+      const pdf = await createReservationPDF(data as PPERequest, settings?.company_name || company.toUpperCase());
+      return new Response(new Uint8Array(pdf), { headers: {
+        'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="PPE-Reservation-${id}.pdf"`,
+        'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+      } });
+    }
     const page = Math.floor(Math.max(1, Math.min(10000, Number(request.nextUrl.searchParams.get('page')) || 1)));
-    let query = getSupabaseServer().from('ppe_requests').select('*,ppe_products(name,unit),ppe_requesters(display_name,employee_code,department),ppe_request_events(id,action,actor_name,quantity,note,created_at)', { count: 'exact' }).eq('company_id', company);
+    let query = getSupabaseServer().from('ppe_requests').select(selection, { count: 'exact' }).eq('company_id', company);
     if (actor.accountTable === 'ppe_requesters') query = query.eq('requester_id', actor.id);
     const status = request.nextUrl.searchParams.get('status');
     if (status && status !== 'all') query = query.eq('status', status);

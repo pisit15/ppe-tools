@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test:ppe": "node --test tests/ppe-requests-db.test.cjs tests/ppe-order-calculation.test.cjs tests/ppe-reorder-policy.test.cjs",
+    "test:ppe": "node --test tests/ppe-requests-db.test.cjs tests/ppe-reservation-pdf.test.cjs tests/ppe-order-calculation.test.cjs tests/ppe-reorder-policy.test.cjs",
     "test:ppe:requests": "playwright test --config playwright.ppe-requests.config.cjs",
     "dev": "next dev",
     "build": "next build",

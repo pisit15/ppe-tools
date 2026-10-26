@@ -33,6 +33,7 @@ export default function PPERequestsPage() {
   const [reason, setReason] = useState('');
   const submissionKey = useRef('');
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -82,6 +83,18 @@ export default function PPERequestsPage() {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'บันทึกไม่สำเร็จ');
   }
+  async function exportReservation(row: PPERequest) {
+    setExporting(row.id); setError('');
+    try {
+      const response = await fetch(`/api/ppe/requests?${q}&format=pdf&id=${encodeURIComponent(row.id)}`, { cache: 'no-store' });
+      if (!response.ok) { const result = await response.json(); throw new Error(result.error || 'สร้าง PDF ไม่สำเร็จ'); }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a'); link.href = url; link.download = `PPE-Reservation-${row.id}.pdf`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { setError(e instanceof Error ? e.message : 'สร้าง PDF ไม่สำเร็จ'); }
+    finally { setExporting(null); }
+  }
   async function submit(event: React.FormEvent) {
     event.preventDefault(); if (!selected || busy) return;
     setBusy(true); setError(''); setMessage('');
@@ -127,6 +140,7 @@ export default function PPERequestsPage() {
         <div className="my-3 flex flex-wrap gap-x-6 gap-y-1 text-sm"><span>ขอ <b>{row.quantity}</b></span><span>อนุมัติ <b>{row.approved_quantity}</b></span><span>รับแล้ว <b>{row.received_quantity}</b></span><span>ค้างรับ <b>{['approved','ready'].includes(row.status) ? row.approved_quantity - row.received_quantity : 0}</b> {unitName(row.ppe_products.unit)}</span></div>
         {row.manager_note && <p className="mb-3 text-sm text-slate-600">ผู้ดูแล: {row.manager_note}</p>}
         <div className="flex flex-wrap gap-2">
+          {row.approved_at && <button className="min-h-11 rounded-lg border border-[#4E79A7] px-3 text-sm text-[#4E79A7]" disabled={!!exporting || busy} onClick={() => void exportReservation(row)}>{exporting === row.id ? 'กำลังสร้าง PDF…' : 'Export ใบจอง PDF'}</button>}
           {!requester && row.status === 'pending' && <><button className={button} disabled={busy} onClick={() => openAction(row, 'approve')}>อนุมัติและจองสต็อก</button><button className="min-h-11 rounded-lg border px-3 text-sm text-red-700" onClick={() => openAction(row, 'reject')}>ไม่อนุมัติ</button></>}
           {!requester && row.status === 'approved' && <button className={button} disabled={busy} onClick={() => openAction(row, 'dispatch')}>จัดจ่าย / รอผู้ใช้รับ</button>}
           {requester && row.status === 'ready' && <button className={button} disabled={busy} onClick={() => openAction(row, 'receive')}>ยืนยันรับอุปกรณ์</button>}
