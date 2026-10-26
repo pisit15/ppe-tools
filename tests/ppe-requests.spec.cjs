@@ -1,6 +1,6 @@
 const {test,expect}=require('@playwright/test');
 const {randomUUID}=require('node:crypto');
-const {product,otherProduct}=require('./ppe-requests-fixture.cjs');
+const {product,otherProduct,secondProduct}=require('./ppe-requests-fixture.cjs');
 const password='local-test-password';
 async function login(context,username) {
   const response=await context.request.post('/api/auth/login',{data:{username,password}});
@@ -60,10 +60,11 @@ test('main user creates PPE-only account; approve/reserve, dispatch, partial rec
   expect((await child.request.post('/api/ppe/transactions',{data:{company_id:'amt',product_id:product,quantity:1,transaction_type:'stock_out',unit:'pair'}})).status()).toBe(403);
   await childPage.getByRole('button',{name:'เลือกอุปกรณ์ขอเบิก'}).click();
   await expect(childPage.getByText('สินค้าเฉพาะ AAB')).toHaveCount(0);
-  await childPage.getByRole('button',{name:'ขอเบิก',exact:true}).click();
-  await childPage.getByLabel('จำนวนที่ขอ',{exact:true}).fill('20');
+  await childPage.getByTestId('ppe-catalog-item').filter({hasText:'ถุงมือป้องกันการบาด ขนาด L'}).getByRole('button',{name:'เลือกสินค้า',exact:true}).click();
+  await childPage.getByLabel('จำนวน ถุงมือป้องกันการบาด ขนาด L',{exact:true}).fill('20');
+  await childPage.getByRole('button',{name:'ตรวจตะกร้า / ส่งคำขอ',exact:true}).click();
   await childPage.getByLabel('เหตุผลการขอเบิก').fill('ใช้สำหรับงานคลังสินค้า');
-  await childPage.getByRole('button',{name:'ส่งคำขอ',exact:true}).click();
+  await childPage.getByRole('button',{name:'ส่งคำขอ 1 รายการ',exact:true}).click();
   await expect(childPage.getByRole('status').filter({hasText:'ส่งคำขอแล้ว'})).toBeVisible();
   const request=(await (await child.request.get('/api/ppe/requests?company_id=amt')).json()).data[0];
   const pdfURL=`/api/ppe/requests?company_id=amt&format=pdf&id=${request.id}`;
@@ -127,4 +128,53 @@ test('main user creates PPE-only account; approve/reserve, dispatch, partial rec
   expect((await child.request.get('/api/auth/session')).status()).toBe(401);
   expect((await child.request.get('/api/ppe/catalog')).status()).toBe(401);
   await child.close();await peer.close();await foreign.close();
+});
+
+test('requester can preview images, keep a multi-item cart across search and submit all items once',async({browser,context})=>{
+  await login(context,'manager-amt');
+  const created=await context.request.post('/api/ppe/requesters?company_id=amt',{data:{username:'cart',password,display_name:'ผู้ทดสอบตะกร้า',employee_code:'E003'}});
+  expect(created.status()).toBe(201);
+  const child=await browser.newContext({baseURL:'http://127.0.0.1:4327',viewport:{width:390,height:844}});
+  await login(child,'ppe.amt.cart');
+  await child.route('https://images.example.test/**',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#edf4fb"/><path d="M60 130h110v65H60zm170 0h110v65H230zm-60 15h60M60 130l-20-30m300 30 20-30" stroke="#4e79a7" stroke-width="12" fill="white"/></svg>'}));
+  const page=await child.newPage(); await page.goto('/ppe/requests');
+  await page.getByRole('button',{name:'เลือกอุปกรณ์ขอเบิก'}).click();
+  await page.getByRole('button',{name:'ดูรูป แว่นตานิรภัย สีใส',exact:true}).click();
+  await expect(page.getByRole('dialog').getByRole('img',{name:'แว่นตานิรภัย สีใส',exact:true})).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0);
+  for(const [name,quantity] of [['ถุงมือป้องกันการบาด ขนาด L','2'],['แว่นตานิรภัย สีใส','3']]) {
+    await page.getByTestId('ppe-catalog-item').filter({hasText:name}).getByRole('button',{name:'เลือกสินค้า',exact:true}).click();
+    await page.getByLabel(`จำนวน ${name}`,{exact:true}).fill(quantity);
+  }
+  await page.getByLabel('ค้นหาอุปกรณ์').fill('แว่น');
+  await expect(page.getByText('เลือกแล้ว 2 รายการ',{exact:true})).toBeVisible();
+  await page.getByLabel('ค้นหาอุปกรณ์').fill('');
+  await page.evaluate(()=>window.scrollTo(0,0));
+  await page.screenshot({path:'test-results/ppe-cart-mobile.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
+  await page.setViewportSize({width:1440,height:1000});
+  await page.screenshot({path:'test-results/ppe-cart-desktop.png'});
+  await page.getByRole('button',{name:'ตรวจตะกร้า / ส่งคำขอ'}).click();
+  await page.getByLabel('เหตุผลการขอเบิก').fill('ใช้งานซ่อมบำรุง');
+  await page.getByLabel('จำนวนในตะกร้า แว่นตานิรภัย สีใส').fill('11');
+  await expect(page.getByRole('button',{name:'ส่งคำขอ 2 รายการ',exact:true})).toBeDisabled();
+  await page.getByLabel('จำนวนในตะกร้า แว่นตานิรภัย สีใส').fill('3');
+  await expect(page.getByRole('button',{name:'ส่งคำขอ 2 รายการ',exact:true})).toBeEnabled();
+  await page.screenshot({path:'test-results/ppe-cart-review.png'});
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.getByRole('dialog').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  await page.screenshot({path:'test-results/ppe-cart-review-mobile.png'});
+  const before=(await (await child.request.get('/api/ppe/catalog')).json()).data;
+  const outgoing=page.waitForRequest(r=>r.url().includes('/api/ppe/requests?') && r.method()==='POST');
+  await page.getByRole('button',{name:'ส่งคำขอ 2 รายการ',exact:true}).click();
+  const payload=(await outgoing).postDataJSON();
+  await expect(page.getByRole('status').filter({hasText:'ส่งคำขอแล้ว 2 รายการ'})).toBeVisible();
+  const saved=(await (await child.request.get('/api/ppe/requests')).json()).data;
+  expect(saved).toHaveLength(2); expect(saved.every(r=>r.status==='pending')).toBe(true);
+  expect(saved.find(r=>r.product_id===product).quantity).toBe(2);
+  expect(saved.find(r=>r.product_id===secondProduct).quantity).toBe(3);
+  expect((await post(child,payload)).ok()).toBe(true);
+  expect((await (await child.request.get('/api/ppe/requests')).json()).data).toHaveLength(2);
+  expect((await (await child.request.get('/api/ppe/catalog')).json()).data).toEqual(before);
+  await child.close();
 });

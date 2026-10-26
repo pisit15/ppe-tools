@@ -18,6 +18,7 @@ before(async () => {
   await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/001_ppe_tables.sql'), 'utf8'));
   await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261026020248_ppe_request_workflow.sql'), 'utf8'));
   await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261026020729_ppe_private_stock_view.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261026024306_ppe_request_batch.sql'), 'utf8'));
   product = randomUUID(); otherProduct = randomUUID(); person = randomUUID(); peer = randomUUID(); otherPerson = randomUUID();
   await db.query(`insert into ppe_products(id,company_id,name,type) values ($1,'amt','ถุงมือ L','ppe'),($2,'aab','AAB only','ppe')`, [product, otherProduct]);
   for (const [id, company, code] of [[person,'amt','001'],[peer,'amt','002'],[otherPerson,'aab','003']]) {
@@ -116,4 +117,25 @@ test('Data API roles cannot read PPE identities, stock or requests or execute wo
     assert.equal((await db.query('select has_table_privilege(\'service_role\',$1,\'SELECT,INSERT,UPDATE,DELETE\') as ok',[table])).rows[0].ok,true);
     assert.equal((await db.query('select relrowsecurity from pg_class where oid=$1::regclass',[table])).rows[0].relrowsecurity,true);
   }
+});
+
+test('batch submissions are atomic, company scoped and idempotent without reserving stock',async()=>{
+  const second=randomUUID();
+  await db.query(`insert into ppe_products(id,company_id,name,type) values($1,'amt','แว่นตา','ppe')`,[second]);
+  await db.query(`insert into ppe_transactions(company_id,product_id,transaction_type,quantity,unit) values('amt',$1,'stock_in',3,'piece')`,[second]);
+  const batch=(items,actor=person,company='amt',table='ppe_requesters')=>db.query('select ppe_request_batch($1,$2,$3,$4::jsonb,$5) as result',[table,actor,company,JSON.stringify(items),'ขออุปกรณ์หลายรายการ']);
+  const first={product_id:product,quantity:2,submission_key:randomUUID()};
+  const next={product_id:second,quantity:2,submission_key:randomUUID()};
+  const before=await stock();
+  await assert.rejects(batch([first,{...next,quantity:4}]),/พร้อมเบิก/);
+  assert.equal((await db.query('select count(*)::int as n from ppe_requests where submission_key=$1',[first.submission_key])).rows[0].n,0);
+  await assert.rejects(batch([first,{...next,product_id:otherProduct}]),/พร้อมเบิก|บริษัท/);
+  await assert.rejects(batch([first,first]),/ซ้ำ/);
+  await assert.rejects(batch([first,next],person,'aab'),/บริษัท/);
+  await assert.rejects(batch([first,next],'1','amt','company_users'),/ผู้ขอเบิก/);
+  const saved=(await batch([first,next])).rows[0].result;
+  assert.equal(saved.length,2);
+  assert.deepEqual((await batch([first,next])).rows[0].result.map(r=>r.id),saved.map(r=>r.id));
+  assert.deepEqual(await stock(),before);
+  for(const role of ['anon','authenticated']) assert.equal((await db.query("select has_function_privilege($1,'ppe_request_batch(text,text,text,jsonb,text)','EXECUTE') as ok",[role])).rows[0].ok,false);
 });

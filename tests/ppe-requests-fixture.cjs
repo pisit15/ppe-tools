@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const root = path.join(__dirname,'..');
 const product = '11111111-1111-4111-8111-111111111111';
 const otherProduct = '22222222-2222-4222-8222-222222222222';
+const secondProduct = '33333333-3333-4333-8333-333333333333';
 const ident = x => { if(!/^[a-z_][a-z0-9_]*$/.test(x)) throw new Error('Invalid identifier'); return `"${x}"`; };
 async function createDb() {
   const db = new PGlite();
@@ -18,11 +19,13 @@ async function createDb() {
     create table ppe_order_settings(company_id text); create table ppe_order_remarks(id integer);
     insert into company_settings values('amt','AMT'),('aab','AAB');`);
   await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/001_ppe_tables.sql'),'utf8'));
-  for(const file of ['20261023110422_ppe_product_reorder_policy.sql','20261026020248_ppe_request_workflow.sql','20261026020729_ppe_private_stock_view.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',file),'utf8'));
+  for(const file of ['20261023110422_ppe_product_reorder_policy.sql','20261026020248_ppe_request_workflow.sql','20261026020729_ppe_private_stock_view.sql','20261026024306_ppe_request_batch.sql']) await db.exec(fs.readFileSync(path.join(root,'supabase/migrations',file),'utf8'));
   const hash = await bcrypt.hash('local-test-password',4);
   await db.query(`insert into company_users(username,password,company_id,display_name) values('manager-amt',$1,'amt','ผู้ดูแล AMT'),('manager-aab',$1,'aab','ผู้ดูแล AAB')`,[hash]);
   await db.query(`insert into ppe_products(id,company_id,name,type,unit) values($1,'amt','ถุงมือป้องกันการบาด ขนาด L','gloves','pair'),($2,'aab','สินค้าเฉพาะ AAB','gloves','pair')`,[product,otherProduct]);
   await db.query(`insert into ppe_transactions(company_id,product_id,transaction_type,quantity,unit) values('amt',$1,'stock_in',100,'pair')`,[product]);
+  await db.query(`insert into ppe_products(id,company_id,name,type,unit,image_url) values($1,'amt','แว่นตานิรภัย สีใส','glasses','piece','https://images.example.test/safety-glasses.png')`,[secondProduct]);
+  await db.query(`insert into ppe_transactions(company_id,product_id,transaction_type,quantity,unit) values('amt',$1,'stock_in',10,'piece')`,[secondProduct]);
   await db.exec(`grant select on company_users,tools_users,admin_accounts,company_settings to service_role; grant usage on schema public to service_role;`);
   return db;
 }
@@ -39,6 +42,9 @@ async function startFixture(port=4328) {
         if(url.pathname==='/rest/v1/rpc/ppe_request_action') {
           const keys=['p_actor_table','p_actor_id','p_company','p_action','p_request_id','p_product_id','p_quantity','p_note','p_key'];
           return {data:(await tx.query(`select ppe_request_action(${keys.map((_,i)=>'$'+(i+1)).join(',')}) as result`,keys.map(k=>body[k]))).rows[0].result};
+        }
+        if(url.pathname==='/rest/v1/rpc/ppe_request_batch') {
+          return {data:(await tx.query('select ppe_request_batch($1,$2,$3,$4::jsonb,$5) as result',[body.p_actor_table,body.p_actor_id,body.p_company,JSON.stringify(body.p_items),body.p_note])).rows[0].result};
         }
         const tableName=url.pathname.split('/')[3]; const table=ident(tableName);
         const params=[], predicates=[];
@@ -83,5 +89,5 @@ async function startFixture(port=4328) {
   console.log('PPE local PostgreSQL fixture ready');
   return {db,server};
 }
-module.exports={createDb,startFixture,product,otherProduct};
+module.exports={createDb,startFixture,product,otherProduct,secondProduct};
 if(require.main===module)startFixture().catch(e=>{console.error(e);process.exit(1);});

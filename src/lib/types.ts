@@ -54,6 +54,7 @@ export type PPERequester = {
   employee_code: string; department: string; is_active: boolean; created_at: string;
 };
 export type PPERequestStatus = 'pending' | 'approved' | 'ready' | 'received' | 'rejected' | 'cancelled';
+export type PPERequestBatchItem = { product_id: string; quantity: number; submission_key: string };
 export type PPERequestEvent = { id: string; action: string; actor_name: string; quantity: number | null; note: string; created_at: string };
 export type PPERequest = {
   id: string; company_id: string; requester_id: string; product_id: string; quantity: number;
