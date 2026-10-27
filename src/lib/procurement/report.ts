@@ -1,5 +1,6 @@
 // Vendor spend reports for a period and spend category. Pure (no I/O): the API routes pass in the cached dataset.
 import { prKey, vendorId, vendorSummaries } from './analysis';
+import { canonicalCurrency } from './comparability';
 import { SPEND_CATS, type SpendCat } from './categories';
 import { inRange, periodInfo, yearRange, type PeriodSel, type Range } from './period';
 import type { CatStat, ProcMeta, ProcPoLine, ProcPrSummary, ProcQuote, VendorRow, VendorSummary, VendorsResp, YearCats } from './types';
@@ -11,6 +12,27 @@ export type ReportInput = {
 
 const vk = (name: string) => vendorId(name);
 const round2 = (v: number) => Math.round(v * 100) / 100;
+const isThb = (line: ProcPoLine) => canonicalCurrency(line.currency) === 'THB';
+function currencyOmissions(lines: ProcPoLine[]) {
+  let foreign = 0, unknown = 0;
+  for (const line of lines) {
+    const currency = canonicalCurrency(line.currency);
+    if (!currency) unknown++;
+    else if (currency !== 'THB') foreign++;
+  }
+  return { foreign, unknown };
+}
+
+/** Preserve all vendors and document counts; only verified THB contributes to baht totals. */
+function thbAmounts(vendors: VendorSummary[], lines: ProcPoLine[]) {
+  const totals = new Map<string, number>();
+  for (const line of lines) if (line.vendor && isThb(line)) {
+    const key = vk(line.vendor);
+    totals.set(key, (totals.get(key) ?? 0) + (Number(line.subtotal) || 0));
+  }
+  return vendors.map(v => ({ ...v, po_amount: round2(totals.get(vk(v.vendor)) ?? 0) }))
+    .sort((a, b) => b.po_amount - a.po_amount || b.quote_count - a.quote_count);
+}
 
 function slicer(d: ReportInput, cat: SpendCat | null) {
   const live = d.po.filter(l => l.po_state !== 'cancel');
@@ -86,29 +108,40 @@ export function vendorReport(d: ReportInput, sel: PeriodSel, cat: SpendCat | nul
   const s = slicer(d, cat);
   const curPo = s.po(info.range);
   const prevPo = info.prev ? s.po(info.prev) : null;
-  const cur = vendorSummaries(d.prs, curPo, s.quotes(info.range), s.live);
-  const prev = info.prev && prevPo ? vendorSummaries(d.prs, prevPo, s.quotes(info.prev), s.live) : null;
+  const cur = thbAmounts(vendorSummaries(d.prs, curPo, s.quotes(info.range), s.live), curPo);
+  const prev = info.prev && prevPo ? thbAmounts(vendorSummaries(d.prs, prevPo, s.quotes(info.prev), s.live), prevPo) : null;
   const rank = ranks(cur), prevRank = prev ? ranks(prev) : null;
   const prevAmt = new Map((prev ?? []).map(v => [vk(v.vendor), v.po_amount]));
-  const yearly = yearlyByVendor(s.po(null), years);
+  const yearly = yearlyByVendor(s.po(null).filter(isThb), years);
   const firstPo = firstPoByVendor(s.live);
+  const curQuotes = s.quotes(info.range);
+  const stateByPr = new Map(d.prs.map(p => [prKey(p.pr_no, p.requester), p.state]));
+  const pendingByVendor = new Map<string, Set<string>>();
+  for (const q of curQuotes) {
+    const name = q.vendor_group || q.vendor;
+    const pr = prKey(q.pr_no, q.requester);
+    if (!name || !['draft', 'to_approve', 'approved'].includes(stateByPr.get(pr) ?? '')) continue;
+    const key = vk(name);
+    const pending = pendingByVendor.get(key) ?? new Set<string>();
+    pending.add(pr);
+    pendingByVendor.set(key, pending);
+  }
   // "new vendor" only means something when the data covers time before the period
   const canBeNew = !!info.range && !!d.meta.coverage.po && d.meta.coverage.po < info.range.from;
   const vendors: VendorRow[] = cur.map(v => {
     const k = vk(v.vendor);
     const first = firstPo.get(k) ?? null;
     return {
-      ...v, rank: rank.get(k) ?? null, prev_amount: prev ? prevAmt.get(k) ?? 0 : null, prev_rank: prevRank?.get(k) ?? null,
-      first_po: first, is_new: canBeNew && v.po_amount > 0 && !!first && first >= info.range!.from, yearly: (yearly.get(k) ?? years.map(() => 0)).map(round2),
+      ...v, pending_prs: pendingByVendor.get(k)?.size ?? 0, rank: rank.get(k) ?? null, prev_amount: prev ? prevAmt.get(k) ?? 0 : null, prev_rank: prevRank?.get(k) ?? null,
+      first_po: first, is_new: canBeNew && v.po_count > 0 && !!first && first >= info.range!.from, yearly: (yearly.get(k) ?? years.map(() => 0)).map(round2),
     };
   });
 
-  const amount = round2(curPo.reduce((t, l) => t + (Number(l.subtotal) || 0), 0));
+  const amount = round2(curPo.filter(isThb).reduce((t, l) => t + (Number(l.subtotal) || 0), 0));
   const withPo = vendors.filter(v => v.po_amount > 0).sort((a, b) => b.po_amount - a.po_amount);
-  const curQuotes = s.quotes(info.range);
   const totals = {
-    amount, prev: prevPo ? round2(prevPo.reduce((t, l) => t + (Number(l.subtotal) || 0), 0)) : null,
-    vendors: withPo.length, prev_vendors: prev ? prev.filter(v => v.po_amount > 0).length : null,
+    amount, prev: prevPo ? round2(prevPo.filter(isThb).reduce((t, l) => t + (Number(l.subtotal) || 0), 0)) : null,
+    vendors: vendors.filter(v => v.po_count > 0).length, prev_vendors: prev ? prev.filter(v => v.po_count > 0).length : null,
     new_vendors: canBeNew ? vendors.filter(v => v.is_new).length : null,
     quotes: curQuotes.length, quoted_prs: new Set(curQuotes.map(q => prKey(q.pr_no, q.requester))).size,
     top10_share: amount > 0 ? withPo.slice(0, 10).reduce((t, v) => t + v.po_amount, 0) / amount : null,
@@ -119,25 +152,26 @@ export function vendorReport(d: ReportInput, sel: PeriodSel, cat: SpendCat | nul
   const matrix: YearCats[] = years.map(y => {
     const byCat: Partial<Record<SpendCat, number>> = {};
     let total = 0;
-    for (const l of allPo.po(yearRange(y, d.meta.as_of))) {
+    for (const l of allPo.po(yearRange(y, d.meta.as_of)).filter(isThb)) {
       const c = d.poCat.get(l.odoo_id) ?? 'other';
       byCat[c] = round2((byCat[c] || 0) + (Number(l.subtotal) || 0));
       total += Number(l.subtotal) || 0;
     }
     return { year: y, total: round2(total), byCat };
   });
-  const cats = catStats(allPo.po(info.range), info.prev ? allPo.po(info.prev) : null, d.poCat);
+  const cats = catStats(allPo.po(info.range).filter(isThb), info.prev ? allPo.po(info.prev).filter(isThb) : null, d.poCat);
 
   let monthly: VendorsResp['monthly'] = null;
   if (sel !== 'all' && info.range) {
     const lastMonth = Number(info.range.to.slice(5, 7)) - 1;
     const prevYearPo = info.prev ? s.po(yearRange(info.prev.year, d.meta.as_of)) : null;
     monthly = {
-      cur: cumulativeByMonth(curPo, sel), prev: prevYearPo ? cumulativeByMonth(prevYearPo, info.prev!.year) : null,
+      cur: cumulativeByMonth(curPo.filter(isThb), sel), prev: prevYearPo ? cumulativeByMonth(prevYearPo.filter(isThb), info.prev!.year) : null,
       prevSame: totals.prev, lastMonth,
     };
   }
-  return { sel, cat, years, totals, vendors, cats, matrix, monthly };
+  return { sel, cat, years, totals, vendors, cats, matrix, monthly,
+    currency_omissions: { period: currencyOmissions(curPo), all: currencyOmissions(allPo.po(null)) } };
 }
 
 /** One vendor: its row in the period (null when inactive), its all-time row (with the yearly trend) and its spend by category. */
@@ -148,6 +182,8 @@ export function vendorDetail(d: ReportInput, sel: PeriodSel, key: string) {
   const info = periodInfo(sel, d.meta, 'po');
   const s = slicer(d, null);
   const mine = (r: Range | null) => s.po(r).filter(l => vk(l.vendor) === key);
-  const cats = catStats(mine(info.range), info.prev ? mine(info.prev) : null, d.poCat);
-  return { summary, overall, years: report.years, cats };
+  const periodLines = mine(info.range);
+  const cats = catStats(periodLines.filter(isThb), info.prev ? mine(info.prev).filter(isThb) : null, d.poCat);
+  return { summary, overall, years: report.years, cats,
+    currency_omissions: { period: currencyOmissions(periodLines), all: currencyOmissions(mine(null)) } };
 }

@@ -138,7 +138,7 @@ export function pricePoints(po: ProcPoLine[], items: ProcQuoteItem[], quotes: Ma
   return out;
 }
 
-export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string; group?: string; includeDuplicates?: boolean; limit?: number }): SearchResult {
+export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string; group?: string; includeDuplicates?: boolean; limit?: number; offset?: number; tax?: string; basis?: string }): SearchResult {
   const terms = queryTerms(q);
   const limit = Math.max(0, opts.limit ?? 600);
   const text = (p: PricePoint) => `${p.item} ${p.detail} ${p.vendor} ${p.ref} ${p.pr_no}`;
@@ -150,6 +150,8 @@ export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string
     relaxed = hits.length > 0;
   }
   if (!opts.includeDuplicates) hits = hits.filter(p => !p.duplicate);
+  if (opts.tax) hits = hits.filter(p => (p.tax_basis && ['ex_vat', 'inc_vat'].includes(p.tax_basis) ? p.tax_basis : 'unknown') === opts.tax);
+  if (opts.basis) hits = hits.filter(p => (p.price_basis && ['unit', 'month', 'year', 'once'].includes(p.price_basis) ? p.price_basis : 'unknown') === opts.basis);
   const unitCount = new Map<string, number>();
   for (const p of hits) {
     const unit = canonicalUnit(p.unit) || '(ไม่ระบุ)';
@@ -194,7 +196,7 @@ export function searchPrices(all: PricePoint[], q: string, opts: { unit?: string
     query: q,
     relaxed,
     units: [...unitCount.entries()].map(([unit, count]) => ({ unit, count })).sort((a, b) => b.count - a.count),
-    points: hits.slice(0, limit),
+    points: hits.slice(Math.max(0, opts.offset || 0), Math.max(0, opts.offset || 0) + limit),
     total: hits.length,
     match_total,
     groups: comparisonGroups.map(g => g.group),

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { PR_STATE_LABEL, type CatStat, type VendorDetailResp, type VendorRow, type VendorsResp } from '@/lib/procurement/types';
+import { PR_STATE_LABEL, type CatStat, type VendorCurrencyOmissions, type VendorDetailResp, type VendorRow, type VendorsResp } from '@/lib/procurement/types';
 import { SPEND_CATS, SPEND_CAT_LABEL, isSpendCat, type SpendCat } from '@/lib/procurement/categories';
 import { be, pctChange, periodInfo, thaiDay, type PeriodSel } from '@/lib/procurement/period';
 import { taxLabel, unitPriceBasisLabel } from '@/lib/procurement/comparability';
@@ -25,6 +25,15 @@ const share = (part: number, whole: number) => (whole > 0 ? Math.round((part / w
 /** share as text: "<1" instead of a misleading "0" for small but real amounts */
 const shareText = (part: number, whole: number) => (part > 0 && share(part, whole) === 0 ? '<1' : String(share(part, whole)));
 const periodName = (sel: PeriodSel, partial: boolean, asOf: string) => (sel === 'all' ? 'ทุกปี' : `ปี ${be(sel)}${partial ? ` (ถึง ${thaiDay(asOf, false)})` : ''}`);
+
+function CurrencyNotice({ omissions, detail = false }: { omissions: VendorCurrencyOmissions; detail?: boolean }) {
+  const { period, all } = omissions;
+  const allOmitted = all.foreign + all.unknown;
+  return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="note">
+    <p><strong>ขอบเขตยอดเงินและอันดับ:</strong> รวมเฉพาะบรรทัด PO สกุลเงินบาท (THB) ที่ระบุชัดเจน ไม่มีการแปลงสกุลเงิน จำนวน PO และใบเสนอราคายังคงนับทุกสกุลเงิน</p>
+    {allOmitted > 0 && <p className="mt-1">ไม่นำมารวมในยอดเงินบาท {detail ? 'ของผู้ขายนี้' : 'ทุกปี ทุกหมวด'}: ต่างสกุล {int(all.foreign)} บรรทัด · ไม่ยืนยันสกุลเงิน {int(all.unknown)} บรรทัด{period.foreign + period.unknown !== allOmitted ? ` (ช่วงและหมวดที่เลือก: ${int(period.foreign + period.unknown)} บรรทัด)` : ''} · ตรวจรายการและสกุลเงินต้นฉบับได้ในรายละเอียดผู้ขายหรือ PR</p>}
+  </div>;
+}
 
 export default function VendorsPage() {
   const name = useSearchParams().get('name');
@@ -78,6 +87,7 @@ function VendorOverview() {
       {loading && !data && <Loading />}
       {data && (
         <div id={`vendor-panel-${tab}`} role="tabpanel" aria-labelledby={`vendor-tab-${tab}`} className="space-y-4 transition-opacity" style={{ opacity: loading ? 0.5 : 1 }} aria-busy={loading}>
+          <CurrencyNotice omissions={data.currency_omissions} />
           {tab === 'directory' ? <>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm" style={{ color: VIZ.lightText }}>พบ {int(data.vendors.length)} ราย · มี PO {int(data.totals.vendors)} ราย · {int(data.totals.quotes)} ใบเสนอราคา</p>
@@ -115,7 +125,7 @@ function Overview({ data, sel, cat, onYear, onCat }: {
     headline = `${SPEND_CAT_LABEL[cat]} ${name}: ยอด PO ${shortBaht(t.amount)} บาท${change ? ` — ${change}` : ''}`;
     sub = top ? `ผู้ขาย ${int(t.vendors)} ราย · รายใหญ่สุด ${shortVendor(top.vendor)} ${share(top.po_amount, t.amount)}%` : 'ไม่มี PO ในหมวดนี้ช่วงนี้';
   } else if (sel === 'all') {
-    headline = years.length ? `${years.length} ปี (${be(years[0])}–${be(years[years.length - 1])}) ยอด PO รวม ${shortBaht(t.amount)} บาท จากผู้ขาย ${int(t.vendors)} ราย` : 'ยังไม่มีข้อมูล PO ในช่วงนี้';
+    headline = years.length ? `${years.length} ปี (${be(years[0])}–${be(years[years.length - 1])}) ยอด PO สกุลบาท ${shortBaht(t.amount)} บาท จากผู้ขาย ${int(withPo.length)} ราย` : 'ยังไม่มีข้อมูล PO ในช่วงนี้';
     if (topCat && share(topCat.amount, catTotal) >= 40) sub = `${topCat.cat === 'other' ? 'หมวดอื่น ๆ' : SPEND_CAT_LABEL[topCat.cat]} คิดเป็น ${share(topCat.amount, catTotal)}% ของทั้งหมด — กดชื่อหมวดในตารางเพื่อดูผู้ขายของหมวดนั้น`;
   } else {
     headline = `${name} ยอด PO ${shortBaht(t.amount)} บาท${change ? ` — ${change}` : ''}`;
@@ -128,7 +138,7 @@ function Overview({ data, sel, cat, onYear, onCat }: {
   }
 
   const prevLabel = info.prev ? `ปี ${be(info.prev.year)}` : '';
-  const quoteOnly = vendors.filter(v => !v.po_amount && v.quote_count).length;
+  const quoteOnly = vendors.filter(v => !v.po_count && v.quote_count).length;
   return (
     <>
       <Card>
@@ -141,7 +151,7 @@ function Overview({ data, sel, cat, onYear, onCat }: {
           sub={hasPrev ? <><Delta cur={t.amount} prev={t.prev} /> · {prevLabel} ช่วงเดียวกัน {shortBaht(t.prev ?? 0)}</> : `PO ${int(vendors.reduce((s, v) => s + v.po_count, 0))} ฉบับ`} />
         <Kpi label="ผู้ขายที่ได้ PO" value={int(t.vendors)} color={VIZ.text}
           sub={t.new_vendors !== null ? `รายใหม่ ${int(t.new_vendors)} ราย${t.prev_vendors !== null ? ` · ${prevLabel} ${int(t.prev_vendors)} ราย` : ''}` : quoteOnly ? `เสนอราคาแต่ยังไม่ได้ PO อีก ${int(quoteOnly)} ราย` : undefined} />
-        {t.vendors > 10
+        {withPo.length > 10
           ? <Kpi label="10 รายแรกครองยอด" value={t.top10_share !== null ? `${Math.round(t.top10_share * 100)}%` : '–'} color={VIZ.secondary}
               sub={top ? `รายใหญ่สุด ${shortVendor(top.vendor)} ${share(top.po_amount, t.amount)}%` : undefined} />
           : <Kpi label="รายใหญ่สุดครองยอด" value={top ? `${share(top.po_amount, t.amount)}%` : '–'} color={VIZ.secondary}
@@ -233,7 +243,7 @@ function TopVendors({ rows, total, sel, cat, hasPrev, prevLabel }: { rows: Vendo
     <Card>
       <ChartTitle
         title={`${shortVendor(lead.vendor)} ได้ยอดสูงสุด ${share(lead.po_amount, total)}% · 10 รายแรกรวม ${share(cum, total)}%`}
-        sub={`ผู้ขาย 10 อันดับแรก${cat ? ` หมวด${SPEND_CAT_LABEL[cat]}` : ''} ${sel === 'all' ? 'ทุกปี' : `ปี ${be(sel)}`} · แท่ง = ยอด PO${hasPrev ? ` · ขีดดำ = ${prevLabel} ช่วงเดียวกัน` : ''} · ผู้ขายที่ยอดสูงคือจุดที่การต่อรองหรือทำสัญญาระยะยาวคุ้มที่สุด`} />
+        sub={`ผู้ขาย 10 อันดับแรก${cat ? ` หมวด${SPEND_CAT_LABEL[cat]}` : ''} ${sel === 'all' ? 'ทุกปี' : `ปี ${be(sel)}`} · แท่ง = ยอด PO สกุลบาท${hasPrev ? ` · ขีดดำ = ${prevLabel} ช่วงเดียวกัน` : ''} · ผู้ขายยอดสูงอาจเป็นกลุ่มที่ควรพิจารณาเจรจาเพิ่มเติม โดยตรวจเงื่อนไขสัญญาประกอบ`} />
       <RankBars ariaLabel="ยอด PO รายผู้ขาย 10 อันดับแรก"
         rows={top10.map((v, i) => ({
           key: v.vendor, rank: i + 1, label: <VendorLink name={v.vendor} short />, title: v.vendor,
@@ -262,6 +272,7 @@ function VendorTable({ vendors, years, sel, hasPrev }: { vendors: VendorRow[]; y
     <Card className="!p-0 overflow-hidden">
       <div className="space-y-2 px-4 pt-4 md:px-6">
         <ChartTitle title={`ผู้ขายทั้งหมด ${int(vendors.length)} ราย`} sub="รวมผู้ขายที่ส่งใบเสนอราคาแต่ยังไม่ได้ PO · กดชื่อเพื่อดูประวัติราคาและ PR" />
+        <p className="text-xs" style={{ color: VIZ.lightText }}>PR เสนอราคาและพบ PO นับเมื่อพบชื่อผู้ขายเดียวกันใน PR เดียวกัน ไม่ยืนยันว่าตรงกับรายการในใบเสนอราคา · PR ที่ยังไม่พบ PO ผู้ขายรายนี้อาจกำลังดำเนินการหรือไม่ได้รับเลือก</p>
         <input type="search" value={text} onChange={e => { setText(e.target.value); setPage(0); }} placeholder="ค้นหาชื่อผู้ขาย หรือสินค้าที่ขายบ่อย" aria-label="ค้นหาผู้ขาย" className={inputClass} />
       </div>
       <div className="mt-3 overflow-x-auto">
@@ -269,13 +280,13 @@ function VendorTable({ vendors, years, sel, hasPrev }: { vendors: VendorRow[]; y
           <thead style={{ background: VIZ.bg }}>
             <tr>
               <SortHeader label="ผู้ขาย" k="vendor" sort={sort} onSort={onSort} />
-              <SortHeader label={sel === 'all' ? 'ยอด PO รวม' : `ยอด PO ปี ${be(sel)}`} k="po_amount" sort={sort} onSort={onSort} align="right" />
+              <SortHeader label={sel === 'all' ? 'ยอด PO สกุลบาท' : `ยอด PO สกุลบาท ปี ${be(sel)}`} k="po_amount" sort={sort} onSort={onSort} align="right" />
               {hasPrev && <SortHeader label="เทียบปีก่อน" k="delta" sort={sort} onSort={onSort} align="right" />}
               <th scope="col" className="px-3 py-2 text-left font-semibold whitespace-nowrap">รายปี {span}</th>
               <SortHeader label="PO" k="po_count" sort={sort} onSort={onSort} align="right" />
               <SortHeader label="PR" k="pr_count" sort={sort} onSort={onSort} align="right" />
               <SortHeader label="ใบเสนอราคา" k="quote_count" sort={sort} onSort={onSort} align="right" />
-              <SortHeader label="เสนอแล้วได้งาน" k="win" sort={sort} onSort={onSort} align="right" />
+              <SortHeader label="PR เสนอราคาและพบ PO" k="win" sort={sort} onSort={onSort} align="right" />
               <SortHeader label="ล่าสุด" k="last_date" sort={sort} onSort={onSort} align="right" />
             </tr>
           </thead>
@@ -329,25 +340,28 @@ function VendorDetail({ name }: { name: string }) {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">{overall.vendor}</h2>
         {data.names.length > 1 && <p className="mt-1 text-xs" style={{ color: VIZ.lightText }}>ชื่อที่พบในเอกสาร: {data.names.join(' · ')}</p>}
-        <p className="mt-1 text-xs" style={{ color: VIZ.lightText }}>ได้ PO ครั้งแรก {thaiDate(overall.first_po)} · รวมทุกปี {shortBaht(overall.po_amount)} บาท จาก {int(overall.po_count)} PO</p>
+        <p className="mt-1 text-xs" style={{ color: VIZ.lightText }}>ได้ PO ครั้งแรก {thaiDate(overall.first_po)} · ยอดสกุลบาททุกปี {shortBaht(overall.po_amount)} บาท · {int(overall.po_count)} PO ทุกสกุลเงิน</p>
       </div>
       <PeriodBar meta={meta} sel={barSel} onChange={s => { setSel(s); setPage(0); }} measure="po">
         {loading && <span className="text-xs" style={{ color: VIZ.lightText }} role="status">กำลังโหลด…</span>}
       </PeriodBar>
+      <CurrencyNotice omissions={data.currency_omissions} detail />
       <div className="space-y-4 transition-opacity" style={{ opacity: loading ? 0.5 : 1 }} aria-busy={loading}>
 
       {!v ? (
         <Card><p className="text-sm">ไม่มี PO หรือใบเสนอราคาของผู้ขายรายนี้ใน{pname} — <button className="underline" style={{ color: VIZ.primary }} onClick={() => setSel('all')}>ดูทุกปี</button></p></Card>
       ) : (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Kpi label={`ยอด PO ${sel === 'all' ? 'รวม' : pname} (ไม่รวม VAT)`} value={shortBaht(v.po_amount)}
+          <Kpi label={`ยอด PO สกุลบาท ${sel === 'all' ? 'รวม' : pname} (ไม่รวม VAT)`} value={shortBaht(v.po_amount)}
             sub={hasPrev ? <><Delta cur={v.po_amount} prev={v.prev_amount} isNew={v.is_new} /> · {prevLabel} ช่วงเดียวกัน {shortBaht(v.prev_amount ?? 0)}</> : `${int(v.po_count)} PO · ${int(v.pr_count)} PR`} />
           <Kpi label="อันดับตามยอด PO" value={v.rank ? `#${v.rank}` : '–'} color={VIZ.text}
             sub={hasPrev && v.prev_rank ? <RankMove rank={v.rank} prev={v.prev_rank} /> : `${int(v.po_count)} PO · ${int(v.pr_count)} PR`} />
           <Kpi label="ใบเสนอราคา" value={int(v.quote_count)} sub={`ใน ${int(v.quoted_prs)} PR`} color={VIZ.secondary} />
-          <Kpi label="เสนอแล้วได้งาน" value={v.quoted_prs ? `${Math.round((v.won_prs / v.quoted_prs) * 100)}%` : '–'} sub={v.quoted_prs ? `${v.won_prs} จาก ${v.quoted_prs} PR` : 'ไม่มีใบเสนอราคาในช่วงนี้'} color={VIZ.positive} />
+          <Kpi label="PR เสนอราคาและพบ PO" value={v.quoted_prs ? `${v.won_prs} / ${v.quoted_prs}` : '–'} sub={v.quoted_prs ? `PR ที่ยังดำเนินการ ${int(v.pending_prs)} ฉบับ` : 'ไม่มีใบเสนอราคาในช่วงนี้'} color={VIZ.positive} />
         </div>
       )}
+
+      {v && <p className="text-xs" style={{ color: VIZ.lightText }}>พบ PO ของผู้ขายรายเดียวกันใน PR เดียวกัน ไม่ยืนยันว่าตรงกับรายการในใบเสนอราคา · PR ที่ยังดำเนินการนับจากสถานะร่าง รออนุมัติ หรืออนุมัติแล้วรอ PO</p>}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
@@ -372,7 +386,7 @@ function VendorDetail({ name }: { name: string }) {
         <Card className="!p-0 overflow-hidden">
           <div className="px-4 pt-4 md:px-6">
             <ChartTitle title={`รายการตามเอกสาร (${int(points.length)})`} sub="แสดงราคาตาม PO และใบเสนอราคาแต่ละรายการ · สินค้าต่างสเปกหรือหน่วยยังเปรียบเทียบราคากันไม่ได้" />
-            <Link href={withPeriod('/procurement', y)} className="text-sm font-medium hover:underline" style={{ color: VIZ.primary }}>ค้นหาสินค้าเพื่อเลือกกลุ่มที่เปรียบเทียบกันได้ →</Link>
+            <Link href={withPeriod('/procurement', y)} className="text-sm font-medium hover:underline" style={{ color: VIZ.primary }}>ค้นหาราคาและตรวจเงื่อนไขก่อนเปรียบเทียบ →</Link>
           </div>
           <div className="overflow-x-auto">
             <table className="mt-2 w-full text-sm">

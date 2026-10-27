@@ -138,6 +138,12 @@ test('procurement HTTP flow: auth, group evidence, filters and PR documents', as
     const vendors = await get('/api/procurement/vendors?y=2025');
     assert.equal(vendors.sel, 2025);
     assert.ok(vendors.vendors.length >= 3);
+    const allVendors = await get('/api/procurement/vendors?y=all');
+    assert.equal(allVendors.currency_omissions.all.foreign, 1, 'EUR PO line is disclosed and omitted from THB totals');
+    assert.equal(allVendors.currency_omissions.all.unknown, 0);
+    const eur = await search({ q: 'อุปกรณ์จำลองสกุลยูโร' });
+    assert.equal(eur.points.length, 1);
+    assert.equal(eur.points[0].currency, 'EUR', 'foreign-currency source record stays accessible');
     const idle = await search({ q: '' });
     assert.ok(idle.top.length > 0);
   });
@@ -160,6 +166,23 @@ test('procurement HTTP flow: auth, group evidence, filters and PR documents', as
     const unknown = await search({ q: 'สกุลเงินทดสอบ' });
     assert.equal(unknown.points.length, 2);
     assert.ok(unknown.points.every(point => !point.currency && point.unit_price === 22000));
+  });
+  await t.test('large results can be paged without missing or repeating records', async () => {
+    const first = await search({ q: 'รายการแบ่งหน้าทดสอบ', page: '1' });
+    const second = await search({ q: 'รายการแบ่งหน้าทดสอบ', page: '2' });
+    assert.equal(first.total, 650);
+    assert.equal(first.page_count, 2);
+    assert.equal(first.points.length, 600);
+    assert.equal(second.page, 2);
+    assert.equal(second.points.length, 50);
+    assert.equal(new Set([...first.points, ...second.points].map(point => `${point.source}:${point.id}`)).size, 650);
+    const beyond = await search({ q: 'รายการแบ่งหน้าทดสอบ', page: '999' });
+    assert.equal(beyond.page, 2, 'out-of-range pages clamp to the last page');
+    assert.equal(beyond.points.length, 50);
+    const filter = await search({ q: 'รายการแบ่งหน้าทดสอบ', basis: 'once', tax: 'unknown', page: '2' });
+    assert.equal(filter.total, 650);
+    assert.equal(filter.points.length, 50);
+    assert.ok(filter.points.every(point => point.price_basis === 'once' && point.tax_basis === 'unknown'));
   });
 
   await t.test('all active user account types read every PR, while summaries stay within assigned companies', async t => {

@@ -60,8 +60,8 @@ export function PrDetail({ no, by }: { no: string; by: string }) {
     </div>
 
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <Kpi label="ประมาณการใน PR" value={baht(pr.estimated_cost)} sub="ตามข้อมูลคำขอซื้อ" color={VIZ.text} />
-      <Kpi label="ยอด PO ใน PR · ไม่รวม VAT" value={pr.po_count ? baht(pr.po_amount) : '–'} sub={pr.po_count ? `${int(pr.po_count)} ใบสั่งซื้อ` : 'ยังไม่พบใบสั่งซื้อ'} color={VIZ.primary} />
+      <Kpi label="ประมาณการใน PR" value={baht(pr.estimated_cost)} sub="สกุลเงินไม่ระบุ · ตรวจเอกสารต้นทาง" color={VIZ.text} />
+      <Kpi label="ยอด PO ตาม PR · ไม่รวม VAT" value={pr.po_count ? baht(pr.po_amount) : '–'} sub={pr.po_count ? `${int(pr.po_count)} ใบสั่งซื้อ · สกุลเงินไม่ระบุ อาจรวมหลายสกุล โปรดตรวจรายการ PO` : 'ยังไม่พบใบสั่งซื้อ'} color={VIZ.primary} />
       <Kpi label="ใบเสนอราคาที่อ่านได้" value={int(uniqueQuotes.length)} sub={`${int(vendors.size)} ผู้ขาย · ไม่นับไฟล์ซ้ำ`} color={VIZ.text} />
       <Kpi label="เอกสารแนบใน PR" value={int(pr.n_attachments)} sub="จำนวนไฟล์ที่ระบบบันทึก" color={VIZ.text} />
     </div>
@@ -86,7 +86,7 @@ export function PrDetail({ no, by }: { no: string; by: string }) {
     </div>}
 
     {active === 'items' && <Card className="!p-0 overflow-hidden">
-      <SectionHeader title={`รายการใน PR (${int(lines.length)})`} sub="ราคาประมาณการจากคำขอซื้อ" />
+      <SectionHeader title={`รายการใน PR (${int(lines.length)})`} sub="ราคาประมาณการจากคำขอซื้อ · สกุลเงินไม่ระบุ ตรวจเอกสารต้นทาง" />
       {lines.length === 0 ? <Empty text="ไม่พบรายการในข้อมูล PR นี้" /> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead style={{ background: VIZ.bg }}><tr><Th>รายการ / รายละเอียด</Th><Th right>จำนวน</Th><Th right>ประมาณการต่อหน่วย</Th><Th right>ประมาณการรวม</Th></tr></thead><tbody>{lines.map(l => <tr key={l.odoo_id} className="border-t border-slate-100 align-top"><td className="min-w-72 px-4 py-4"><p className="font-medium">{l.name}</p>{l.product && l.product !== l.name && <p className="mt-1 text-xs" style={{ color: VIZ.lightText }}>{l.product}</p>}{l.specifications && <p className="mt-2 whitespace-pre-wrap text-xs leading-5" style={{ color: VIZ.lightText }}>{l.specifications}</p>}{(l.date_required || l.analytic_account) && <p className="mt-2 text-xs" style={{ color: VIZ.lightText }}>{l.date_required && `ต้องการวันที่ ${thaiDate(l.date_required)}`}{l.analytic_account && ` · ${l.analytic_account}`}</p>}</td><td className="whitespace-nowrap px-4 py-4 text-right tabular-nums">{int(l.qty)} {l.uom}</td><td className="px-4 py-4 text-right tabular-nums">{baht(l.est_unit_price)}</td><td className="px-4 py-4 text-right font-medium tabular-nums">{baht(l.qty * l.est_unit_price)}</td></tr>)}</tbody></table></div>}
     </Card>}
 

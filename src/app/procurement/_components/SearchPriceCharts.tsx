@@ -75,9 +75,10 @@ function Marker({ marker, currency, selected, select, label, detailId }: {
 }) {
   const first = marker.points[0];
   const count = marker.points.length;
+  const poCount = marker.points.filter(point => point.source === 'po').length;
   const isSelected = marker.points.some(point => selected.has(pricePointKey(point)));
   const title = count > 1
-    ? `${int(count)} รายการ${marker.nearby ? 'ที่อยู่ใกล้กัน' : 'ที่ตำแหน่งเดียวกัน'} · กดดูราคาจริงและหน่วยของทุกรายการ`
+    ? `${int(count)} รายการ${marker.nearby ? 'ที่อยู่ใกล้กัน' : 'ที่ตำแหน่งเดียวกัน'} · PO ${int(poCount)} · ใบเสนอราคา ${int(count - poCount)} · กดดูราคาจริงและหน่วยของทุกรายการ`
     : `${first.source === 'po' ? 'ราคาตาม PO' : 'ใบเสนอราคา'} · ${first.item} · ${baht(first.unit_price)} ${currency} / ${first.unit || 'ไม่ระบุหน่วย'} · ${taxLabel(first.tax_basis || 'unknown')}`;
   return <button type="button" className={`${styles.marker} ${isSelected ? styles.markerSelected : ''}`} style={{ left: marker.x, top: marker.y }}
     aria-label={`${label} · ${title}`} aria-pressed={isSelected} aria-controls={detailId} title={title} onClick={event => select(marker, label, event)}>
@@ -132,7 +133,7 @@ function TimelinePlot({ points, currency, maximum, selected, select, detailId }:
           <line x1={left} x2={right} y1={bottom - ratio * (bottom - top)} y2={bottom - ratio * (bottom - top)} className={styles.axisLine} />
           <text x={left - 10} y={bottom - ratio * (bottom - top) + 4} textAnchor="end" className={styles.axisText}>{shortAmount(maximum * ratio)}</text>
         </g>)}
-        {span ? <><text x={left} y={height - 9} className={styles.axisText}>{shortDay(model.firstDay)}</text><text x={right} y={height - 9} textAnchor="end" className={styles.axisText}>{shortDay(model.lastDay)}</text></>
+        {span ? <><text x={left} y={height - 9} className={styles.axisText}>{shortDay(model.firstDay)}</text>{width >= 390 && span >= 2 * 86400000 && <text x={(left + right) / 2} y={height - 9} textAnchor="middle" className={styles.axisText}>{shortDay(model.firstDay + span / 2)}</text>}<text x={right} y={height - 9} textAnchor="end" className={styles.axisText}>{shortDay(model.lastDay)}</text></>
           : <text x={(left + right) / 2} y={height - 9} textAnchor="middle" className={styles.axisText}>{shortDay(model.firstDay)}</text>}
       </svg>
       {markers.map(marker => <Marker key={marker.key} marker={marker} currency={currency} selected={selected} select={select} label="ประวัติราคา" detailId={detailId} />)}
@@ -174,7 +175,7 @@ export function SearchPriceCharts({ points, currency }: { points: PricePoint[]; 
   const omission = [model.undated.length ? `${int(model.undated.length)} รายการไม่มีวันที่เอกสารที่ใช้ได้` : '', currencyOmission, priceOmission].filter(Boolean).join(' · ');
   return <section className={styles.analysis} aria-label="กราฟราคาและรายละเอียดเอกสาร">
     <div className={styles.context}>
-      <div><h3>ราคาในเอกสารที่ค้นพบ <span>{currency}</span></h3><p>{model.valid.length > 0 ? 'หน่วย สเปก และภาษีอาจต่างกัน กดจุดเพื่อตรวจรายละเอียดก่อนเปรียบเทียบ' : 'กราฟต้องมีราคาและสกุลเงินที่ตรวจสอบได้ รายการทั้งหมดยังอยู่ในตารางด้านล่าง'}</p></div>
+      <div><h3>ราคาในเอกสารที่ค้นพบ <span>{currency}</span></h3><p>{model.valid.length > 0 ? 'จุดต่ำกว่าไม่ได้แปลว่าคุ้มกว่าเสมอ ตรวจหน่วย สเปก ฐานราคา และภาษีในเอกสารก่อนเปรียบเทียบ' : 'กราฟต้องมีราคาและสกุลเงินที่ตรวจสอบได้ รายการในชุดนี้ยังอยู่ในตารางด้านล่าง'}</p></div>
       {model.valid.length > 0 && <div className={styles.legend} aria-label="คำอธิบายสัญลักษณ์"><span><i className={styles.poMarker} />ราคาตาม PO</span><span><i className={styles.quoteMarker} />ใบเสนอราคา</span><span><i className={styles.legendCount}>2</i>หลายรายการ</span></div>}
     </div>
     <div className={styles.chartGrid}>
@@ -194,7 +195,7 @@ export function SearchPriceCharts({ points, currency }: { points: PricePoint[]; 
     {model.valid.length > 0 && <p className={styles.explainer}><Info size={14} aria-hidden /><span>ตัวเลขบนจุดรวมรายการที่ซ้อนหรืออยู่ใกล้กัน กดเพื่อดูราคาจริงของแต่ละรายการ{model.incomplete.length > 0 ? ` · ${int(model.incomplete.length)} รายการยังระบุหน่วย ฐานราคา หรือภาษีไม่ครบ` : ''}</span></p>}
     <div id={detailId}>
       {active && selection && <section className={styles.details} aria-labelledby={`${detailId}-heading`} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); closeDetails(); } }}>
-        <div className={styles.detailHeader}><div><p className={styles.eyebrow}>รายละเอียดจากกราฟ</p><h4 id={`${detailId}-heading`} ref={detailHeading} tabIndex={-1}>{selectedPoints.length > 1 ? `${int(selectedPoints.length)} รายการ${selection.nearby ? 'ที่อยู่ใกล้กัน' : 'ที่ตำแหน่งนี้'}` : 'รายละเอียดราคา'}</h4></div><button type="button" className={styles.close} aria-label="ปิดรายละเอียดราคา" onClick={closeDetails}><X size={20} /></button></div>
+        <div className={styles.detailHeader}><div><p className={styles.eyebrow}>รายละเอียดจากกราฟ</p><h4 id={`${detailId}-heading`} ref={detailHeading} tabIndex={-1}>{selectedPoints.length > 1 ? `${int(selectedPoints.length)} รายการ${selection.nearby ? 'ที่อยู่ใกล้กัน' : 'ที่ตำแหน่งนี้'}` : 'รายละเอียดราคา'}</h4>{selectedPoints.length > 1 && <p className={styles.eyebrow}>PO {int(selectedPoints.filter(point => point.source === 'po').length)} · ใบเสนอราคา {int(selectedPoints.filter(point => point.source === 'quote').length)}</p>}</div><button type="button" className={styles.close} aria-label="ปิดรายละเอียดราคา" onClick={closeDetails}><X size={20} /></button></div>
         {selectedPoints.length > 1 && <RecordPicker key={selection.keys.join('|')} points={selectedPoints} active={active} currency={currency} onChange={key => setSelection({ ...selection, active: key })} />}
         <div className={styles.detailBody}>
           <div className={styles.itemDetail}><SourceBadge source={active.source} /><h5>{active.item || 'ไม่ระบุชื่อรายการ'}</h5>{active.detail && <p>{active.detail}</p>}<p className={styles.vendorFull}>{active.vendor || 'ไม่ระบุผู้ขาย'}</p></div>

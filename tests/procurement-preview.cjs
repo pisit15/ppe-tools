@@ -108,6 +108,9 @@ async function setupProcurement(db) {
       await insert(db, 'proc_quote_items', { id, quote_id: id, pr_no: trainingPr, vendor_group: vendor, quote_date: date, name: 'อบรม รถยก · ข้อมูลทดสอบ', spec: 'ตัวอย่างเงื่อนไขอบรม ตรวจหน่วยและฐานภาษีก่อนเทียบราคา', qty: 1, unit, unit_price: price, amount: price });
     }
   }
+  // Non-baht PO line exercises the vendor report's exclusion notice and keeps the source document visible.
+  await insert(db, 'proc_po_lines', { odoo_id: 9500, po_no: 'PO-EUR-TEST', pr_odoo_id: 90, pr_no: trainingPr, requester: trainingWho, vendor: suppliers[0], product: 'อุปกรณ์จำลองสกุลยูโร', item: 'อุปกรณ์จำลองสกุลยูโร', qty: 1, uom: 'unit', unit_price: 250, subtotal: 250, order_date: '2026-03-09', currency: 'EUR', po_state: 'purchase' });
+  poCount++;
   // Dense and unknown-currency cases use separate search terms for browser verification.
   for (let index = 0; index < 27; index++) {
     const id = 9200 + index; const unknown = index >= 25; const currency = unknown ? '' : 'THB';
@@ -116,6 +119,11 @@ async function setupProcurement(db) {
     await insert(db, 'proc_quotes', { id, pr_no: trainingPr, requester: trainingWho, file_path: `synthetic/dense-${id}.pdf`, doc_type: 'quotation', vendor: suppliers[0], vendor_group: suppliers[0], quote_no: `QT-DENSE-${id}`, quote_date: '2026-03-09', currency, subtotal: 22000, total: 22000, n_items: 1, price_basis: 'once' });
     await insert(db, 'proc_quote_items', { id, quote_id: id, pr_no: trainingPr, vendor_group: suppliers[0], quote_date: '2026-03-09', name, spec: `เอกสารจำลองลำดับ ${index + 1}`, qty: 1, unit: 'งาน', unit_price: 22000, amount: 22000 });
   }
+  // More than one search page, with unique identities and a term absent from all other fixtures.
+  await insert(db, 'proc_quotes', { id: 9900, pr_no: trainingPr, requester: trainingWho, file_path: 'synthetic/pagination.pdf', doc_type: 'quotation', vendor: suppliers[0], vendor_group: suppliers[0], quote_no: 'QT-PAGE-TEST', quote_date: '2026-03-09', currency: 'THB', n_items: 650, price_basis: 'once' });
+  await db.query(`insert into proc_quote_items(id,quote_id,pr_no,vendor_group,quote_date,name,spec,qty,unit,unit_price,amount)
+    select 100000+n,9900,$1,$2,'2026-03-09','รายการแบ่งหน้าทดสอบ','ข้อมูลจำลองลำดับ ' || n,1,'งาน',n,n from generate_series(1,650) n`, [trainingPr, suppliers[0]]);
+  quoteCount++;
   // A personal PR outside the requester's company and an unresolved site must stay readable,
   // but neither may enter that requester's company-only summary.
   await insert(db, 'proc_pr', { odoo_id: 91, pr_no: 'PR26000901', requester: trainingWho, request_date: '2026-08-01', company: 'AAB', operating_unit: '[D9_SF00] AAB : Safety', state: 'draft', title: 'PR ข้ามบริษัทสำหรับตรวจสิทธิ์', estimated_cost: 12345 });

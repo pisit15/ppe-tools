@@ -136,6 +136,8 @@ export type ProcMeta = PeriodMeta & { imported_at: string | null; imported_by: s
 
 /** One vendor in a period, with the same span of the previous year and a per-year trend. */
 export type VendorRow = VendorSummary & {
+  /** Quoted PRs currently in a draft, approval or approved/waiting-for-PO state. */
+  pending_prs: number;
   rank: number | null; // by PO value in the period (1 = largest); null when no PO
   prev_amount: number | null; // PO value in the same span last year; null when there is nothing to compare with
   prev_rank: number | null;
@@ -149,14 +151,21 @@ export type VendorTotals = {
   amount: number; prev: number | null; vendors: number; prev_vendors: number | null; new_vendors: number | null;
   quotes: number; quoted_prs: number; top10_share: number | null;
 };
+/** Number of PO lines omitted from THB value calculations, without converting other currencies. */
+export type VendorCurrencyOmissions = {
+  period: { foreign: number; unknown: number };
+  all: { foreign: number; unknown: number };
+};
 export type VendorsResp = {
   meta: ProcMeta; sel: PeriodSel; cat: SpendCat | null; years: number[];
+  currency_omissions: VendorCurrencyOmissions;
   totals: VendorTotals; vendors: VendorRow[]; cats: CatStat[]; matrix: YearCats[];
   /** cumulative PO value by month (selected year, previous year) and the previous year's value on the same day */
   monthly: { cur: number[]; prev: number[] | null; prevSame: number | null; lastMonth: number } | null;
 };
 export type VendorDetailResp = {
   meta: ProcMeta; sel: PeriodSel; years: number[]; summary: VendorRow | null; overall: VendorRow; names: string[];
+  currency_omissions: VendorCurrencyOmissions;
   points: PricePoint[]; prs: ProcPrSummary[]; cats: CatStat[];
 };
 

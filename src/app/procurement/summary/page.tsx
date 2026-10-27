@@ -8,18 +8,18 @@ import {
   Card, ErrorBox, Kpi, Loading, MetaLine, PrLink, SortHeader, VIZ, baht, int, sortRows, thaiDate, useJson, type SortState,
 } from '../_components/ui';
 import {
-  ChartTitle, CumulativeLines, HBarList, Legend, MONTHS_TH, MonthlyBars, STATUS_COLOR, StackBar, shortBaht, type MonthPoint,
+  ChartTitle, Legend, MONTHS_TH, MonthlyBars, STATUS_COLOR, StackBar, type MonthPoint,
 } from '../_components/charts';
 import { PeriodBar, usePeriod, validPeriod } from '../_components/period';
 import { inRange, periodInfo, thaiDay } from '@/lib/procurement/period';
+import styles from './summary-table.module.css';
 
 type Row = ProcPrSummary & { sites: string[] };
 type Site = { id: string; name: string };
 type Resp = { prs: Row[]; meta: ProcMeta; scope: 'all' | 'company'; sites: Site[] };
-type Key = 'requester' | 'total' | 'approved' | 'rejected' | 'reject_rate' | 'pending' | 'est_all' | 'est_approved' | 'po_amount';
+type Key = 'requester' | 'total' | 'approved' | 'rejected' | 'reject_rate' | 'pending';
 type Stat = {
   requester: string; prs: Row[]; total: number; approved: number; rejected: number; pending: number; reject_rate: number;
-  est_all: number; est_approved: number; po_amount: number;
 };
 
 // Approved = approved in Odoo (waiting for PO) or done (PO issued); cancelled = rejected/cancelled in Odoo.
@@ -34,14 +34,11 @@ function summarize(rows: Row[], key: (p: Row) => string) {
   const by = new Map<string, Stat>();
   for (const p of rows) {
     const k = key(p);
-    const s = by.get(k) ?? { requester: k, prs: [], total: 0, approved: 0, rejected: 0, pending: 0, reject_rate: 0, est_all: 0, est_approved: 0, po_amount: 0 };
+    const s = by.get(k) ?? { requester: k, prs: [], total: 0, approved: 0, rejected: 0, pending: 0, reject_rate: 0 };
     s.prs.push(p); s.total++;
-    const est = Number(p.estimated_cost) || 0;
-    s.est_all += est;
-    if (isApproved(p.state)) { s.approved++; s.est_approved += est; }
+    if (isApproved(p.state)) s.approved++;
     else if (p.state === 'rejected') s.rejected++;
     else if (isPending(p.state)) s.pending++;
-    s.po_amount += Number(p.po_amount) || 0;
     by.set(k, s);
   }
   for (const s of by.values()) s.reject_rate = s.total ? s.rejected / s.total : 0;
@@ -86,20 +83,8 @@ export default function SummaryPage() {
         partial: isCurrent && m === lastMonth, future: m > lastMonth,
       };
     });
-    const cum = (rows: Row[], yy: number) => {
-      const out: number[] = [];
-      let acc = 0;
-      for (let m = 0; m < 12; m++) {
-        const mm = String(m + 1).padStart(2, '0');
-        acc += rows.filter(p => p.request_date?.startsWith(`${yy}-${mm}`) && isApproved(p.state)).reduce((s, p) => s + (Number(p.estimated_cost) || 0), 0);
-        out.push(acc);
-      }
-      return out;
-    };
-    const approvedEst = (rows: Row[]) => rows.filter(p => isApproved(p.state)).reduce((s, p) => s + (Number(p.estimated_cost) || 0), 0);
     return {
       y, isCurrent, cur, prevSame: prev, hasPrev, months, lastMonth,
-      cumCur: cum(cur, y), cumPrev: hasPrev ? cum(prs.filter(p => yearOf(p) === y - 1), y - 1) : null, cumPrevSame: hasPrev ? approvedEst(prev) : null,
     };
   }, [activeYear, prs, meta]);
 
@@ -125,14 +110,12 @@ export default function SummaryPage() {
     headSub = `ร่าง / รออนุมัติ ${int(t.pending)} ฉบับ · ไม่อนุมัติ / ยกเลิก ${int(t.rejected)} ฉบับ`;
   }
   const busiest = view ? view.months.reduce((b, m, i) => (m.cur > view.months[b].cur ? i : b), 0) : 0;
-  const cumNow = view ? view.cumCur[view.lastMonth] : 0;
-  const cumPrevSame = view?.cumPrevSame ?? null;
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">ติดตามงานและสรุปรายคน</h2>
-        <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>ตรวจงานที่ต้องดำเนินการต่อ พร้อมสถานะ PR งบประมาณที่ขอ และมูลค่าตาม PO</p>
+        <p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>ตรวจงานที่ต้องดำเนินการต่อและสถานะ PR รายคน</p>
         <div className="mt-1"><MetaLine meta={data?.meta} /></div>
       </div>
       {error && <ErrorBox error={error} />}
@@ -167,17 +150,17 @@ export default function SummaryPage() {
           )}
 
           {t && (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
               <Kpi label="PR ที่เปิด" value={int(t.total)}
                 sub={tp ? `${signed(t.total - tp.total, ' ฉบับ')} เทียบช่วงเดียวกันปีก่อน (${int(tp.total)})` : `${int(people.length)} คน`} />
               <Kpi label="อนุมัติแล้ว" value={`${pctOf(t.approved, t.total)}%`} color={VIZ.primary}
                 sub={`${int(t.approved)} ฉบับ${tp ? ` · ปีก่อน ${pctOf(tp.approved, tp.total)}%` : ''}`} />
               <Kpi label="ไม่อนุมัติ / ยกเลิก" value={int(t.rejected)} color={VIZ.accent}
                 sub={`${pctOf(t.rejected, t.total)}% ของที่เปิด · ต้นทางรวมสองสถานะนี้ไว้ด้วยกัน`} />
-              <Kpi label="งบที่อนุมัติ (บาท)" value={shortBaht(t.est_approved)} color={VIZ.text}
-                sub={`ขอทั้งหมด ${shortBaht(t.est_all)} · ตาม PO ${shortBaht(t.po_amount)}`} />
             </div>
           )}
+
+          <Card><p className="font-medium">ยอดงบรวมและกราฟงบยังไม่พร้อมแสดง</p><p className="mt-1 text-sm" style={{ color: VIZ.lightText }}>ข้อมูลประมาณการ PR และยอด PO ใน PR ไม่ได้ระบุสกุลเงิน จึงไม่รวมตัวเลขข้ามเอกสาร กรุณาเปิด PR เพื่อตรวจจำนวนและสกุลเงินจากเอกสารต้นทาง</p></Card>
 
           <section aria-label="งานที่ต้องดำเนินการต่อ" className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -198,8 +181,10 @@ export default function SummaryPage() {
           <Card className="!p-0 overflow-hidden">
             <div className="px-4 pt-4 md:px-6">
               <ChartTitle title={`รายละเอียดรายคน · ${queue === 'all' ? 'ทุกสถานะ' : PR_STATE_LABEL[queue]}`} sub={`แสดง ${int(queued.length)} PR จาก ${int(tablePeople.length)} คน · กดชื่อเพื่อดูรายการ PR · ตัวเลขในตารางคำนวณตามสถานะที่เลือก`} />
+              <p className="mt-2 text-xs" style={{ color: VIZ.lightText }}>ข้อมูลต้นทางรวม “ไม่อนุมัติ” กับ “ยกเลิก” ไว้ด้วยกัน สัดส่วนนี้ใช้ติดตามสถานะ ไม่ใช่คะแนนประเมินผลงาน</p>
+              <p className="mt-2 text-xs md:hidden" style={{ color: VIZ.lightText }}>เลื่อนตารางไปด้านข้างเพื่อดูตัวเลขเพิ่มเติม · ชื่อผู้เปิด PR จะอยู่ทางซ้าย</p>
             </div>
-            <div className="overflow-x-auto">
+            <div className={`overflow-x-auto ${styles.scrollTable}`} role="region" aria-label="ตารางรายละเอียดรายคน เลื่อนซ้ายขวาเพื่อดูข้อมูลเพิ่มเติม" tabIndex={0}>
               <table className="w-full text-sm">
                 <thead style={{ background: VIZ.bg }}>
                   <tr>
@@ -209,9 +194,6 @@ export default function SummaryPage() {
                     <SortHeader label="ไม่อนุมัติ / ยกเลิก" k="rejected" sort={sort} onSort={setSort} align="right" />
                     <SortHeader label="สัดส่วน" k="reject_rate" sort={sort} onSort={setSort} align="right" />
                     <SortHeader label="ร่าง / รออนุมัติ" k="pending" sort={sort} onSort={setSort} align="right" />
-                    <SortHeader label="งบที่ขอ" k="est_all" sort={sort} onSort={setSort} align="right" />
-                    <SortHeader label="งบที่อนุมัติ" k="est_approved" sort={sort} onSort={setSort} align="right" />
-                    <SortHeader label="ยอด PO" k="po_amount" sort={sort} onSort={setSort} align="right" />
                   </tr>
                 </thead>
                 <tbody>
@@ -233,15 +215,12 @@ export default function SummaryPage() {
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">{int(s.approved)}</td>
                           <td className="px-3 py-2 text-right tabular-nums" style={{ color: s.rejected ? VIZ.accent : undefined, fontWeight: s.rejected ? 600 : 400 }}>{int(s.rejected)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums" style={{ color: s.reject_rate >= 0.2 ? VIZ.accent : VIZ.lightText }}>{Math.round(s.reject_rate * 100)}%</td>
+                          <td className="px-3 py-2 text-right tabular-nums" style={{ color: VIZ.lightText }}>{Math.round(s.reject_rate * 100)}%</td>
                           <td className="px-3 py-2 text-right tabular-nums" style={{ color: s.pending ? '#B5600F' : undefined }}>{int(s.pending)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{baht(s.est_all)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{baht(s.est_approved)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{baht(s.po_amount)}</td>
                         </tr>
                         {expanded && (
                           <tr className="border-t border-gray-100" style={{ background: '#FAFAFA' }}>
-                            <td colSpan={9} className="px-3 py-3">
+                            <td colSpan={6} className="px-3 py-3">
                               <ul className="divide-y divide-gray-100">
                                 {[...s.prs].sort((a, b) => (b.request_date || '').localeCompare(a.request_date || '')).map(p => (
                                   <li key={p.odoo_id} className="grid grid-cols-1 gap-x-3 py-2 md:grid-cols-[9rem_6rem_1fr_9rem_8rem]">
@@ -249,7 +228,7 @@ export default function SummaryPage() {
                                     <span style={{ color: VIZ.lightText }}>{thaiDate(p.request_date)}</span>
                                     <span className="min-w-0">{p.title}{p.vendors && <span className="block text-xs" style={{ color: VIZ.lightText }}>{p.vendors}</span>}</span>
                                     <span className="text-xs font-medium" style={{ color: isApproved(p.state) ? VIZ.primary : p.state === 'rejected' ? VIZ.accent : '#B5600F' }}>{PR_STATE_LABEL[p.state]}</span>
-                                    <span className="tabular-nums md:text-right">{baht(p.estimated_cost)} บาท</span>
+                                    <span className="tabular-nums md:text-right">{baht(p.estimated_cost)}<span className="block text-xs" style={{ color: VIZ.lightText }}>สกุลเงินไม่ระบุ · ตรวจเอกสารต้นทาง</span></span>
                                   </li>
                                 ))}
                               </ul>
@@ -270,7 +249,7 @@ export default function SummaryPage() {
           </Card>
 
           {view && t && (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4">
               <Card>
                 <ChartTitle
                   title={`เปิด PR มากที่สุดเดือน ${MONTHS_TH[busiest]} (${int(view.months[busiest].cur)} ฉบับ)`}
@@ -278,17 +257,6 @@ export default function SummaryPage() {
                 <MonthlyBars data={view.months} ariaLabel={`จำนวน PR รายเดือน ปี ${be(view.y)}`} />
                 <div className="mt-2">
                   <Legend items={[{ color: VIZ.primary, label: `ปี ${be(view.y)}` }, ...(view.hasPrev ? [{ color: '#555', label: `ปี ${be(view.y - 1)} (เดือนเดียวกัน)`, kind: 'tick' as const }] : [])]} />
-                </div>
-              </Card>
-              <Card>
-                <ChartTitle
-                  title={cumPrevSame !== null && cumPrevSame > 0
-                    ? `งบที่อนุมัติสะสม ${shortBaht(cumNow)} บาท — ${cumNow >= cumPrevSame ? 'สูงกว่า' : 'ต่ำกว่า'}ช่วงเดียวกันปีก่อน ${Math.abs(Math.round(((cumNow - cumPrevSame) / cumPrevSame) * 100))}%`
-                    : `งบที่อนุมัติสะสม ${shortBaht(cumNow)} บาท`}
-                  sub="ยอดประมาณการใน PR ที่อนุมัติแล้ว สะสมตามเดือนที่เปิด PR · ขั้นบันไดที่สูงชัน = PR สัญญาใหญ่รายปี" />
-                <CumulativeLines cur={view.cumCur} prev={view.cumPrev} prevSame={view.cumPrevSame} curLabel={be(view.y)} prevLabel={be(view.y - 1)} lastMonth={view.lastMonth} />
-                <div className="mt-2">
-                  <Legend items={[{ color: VIZ.primary, label: `ปี ${be(view.y)}`, kind: 'line' }, ...(view.cumPrev ? [{ color: VIZ.neutral, label: `ปี ${be(view.y - 1)}`, kind: 'line' as const }] : [])]} />
                 </div>
               </Card>
             </div>
@@ -310,16 +278,6 @@ export default function SummaryPage() {
                 ))}
               </ul>
               <div className="mt-3"><Legend items={[{ color: STATUS_COLOR.approved, label: 'อนุมัติ' }, { color: STATUS_COLOR.pending, label: 'รออนุมัติ / ร่าง' }, { color: STATUS_COLOR.rejected, label: 'ไม่อนุมัติ / ยกเลิก' }]} /></div>
-            </Card>
-          )}
-
-          {view && people.length > 1 && (
-            <Card>
-              <ChartTitle title={`งบที่อนุมัติรายคน ปี ${be(view.y)}`} sub="เรียงจากมากไปน้อย · ใช้ดูว่าภาระงบกระจุกที่ใคร" />
-              <HBarList ariaLabel="งบที่อนุมัติรายคน"
-                rows={[...people].sort((a, b) => b.est_approved - a.est_approved).slice(0, 10).map((s, i) => ({
-                  key: s.requester, label: s.requester, value: s.est_approved, display: `${shortBaht(s.est_approved)} บาท`, highlight: i === 0,
-                }))} />
             </Card>
           )}
 

@@ -14,7 +14,7 @@ import { PeriodBar, usePeriod, validPeriod } from './_components/period';
 import { be, type PeriodSel } from '@/lib/procurement/period';
 import styles from './search.module.css';
 
-type Resp = SearchResult & { meta: ProcMeta; outside: number };
+type Resp = SearchResult & { meta: ProcMeta; outside: number; page: number; page_count: number; page_size: number };
 type PKey = 'date' | 'vendor' | 'unit_price' | 'qty' | 'item';
 const EXAMPLES = ['อบรม รถยก', 'กำจัด ขยะ', 'ถังดับเพลิง', 'ถุงมือ'];
 const QUANTITY = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 6 });
@@ -24,24 +24,28 @@ export default function PriceSearchPage() {
   const params = useSearchParams();
   const q = (params.get('q') || '').trim().slice(0, 200);
   const unit = params.get('unit') || '';
+  const tax = params.get('tax') || '';
+  const basis = params.get('basis') || '';
+  const page = params.get('page') || '';
   const dup = params.get('dup') === '1';
   const { sel: requested } = usePeriod();
   const yq: Record<string, string> = requested !== 'all' ? { y: String(requested) } : {};
   const setParams = (next: Record<string, string>) => {
     const sp = new URLSearchParams(window.location.search);
     sp.delete('group');
+    if (!Object.prototype.hasOwnProperty.call(next, 'page')) sp.delete('page');
     for (const [k, v] of Object.entries(next)) { if (v) sp.set(k, v); else sp.delete(k); }
     // This page loads results through its API; query changes need no server navigation.
     window.history.pushState(null, '', `/procurement${sp.size ? `?${sp}` : ''}`);
   };
   const setPeriod = (value: PeriodSel) => setParams({ y: value === 'all' ? '' : String(value), group: '' });
-  const url = q ? `/api/procurement/search?${new URLSearchParams({ q, ...(unit ? { unit } : {}), ...(dup ? { dup: '1' } : {}), ...yq })}` : null;
+  const url = q ? `/api/procurement/search?${new URLSearchParams({ q, ...(unit ? { unit } : {}), ...(tax ? { tax } : {}), ...(basis ? { basis } : {}), ...(page ? { page } : {}), ...(dup ? { dup: '1' } : {}), ...yq })}` : null;
   const { data, error, loading, refetch } = useJson<Resp>(url);
   const { data: idle, error: idleError, loading: idleLoading, refetch: refetchIdle } = useJson<Idle>(q ? null : `/api/procurement/search?${new URLSearchParams({ q: '', ...yq })}`);
   const search = (value: string) => {
     const next = value.trim().slice(0, 200);
     if (next === q) { (q ? refetch : refetchIdle)(); return; }
-    setParams({ q: next, unit: '' });
+    setParams({ q: next, unit: '', tax: '', basis: '' });
   };
   const meta = data?.meta ?? idle?.meta;
   const sel = validPeriod(requested, meta);
@@ -69,11 +73,12 @@ export default function PriceSearchPage() {
         <p className="mt-2 text-sm" style={{ color: VIZ.lightText }}>ลองใช้คำที่สั้นลง แยกคำด้วยเว้นวรรค หรือเปลี่ยนตัวกรอง</p>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           {unit && <button type="button" className="underline underline-offset-4" onClick={() => setParams({ unit: '' })}>ล้างตัวกรองหน่วย</button>}
+          {(tax || basis) && <button type="button" className="underline underline-offset-4" onClick={() => setParams({ tax: '', basis: '' })}>ล้างตัวกรองภาษีและฐานราคา</button>}
           {sel !== 'all' && <button type="button" className="underline underline-offset-4" onClick={() => setPeriod('all')}>ค้นหาทุกปี{data.outside > 0 ? ` (${int(data.outside)} รายการ)` : ''}</button>}
           <DuplicateFilter value={dup} onChange={value => setParams({ dup: value ? '1' : '' })} />
         </div>
       </Card>}
-      {data.match_total > 0 && <Results key={`${q}|${unit}|${dup}|${sel}`} data={data} unit={unit} onUnit={value => setParams({ unit: value })} dup={dup} onDup={value => setParams({ dup: value ? '1' : '' })} onAllYears={() => setPeriod('all')} />}
+      {data.match_total > 0 && <Results key={`${q}|${unit}|${tax}|${basis}|${dup}|${sel}|${data.page}`} data={data} unit={unit} onUnit={value => setParams({ unit: value })} tax={tax} onTax={value => setParams({ tax: value })} basis={basis} onBasis={value => setParams({ basis: value })} onPage={value => setParams({ page: value > 1 ? String(value) : '' })} dup={dup} onDup={value => setParams({ dup: value ? '1' : '' })} onAllYears={() => setPeriod('all')} />}
     </>}
   </div>;
 }
@@ -91,7 +96,7 @@ function DuplicateFilter({ value, onChange }: { value: boolean; onChange: (value
   return <details className={styles.moreFilters} open={value || undefined}><summary>ตัวเลือกเพิ่มเติม{value && ' · รวมรายการซ้ำ'}</summary><label><input type="checkbox" checked={value} onChange={event => onChange(event.target.checked)} />รวมใบเสนอราคาที่แนบซ้ำ</label></details>;
 }
 
-function Results({ data, unit, onUnit, dup, onDup, onAllYears }: { data: Resp; unit: string; onUnit: (u: string) => void; dup: boolean; onDup: (value: boolean) => void; onAllYears: () => void }) {
+function Results({ data, unit, onUnit, tax, onTax, basis, onBasis, onPage, dup, onDup, onAllYears }: { data: Resp; unit: string; onUnit: (u: string) => void; tax: string; onTax: (value: string) => void; basis: string; onBasis: (value: string) => void; onPage: (page: number) => void; dup: boolean; onDup: (value: boolean) => void; onAllYears: () => void }) {
   const charts = useMemo(() => {
     const series = new Map<string, { currency: string; points: PricePoint[] }>();
     for (const point of data.points) {
@@ -112,20 +117,31 @@ function Results({ data, unit, onUnit, dup, onDup, onAllYears }: { data: Resp; u
     {data.relaxed && <p className="text-sm" style={{ color: VIZ.secondary }}>ไม่พบคำตรงตัว จึงแสดงรายการที่มีคำย่อยครบ</p>}
     <section className={styles.resultsBar} aria-label="สรุปและตัวกรองผลค้นหา">
       <div className={styles.resultHeading}><p role="status"><strong>{int(data.match_total)}</strong> รายการที่พบ</p><a href="#price-records" className={styles.tableJump}>ดูตารางรายการ <ArrowDown size={15} aria-hidden /></a></div>
-      <p className={styles.counts}>{data.truncated ? 'ในรายการล่าสุดที่แสดง: ' : ''}PO {int(poCount)} · ใบเสนอราคา {int(quoteCount)} · ผู้ขาย {int(vendorCount)} ราย{data.truncated && ` · แสดง ${int(data.points.length)} จาก ${int(data.match_total)} รายการ`}</p>
+      <p className={styles.counts}>{data.truncated ? 'ในชุดที่แสดง: ' : ''}PO {int(poCount)} · ใบเสนอราคา {int(quoteCount)} · ผู้ขาย {int(vendorCount)} ราย{data.truncated && ` · แสดง ${int(data.points.length)} จาก ${int(data.match_total)} รายการ`}</p>
       <div className={styles.filterRow}>
         {(data.units.length > 1 || unit) && <label className={styles.filter} htmlFor="price-unit">หน่วย<select id="price-unit" value={canonicalUnit(unit)} onChange={event => onUnit(event.target.value)} className={`${inputClass} !w-auto`}><option value="">ทุกหน่วย</option>{data.units.map(u => <option key={u.unit} value={u.unit}>{u.unit || 'ไม่ระบุหน่วย'} ({int(u.count)})</option>)}</select></label>}
+        <label className={styles.filter} htmlFor="price-tax">ภาษี<select id="price-tax" value={tax} onChange={event => onTax(event.target.value)} className={`${inputClass} !w-auto`}><option value="">ทุกฐานภาษี</option><option value="ex_vat">ไม่รวม VAT</option><option value="inc_vat">รวม VAT</option><option value="unknown">ยังไม่ยืนยันฐาน VAT</option></select></label>
+        <label className={styles.filter} htmlFor="price-basis">ฐานราคา<select id="price-basis" value={basis} onChange={event => onBasis(event.target.value)} className={`${inputClass} !w-auto`}><option value="">ทุกฐานราคา</option><option value="unit">ราคาต่อหน่วยตาม PO</option><option value="once">ครั้งเดียว</option><option value="month">ต่อเดือน</option><option value="year">ต่อปี</option><option value="unknown">ยังไม่ระบุฐานราคา</option></select></label>
         {charts.length > 1 && <label className={styles.filter}>สกุลเงินในกราฟ<select value={chart.currency} onChange={event => setCurrency(event.target.value)} className={`${inputClass} !w-auto`}>{charts.map(item => <option key={item.currency} value={item.currency}>{item.currency} ({int(item.points.length)} รายการ)</option>)}</select></label>}
         <DuplicateFilter value={dup} onChange={onDup} />
       </div>
       {data.outside > 0 && <p className={styles.outside}>มีรายการในปีอื่นอีก {int(data.outside)} รายการ · <button type="button" onClick={onAllYears}>ดูทุกปี</button></p>}
-      {data.truncated && <p className={styles.outside}>แสดงเฉพาะรายการล่าสุด พิมพ์คำค้นให้เจาะจงขึ้นเพื่อดูครบ</p>}
+      <p className={styles.outside}>ตัวกรองช่วยคัดข้อมูลเบื้องต้น ยังต้องตรวจชื่อ สเปก จำนวน และเงื่อนไขในเอกสารก่อนเทียบราคา</p>
+      {data.page_count > 1 && <ResultPageControl data={data} onPage={onPage} />}
     </section>
     {chart && <SearchPriceCharts key={chart.currency} {...chart} />}
     <div id="price-records" className={styles.records} tabIndex={-1}>
       {!!data.points.length && <PointTable points={data.points} truncated={data.truncated} />}
+      {data.page_count > 1 && <ResultPageControl data={data} onPage={onPage} />}
     </div>
   </>;
+}
+
+function ResultPageControl({ data, onPage }: { data: Resp; onPage: (page: number) => void }) {
+  return <nav className={styles.resultPages} aria-label="ชุดผลค้นหา">
+    <p>กราฟและตารางแสดงชุดที่ {int(data.page)} จาก {int(data.page_count)} · รายการ {int((data.page - 1) * data.page_size + 1)}–{int((data.page - 1) * data.page_size + data.points.length)} จาก {int(data.total)}</p>
+    <div><button type="button" onClick={() => onPage(data.page - 1)} disabled={data.page <= 1}>ชุดก่อนหน้า</button><button type="button" onClick={() => onPage(data.page + 1)} disabled={data.page >= data.page_count}>ชุดถัดไป</button></div>
+  </nav>;
 }
 
 
@@ -137,9 +153,9 @@ function PointTable({ points, truncated }: { points: PricePoint[]; truncated: bo
   return (
     <Card className="!p-0 overflow-hidden">
       <h3 className="px-4 pt-4 font-semibold md:px-6">รายการและเอกสารอ้างอิง</h3>
-      <p className="px-4 pt-1 text-xs md:px-6" style={{ color: VIZ.lightText }}>แสดง {int(points.length)} รายการ · หน่วยตามต้นฉบับ · กดชื่อรายการเพื่ออ่านรายละเอียด</p>
+      <p className="px-4 pt-1 text-xs md:px-6" style={{ color: VIZ.lightText }}>แสดง {int(points.length)} รายการ{truncated ? ' ในชุดปัจจุบัน · เรียงเฉพาะรายการในชุดนี้' : ''} · หน่วยตามต้นฉบับ · กดชื่อรายการเพื่ออ่านรายละเอียด</p>
       <div className="overflow-x-auto" role="region" aria-label="ตารางราคา เลื่อนแนวนอนเพื่อดูทุกคอลัมน์" tabIndex={0}>
-        <table className="mt-2 w-full text-sm" aria-label="รายการราคาและเอกสารอ้างอิงทั้งหมด">
+        <table className="mt-2 w-full text-sm" aria-label={truncated ? 'รายการราคาและเอกสารอ้างอิงในชุดปัจจุบัน' : 'รายการราคาและเอกสารอ้างอิงทั้งหมด'}>
           <thead style={{ background: VIZ.bg }}>
             <tr>
               <SortHeader label="วันที่" k="date" sort={sort} onSort={s => { setSort(s); setPage(0); }} />
@@ -170,7 +186,7 @@ function PointTable({ points, truncated }: { points: PricePoint[]; truncated: bo
       </div>
       <div className="px-4 pb-4 md:px-6">
         <Pager page={page} total={rows.length} onPage={setPage} />
-        {truncated && <p className="pt-2 text-xs" style={{ color: VIZ.secondary }}>แสดง 600 รายการล่าสุด — พิมพ์คำค้นให้เจาะจงขึ้นเพื่อดูครบ</p>}
+        {truncated && <p className="pt-2 text-xs" style={{ color: VIZ.secondary }}>เปลี่ยนชุดผลค้นหาด้านล่างเพื่อดูรายการอื่นและกราฟของชุดนั้น</p>}
       </div>
     </Card>
   );

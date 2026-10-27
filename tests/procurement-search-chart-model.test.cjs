@@ -19,6 +19,25 @@ function load(name) {
 const { documentDay, searchChartModel, priceMarkers, pricePointKey, priceRecordPage } = load('search-chart-model');
 const point = (id, extra = {}) => ({ source: 'po', id, pr_no: `PR${id}`, requester: 'Requester', vendor: 'Vendor A', vendor_key: 'a', date: '2026-02-17', period_date: '2026-02-17', item: 'อบรมรถยก', detail: 'หลักสูตรตัวอย่าง', qty: 1, unit: 'รุ่น', currency: 'THB', price_basis: 'once', tax_basis: 'ex_vat', unit_price: 22000, ref: `PO${id}`, duplicate: false, ...extra });
 
+test('search batches cover all filtered results without mixing unit, tax or price basis', () => {
+  const { searchPrices } = load('analysis');
+  const input = Array.from({ length: 1205 }, (_, i) => point(i, { tax_basis: i % 2 ? 'unknown' : 'ex_vat', price_basis: i % 3 ? 'once' : 'month', date: `2026-02-${String(1 + i % 27).padStart(2, '0')}` }));
+  const filtered = input.filter(p => p.tax_basis === 'ex_vat' && p.price_basis === 'once');
+  const opts = { tax: 'ex_vat', basis: 'once', unit: 'รุ่น', limit: 100 };
+  const batches = [0, 100, 200, 300, 400].map(offset => searchPrices(input, 'อบรม', { ...opts, offset }));
+  assert.equal(batches[0].match_total, filtered.length);
+  assert.equal(batches[0].total, filtered.length);
+  assert.equal(batches[0].truncated, true);
+  const records = batches.flatMap(batch => batch.points);
+  assert.equal(records.length, filtered.length);
+  assert.deepEqual(new Set(records.map(p => p.id)), new Set(filtered.map(p => p.id)));
+  assert.ok(records.every(p => p.tax_basis === 'ex_vat' && p.price_basis === 'once' && p.unit === 'รุ่น'));
+  assert.equal(searchPrices(input, 'อบรม', { tax: 'unknown' }).total, input.filter(p => p.tax_basis === 'unknown').length);
+  const unresolved = point(9999, { tax_basis: 'bogus', price_basis: 'bad' });
+  assert.equal(searchPrices([unresolved], 'อบรม', { tax: 'unknown', basis: 'unknown' }).total, 1);
+  assert.equal(searchPrices(input, 'อบรม', { offset: 999999 }).points.length, 0);
+});
+
 test('document dates reject missing, invalid and rolled-over days without using fallback PR dates', () => {
   for (const invalid of [null, '', 'not-a-date', '2026-02-30', '2026-13-01', '17/02/2026', '2026-2-17']) assert.equal(documentDay(invalid), null);
   assert.equal(documentDay('2026-02-17T23:30:00+07:00'), Date.UTC(2026, 1, 17));

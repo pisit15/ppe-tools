@@ -100,3 +100,51 @@ test('vendor report: same-span comparison, category filter, new vendors, yearly 
   assert.equal(ever.monthly,null);
   assert.deepEqual(ever.matrix.map(m=>[m.year,m.total]),[[2024,0],[2025,1000],[2026,1200]]);
 });
+
+test('vendor baht reports exclude foreign and unknown currencies without hiding their documents or vendors',()=>{
+  const po=(id,vendor,pr,date,amount,currency,product='[07-SPXX-0001] ถุงมือ',state='purchase')=>({odoo_id:id,po_no:'PO'+id,pr_odoo_id:id,pr_no:pr,requester:'A',vendor,product,item:'test',qty:1,uom:'unit',unit_price:amount,subtotal:amount,currency,order_date:date,po_state:state});
+  const lines=[
+    po(1,'Alpha','PR1','2026-02-01',100,' thb '),
+    po(2,'Alpha','PR1','2026-02-01',900,'EUR','[OF02-Site] ค่ายามรักษาความปลอดภัย - Site'), // same vendor and PR: never add 900 EUR to 100 THB
+    po(3,'Beta','PR2','2026-03-01',400,'eur'), // PO-only vendor remains in the directory
+    po(4,'Gamma','PR3','2026-04-01',700,''),
+    po(5,'Alpha','PR4','2025-03-01',50,'บาท'),
+    po(6,'Alpha','PR5','2025-03-02',800,'USD'),
+    po(7,'Alpha','PR6','2026-05-01',999,'EUR','[07-SPXX-0001] ถุงมือ','cancel'),
+  ];
+  const prs=[{pr_no:'PR1',requester:'A',state:'approved'}, {pr_no:'PR2',requester:'A',state:'done'}, {pr_no:'PR3',requester:'A',state:'draft'}, {pr_no:'PR4',requester:'A',state:'done'}, {pr_no:'PR5',requester:'A',state:'done'}, {pr_no:'PR6',requester:'A',state:'rejected'}];
+  const quotes=[{pr_no:'PR1',requester:'A',vendor:'Alpha',vendor_group:'Alpha',quote_date:'2026-02-01',duplicate_file:false}];
+  const d={prs,po:lines,quotes,meta,prDate:new Map(),poCat:C.categorizePoLines(lines),prCats:new Map()};
+  const report=R.vendorReport(d,2026,null);
+  assert.equal(report.totals.amount,100);
+  assert.equal(report.totals.prev,50);
+  assert.equal(report.totals.vendors,3); // counts remain independent of monetary currency
+  assert.deepEqual(report.currency_omissions.period,{foreign:2,unknown:1});
+  assert.deepEqual(report.currency_omissions.all,{foreign:3,unknown:1});
+  assert.deepEqual(report.matrix.map(m=>m.total),[0,50,100]);
+  assert.deepEqual(report.cats.map(c=>[c.cat,c.amount]),[['goods',100]]);
+  assert.equal(report.totals.top10_share,1);
+  assert.equal(report.monthly.cur[9],100);
+  const alpha=report.vendors.find(v=>v.vendor==='Alpha');
+  assert.equal(alpha.po_amount,100);
+  assert.equal(alpha.prev_amount,50);
+  assert.equal(alpha.po_count,2);
+  assert.equal(alpha.won_prs,1);
+  assert.equal(alpha.pending_prs,1);
+  assert.deepEqual(alpha.yearly,[0,50,100]);
+  const beta=report.vendors.find(v=>v.vendor==='Beta');
+  assert.equal(beta.po_amount,0);
+  assert.equal(beta.po_count,1);
+  assert.equal(beta.rank,null);
+  const guard=R.vendorReport(d,2026,'guard');
+  assert.equal(guard.totals.amount,0);
+  assert.equal(guard.totals.vendors,1);
+  assert.equal(guard.vendors[0].po_count,1);
+  assert.deepEqual(guard.currency_omissions.period,{foreign:1,unknown:0});
+  assert.deepEqual(guard.currency_omissions.all,{foreign:3,unknown:1}); // matrix is always all categories
+  const detail=R.vendorDetail(d,2026,load('analysis').vendorId('Beta'));
+  assert.equal(detail.summary.po_count,1);
+  assert.equal(detail.overall.po_amount,0);
+  assert.deepEqual(detail.currency_omissions,{period:{foreign:1,unknown:0},all:{foreign:1,unknown:0}});
+  assert.deepEqual(detail.cats,[]);
+});
