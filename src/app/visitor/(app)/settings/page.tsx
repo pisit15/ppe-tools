@@ -2,10 +2,10 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Copy, Link2, MonitorPlay, Plus, Ban, ExternalLink, QrCode, MapPin, Save, ImagePlus, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Copy, Link2, MonitorPlay, Plus, Ban, ExternalLink, QrCode, MapPin, Save, ImagePlus, Trash2, Image as ImageIcon, Bell, Send, RefreshCw } from 'lucide-react';
 import { fileToBoundedDataUrl } from '../../_components/image';
 import { useAuth } from '@/components/AuthProvider';
-import type { VisitorCompanyOptionsRow, VisitorLinkRow } from '@/lib/visitor/types';
+import type { LineGroupOption, NotifyLogRow, VisitorCompanyOptionsRow, VisitorLinkRow } from '@/lib/visitor/types';
 import { useQr } from '../../_components/useQr';
 import { FetchError, ToastView, VIZ, cardClass, getJson, inputClass, labelClass, postJson, thaiDateTime, useToast } from '../../_components/ui';
 
@@ -28,6 +28,11 @@ export default function VisitorSettingsPage() {
   const [bg, setBg] = useState<string | null>(null);
   const [bgDim, setBgDim] = useState(75);
   const [bgDirty, setBgDirty] = useState(false);
+  const [lineGroup, setLineGroup] = useState<string>('');
+  const [notifyNew, setNotifyNew] = useState(true);
+  const [notifyDecision, setNotifyDecision] = useState(true);
+  const [lineDirty, setLineDirty] = useState(false);
+  const [lineInfo, setLineInfo] = useState<{ groups: LineGroupOption[]; log: NotifyLogRow[]; sent_this_month_all_companies: number; configured: boolean } | null>(null);
   const boardQr = useQr(company ? `${origin}/visitor/board/${company}` : null, 200);
 
   useEffect(() => {
@@ -40,9 +45,23 @@ export default function VisitorSettingsPage() {
     getJson<{ data: VisitorLinkRow[] }>(`/api/visitor/links?company=${encodeURIComponent(company)}`).then(r => setLinks(r.data))
       .catch((e: unknown) => setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'โหลดลิงก์ไม่สำเร็จ' }));
     getJson<{ data: VisitorCompanyOptionsRow }>(`/api/visitor/options?company=${encodeURIComponent(company)}`)
-      .then(r => { setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false); setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false); })
+      .then(r => { setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false); setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false); setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false); })
       .catch((e: unknown) => setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'โหลดรายการพื้นที่ไม่สำเร็จ' }));
-  }, [company, setToast]);
+    loadLine();
+  }, [company, setToast]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function loadLine() {
+    if (!company) return;
+    getJson<{ data: { groups: LineGroupOption[]; log: NotifyLogRow[]; sent_this_month_all_companies: number; configured: boolean } }>(`/api/visitor/line?company=${encodeURIComponent(company)}`)
+      .then(r => setLineInfo(r.data)).catch(() => setLineInfo(null));
+  }
+  async function sendTest() {
+    if (busy || !company) return;
+    setBusy(true);
+    try { await postJson('/api/visitor/line', { company_id: company }); setToast({ type: 'success', msg: 'ส่งข้อความทดสอบเข้ากลุ่มแล้ว' }); loadLine(); }
+    catch (e) { setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'ส่งไม่สำเร็จ' }); }
+    finally { setBusy(false); }
+  }
 
   const split = (t: string) => t.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   async function saveOptions(extra: Record<string, unknown> = {}, okMsg?: string) {
@@ -52,6 +71,7 @@ export default function VisitorSettingsPage() {
       const r = await postJson<{ data: VisitorCompanyOptionsRow }>('/api/visitor/options', { company_id: company, areas: split(areasText), departments: split(deptText), ...extra }, 'PUT');
       setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false);
       setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false);
+      setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false);
       setToast({ type: 'success', msg: okMsg || `บันทึกแล้ว: พื้นที่ ${r.data.areas.length} · แผนก ${r.data.departments.length}` });
     } catch (e) { setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'บันทึกไม่สำเร็จ' }); }
     finally { setBusy(false); }
@@ -146,6 +166,40 @@ export default function VisitorSettingsPage() {
           {optionsDirty && <span className="text-sm text-gray-500">มีการแก้ไขที่ยังไม่บันทึก</span>}
         </div>
       </section>
+      <section className={cardClass} style={{ borderLeft: `4px solid ${VIZ.positive}` }}>
+        <h2 className="inline-flex items-center gap-2 font-semibold text-lg" style={{ color: VIZ.positive }}><Bell size={20} />การแจ้งเตือน LINE (ของบริษัทนี้)</h2>
+        <p className="text-sm text-gray-600 mt-1">เชิญ LINE OA <strong>EA HSE Center</strong> เข้ากลุ่ม LINE ของบริษัท แล้วเลือกกลุ่มด้านล่าง ระบบจะส่งการ์ด 1 ข้อความต่อเหตุการณ์ (คำขอใหม่ / ผลการพิจารณา) ไม่ว่าในกลุ่มมีกี่คน</p>
+        {lineInfo && !lineInfo.configured && <p className="mt-2 text-sm rounded-lg px-3 py-2" style={{ background: `${VIZ.accent}1A`, color: VIZ.accent }}>เซิร์ฟเวอร์ยังไม่ได้ตั้ง LINE_CHANNEL_ACCESS_TOKEN — ส่งข้อความไม่ได้</p>}
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <label className={labelClass} htmlFor="lg">กลุ่ม LINE ที่รับแจ้งเตือน</label>
+            <div className="flex gap-2">
+              <select id="lg" className={inputClass} value={lineGroup} onChange={e => { setLineGroup(e.target.value); setLineDirty(true); }}>
+                <option value="">— ไม่แจ้งเตือน —</option>
+                {(lineInfo?.groups || []).map(g => <option key={g.group_id} value={g.group_id} disabled={!g.active && g.group_id !== lineGroup}>{g.group_name || '(ไม่ทราบชื่อกลุ่ม)'}{g.active ? '' : ' — บอทออกจากกลุ่มแล้ว'} · {g.group_id.slice(0, 8)}…</option>)}
+              </select>
+              <button type="button" onClick={loadLine} className="shrink-0 rounded-lg border border-gray-300 bg-white px-3" aria-label="โหลดรายชื่อกลุ่มใหม่"><RefreshCw size={16} /></button>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">{lineInfo && lineInfo.groups.length === 0 ? 'ยังไม่มีกลุ่มที่บอทเข้าไป — เชิญ EA HSE Center เข้ากลุ่มแล้วกดรีเฟรช' : 'เห็นเฉพาะกลุ่มที่บอทอยู่ ณ ตอนนี้'}</p>
+            <div className="mt-3 space-y-2 text-sm">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={notifyNew} onChange={e => { setNotifyNew(e.target.checked); setLineDirty(true); }} className="accent-[#4E79A7]" />แจ้งเมื่อมี<strong>คำขอใหม่</strong> (ให้ผู้อนุมัติเห็นทันที)</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={notifyDecision} onChange={e => { setNotifyDecision(e.target.checked); setLineDirty(true); }} className="accent-[#4E79A7]" />แจ้ง<strong>ผลการพิจารณา</strong> (อนุมัติ/ขอข้อมูลเพิ่ม/ไม่อนุมัติ/ยกเลิก)</label>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" disabled={busy || !lineDirty || !company} onClick={() => void saveOptions({ line_group_id: lineGroup || null, notify_new: notifyNew, notify_decision: notifyDecision }, 'บันทึกการแจ้งเตือน LINE แล้ว')} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-white text-sm font-medium disabled:opacity-50" style={{ background: VIZ.positive }}><Save size={16} />บันทึก</button>
+              <button type="button" disabled={busy || lineDirty || !lineGroup} onClick={() => void sendTest()} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-sm font-medium border border-gray-300 bg-white disabled:opacity-50" title={lineDirty ? 'บันทึกก่อนส่งทดสอบ' : ''}><Send size={16} />ส่งข้อความทดสอบ</button>
+            </div>
+          </div>
+          <div className="text-sm">
+            <div className="text-xs text-gray-500 mb-1">ประวัติการส่งล่าสุดของบริษัทนี้ · ส่งสำเร็จเดือนนี้ทุกบริษัทรวม <strong>{lineInfo?.sent_this_month_all_companies ?? '–'}</strong> ข้อความ (โควตาฟรี 200/เดือน)</div>
+            <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100 max-h-56 overflow-y-auto">
+              {(lineInfo?.log || []).length === 0 && <li className="px-3 py-3 text-gray-400">ยังไม่เคยส่ง</li>}
+              {(lineInfo?.log || []).map(l => <li key={l.id} className="px-3 py-2 flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: l.http_status && l.http_status < 300 ? VIZ.positive : VIZ.accent }} /><span className="text-gray-500 whitespace-nowrap">{thaiDateTime(l.sent_at)}</span><span>{l.kind === 'new_request' ? 'คำขอใหม่' : l.kind === 'decision' ? 'ผลพิจารณา' : 'ทดสอบ'}</span>{l.error && <span className="text-xs truncate" style={{ color: VIZ.accent }} title={l.error}>{l.http_status} {l.error}</span>}</li>)}
+            </ul>
+          </div>
+        </div>
+      </section>
+
       <section className={cardClass} style={{ borderLeft: `4px solid ${VIZ.neutral}` }}>
         <h2 className="inline-flex items-center gap-2 font-semibold text-lg" style={{ color: VIZ.lightText }}><ImageIcon size={20} />ภาพพื้นหลังแบบฟอร์ม (ของบริษัทนี้)</h2>
         <p className="text-sm text-gray-600 mt-1">แสดงหลังแบบฟอร์มขอเข้าพื้นที่ของทุกลิงก์ในบริษัทนี้ และเป็นค่าเริ่มต้นของจอ รปภ (ถ้าจอยังไม่ได้เลือกภาพเอง) แนะนำภาพแนวนอน เช่น ภาพโรงงาน ระบบย่อขนาดให้อัตโนมัติ</p>

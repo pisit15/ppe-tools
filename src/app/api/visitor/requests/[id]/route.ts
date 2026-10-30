@@ -3,6 +3,7 @@ import { AccessError, apiError, assertCompany } from '@/lib/toolsSession';
 import { requireVisitorApprover } from '@/lib/visitor/access';
 import { validateDecision } from '@/lib/visitor/validation';
 import { REQUEST_SELECT, addEvent, db, sortPersons } from '@/lib/visitor/server';
+import { notifyDecision } from '@/lib/visitor/notify';
 import type { VisitorEventRow, VisitorRequestDetail, VisitorRequestWithPersons, VisitorStatus } from '@/lib/visitor/types';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }).eq('id', row.id);
     if (error) throw error;
     await addEvent(row.id, actorName, EVENT[decision.action], [decision.note, decision.action === 'approve' && decision.conditions ? `เงื่อนไข: ${decision.conditions}` : ''].filter(Boolean).join(' · '));
-    return NextResponse.json({ data: await load(row.id) });
+    const updated = await load(row.id);
+    // Tell the company's LINE group — but not when an already-approved request only had its conditions edited.
+    if (!(row.status === 'approved' && decision.action === 'approve')) await notifyDecision(updated);
+    return NextResponse.json({ data: updated });
   } catch (error) {
     return apiError(error);
   }

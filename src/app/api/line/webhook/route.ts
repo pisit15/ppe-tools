@@ -5,13 +5,14 @@ import { replyMessages } from '@/lib/line/api';
 import { text, textFallback } from '@/lib/line/flex';
 import type { LineMessage } from '@/lib/line/flex';
 import { handleFollow, handlePostback, handleText } from '@/lib/line/bot';
+import { recordGroupJoin, recordGroupLeave, touchGroup } from '@/lib/line/groups';
 
 export const dynamic = 'force-dynamic';
 
 type LineEvent = {
   type: string;
   replyToken?: string;
-  source?: { type?: string; userId?: string };
+  source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
   message?: { type?: string; text?: string };
   postback?: { data?: string };
 };
@@ -42,7 +43,22 @@ export async function POST(request: NextRequest) {
   for (const ev of events) {
     try {
       const userId = ev.source?.userId;
-      // 1:1 chats only — never answer company data into group chats.
+      // Group chats: only register the group (for visitor-request notifications) — never answer company data there.
+      const groupId = ev.source?.groupId || ev.source?.roomId;
+      if (groupId && (ev.source?.type === 'group' || ev.source?.type === 'room')) {
+        if (ev.type === 'join') {
+          const g = await recordGroupJoin(db, groupId, token);
+          if (ev.replyToken) await replyMessages(ev.replyToken, [text(`EA HSE Center เข้ากลุ่ม${g.group_name ? ` "${g.group_name}"` : ''}แล้ว
+ทีม SHE เลือกกลุ่มนี้ได้ที่ tools.eashe.org/visitor/settings → การแจ้งเตือน LINE
+รหัสกลุ่ม: ${groupId}`)], token);
+        } else if (ev.type === 'leave') {
+          await recordGroupLeave(db, groupId);
+        } else {
+          await touchGroup(db, groupId);
+        }
+        continue;
+      }
+      // 1:1 chats only beyond this point.
       if (!ev.replyToken || !userId || ev.source?.type !== 'user') continue;
 
       let messages: LineMessage[] | null = null;

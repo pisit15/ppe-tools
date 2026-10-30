@@ -25,6 +25,9 @@ export type VisitorCompanyOptionsRow = {
   departments: string[];
   form_background: string | null; // JPEG data URL
   form_background_dim: number; // 0–95 (% light overlay)
+  line_group_id: string | null; // LINE group that receives notifications
+  notify_new: boolean;
+  notify_decision: boolean;
   updated_at: string;
   updated_by: string | null;
 };
@@ -129,3 +132,6 @@ export type BoardPayload = { company: { id: string; name: string }; today: strin
 export type TrackPayload = Pick<VisitorRequestRow,
   'request_no' | 'status' | 'visitor_company' | 'arrival_date' | 'time_from' | 'time_to' | 'purpose' | 'decision_note' | 'conditions' | 'decided_at' | 'created_at'>
   & { company_name: string; persons: Pick<VisitorPersonRow, 'seq' | 'name' | 'detail'>[] };
+
+export type LineGroupOption = { group_id: string; group_name: string; active: boolean; joined_at: string };
+export type NotifyLogRow = { id: number; company_id: string; request_id: string | null; kind: 'new_request' | 'decision' | 'test'; group_id: string; http_status: number | null; error: string | null; sent_at: string };
