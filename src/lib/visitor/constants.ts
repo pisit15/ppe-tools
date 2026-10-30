@@ -76,7 +76,8 @@ export function ppeRowFor(purpose: string, workAreas: string[]): PpeRow | null {
   if (!purpose) return null;
   const find = (k: string) => PPE_MATRIX.find(r => r.key === k) || null;
   if (/ผู้รับเหมา/.test(purpose)) return find('contractor');
-  if (/สินค้า/.test(purpose)) return workAreas.some(a => /ขยะ|waste/i.test(a)) ? find('garbage') : find('transport');
+  // Only deliver/receive goods are transport drivers; "นำเสนอสินค้า" (present product) is an ordinary visitor.
+  if (/ส่งสินค้า|รับสินค้า|deliver|received goods/i.test(purpose)) return workAreas.some(a => /ขยะ|waste/i.test(a)) ? find('garbage') : find('transport');
   if (/เอกสาร/.test(purpose)) return find('delivery');
   return workAreas.length > 0 ? find('visitor_work') : find('visitor_meeting');
 }
