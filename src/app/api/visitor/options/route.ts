@@ -32,17 +32,34 @@ function cleanList(v: unknown, label: string) {
   return out;
 }
 
-/** SHE: replace a company's lists. Body { company_id, areas: string[], departments: string[] } */
+const MAX_BG = 800_000; // chars of data URL (~600 KB JPEG)
+
+/**
+ * SHE: replace a company's settings. Body { company_id, areas, departments, form_background?, form_background_dim? }
+ * form_background: JPEG data URL (client downscales), '' or null clears it, undefined leaves it unchanged.
+ */
 export async function PUT(request: NextRequest) {
   try {
     const actor = await requireVisitorApprover(request);
-    const body = (await request.json().catch(() => null)) as { company_id?: unknown; areas?: unknown; departments?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as { company_id?: unknown; areas?: unknown; departments?: unknown; form_background?: unknown; form_background_dim?: unknown } | null;
     const company = body?.company_id;
     assertCompany(actor, company, true);
     const areas = cleanList(body?.areas, 'พื้นที่');
     const departments = cleanList(body?.departments, 'แผนก');
+    const patch: Record<string, unknown> = { company_id: company, areas, departments, updated_at: new Date().toISOString(), updated_by: actor.displayName || actor.username };
+    if (body?.form_background !== undefined) {
+      const bg = body.form_background;
+      if (bg === null || bg === '') patch.form_background = null;
+      else if (typeof bg === 'string' && bg.startsWith('data:image/jpeg;base64,') && bg.length <= MAX_BG) patch.form_background = bg;
+      else throw new AccessError('ภาพพื้นหลังต้องเป็น JPEG และไม่เกิน 600 KB', 400);
+    }
+    if (body?.form_background_dim !== undefined) {
+      const dim = Number(body.form_background_dim);
+      if (!Number.isInteger(dim) || dim < 0 || dim > 95) throw new AccessError('ค่าความทึบต้องอยู่ระหว่าง 0–95', 400);
+      patch.form_background_dim = dim;
+    }
     const { data, error } = await db().from('visitor_company_options')
-      .upsert({ company_id: company, areas, departments, updated_at: new Date().toISOString(), updated_by: actor.displayName || actor.username }, { onConflict: 'company_id' })
+      .upsert(patch, { onConflict: 'company_id' })
       .select('*').single();
     if (error) throw error;
     return NextResponse.json({ data: data as VisitorCompanyOptionsRow });

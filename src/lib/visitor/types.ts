@@ -23,12 +23,15 @@ export type VisitorCompanyOptionsRow = {
   company_id: string;
   areas: string[];
   departments: string[];
+  form_background: string | null; // JPEG data URL
+  form_background_dim: number; // 0–95 (% light overlay)
   updated_at: string;
   updated_by: string | null;
 };
+export type VisitorBackground = { url: string; dim: number } | null;
 
 /** What the public request form receives for a secret link. */
-export type VisitorLinkInfo = { company: { id: string; name: string }; label: string; areas: string[]; departments: string[] };
+export type VisitorLinkInfo = { company: { id: string; name: string }; label: string; areas: string[]; departments: string[]; background: VisitorBackground };
 
 export type VisitorPersonRow = {
   id: string;
@@ -120,7 +123,7 @@ export type BoardRequest = Pick<VisitorRequestRow,
 export type BoardAction = 'arrive' | 'leave' | 'undo_arrive' | 'undo_leave' | 'no_show' | 'undo_no_show';
 export type BoardPost = { person_id: string; action: BoardAction } | { request_id: string; action: 'add_person'; name: string; detail?: string } | { request_id: string; action: 'no_show_all' };
 
-export type BoardPayload = { company: { id: string; name: string }; today: string; requests: BoardRequest[] };
+export type BoardPayload = { company: { id: string; name: string }; today: string; requests: BoardRequest[]; background: VisitorBackground };
 
 /** Public status view by track code — no phone numbers or decision details beyond the note. */
 export type TrackPayload = Pick<VisitorRequestRow,

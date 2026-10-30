@@ -3,7 +3,7 @@ import { getSupabaseServer } from '@/lib/supabase';
 import { AccessError } from '@/lib/toolsSession';
 import { VISITOR_LIMITS } from './constants';
 import { addDays, bangkokToday } from './validation';
-import type { BoardPayload, BoardRequest, CreateVisitorRequestInput, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons } from './types';
+import type { BoardPayload, BoardRequest, CreateVisitorRequestInput, VisitorBackground, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons } from './types';
 
 export const db = () => getSupabaseServer();
 export const newToken = (bytes = 24) => randomBytes(bytes).toString('base64url');
@@ -21,11 +21,14 @@ export async function companyName(companyId: string) {
 }
 
 /** Option lists for a company; empty arrays when nothing has been configured yet. */
-export async function companyOptions(companyId: string): Promise<{ areas: string[]; departments: string[] }> {
-  const { data, error } = await db().from('visitor_company_options').select('areas, departments').eq('company_id', companyId).maybeSingle();
+export async function companyOptions(companyId: string): Promise<{ areas: string[]; departments: string[]; background: VisitorBackground }> {
+  const { data, error } = await db().from('visitor_company_options').select('areas, departments, form_background, form_background_dim').eq('company_id', companyId).maybeSingle();
   if (error) throw error;
-  const row = data as { areas: string[] | null; departments: string[] | null } | null;
-  return { areas: row?.areas || [], departments: row?.departments || [] };
+  const row = data as { areas: string[] | null; departments: string[] | null; form_background: string | null; form_background_dim: number | null } | null;
+  return {
+    areas: row?.areas || [], departments: row?.departments || [],
+    background: row?.form_background ? { url: row.form_background, dim: row.form_background_dim ?? 75 } : null,
+  };
 }
 
 export async function activeLink(token: string) {
@@ -71,7 +74,7 @@ export async function addEvent(requestId: string, actor: string, action: string,
 
 /** Guard board: approved requests from yesterday (read-only history, and carry-over of visitors still inside) to today+N (Bangkok). */
 export async function boardPayload(companyId: string): Promise<BoardPayload> {
-  const name = await companyName(companyId);
+  const [name, options] = await Promise.all([companyName(companyId), companyOptions(companyId)]);
   const today = bangkokToday();
   const { data, error } = await db().from('visitor_requests').select(REQUEST_SELECT)
     .eq('company_id', companyId).eq('status', 'approved')
@@ -86,5 +89,5 @@ export async function boardPayload(companyId: string): Promise<BoardPayload> {
       conditions: r.conditions, has_permit: r.has_permit, permit_ref: r.permit_ref,
       persons: r.visitor_persons.map(p => ({ id: p.id, seq: p.seq, name: p.name, detail: p.detail, arrived_at: p.arrived_at, left_at: p.left_at, no_show_at: p.no_show_at, added_by_guard: p.added_by_guard })),
     }));
-  return { company: { id: companyId, name }, today, requests };
+  return { company: { id: companyId, name }, today, requests, background: options.background };
 }

@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { LogIn, LogOut, RotateCcw, Phone, MapPin, ShieldAlert, Maximize2, ChevronDown, ChevronRight, UserX, UserPlus, Settings2, X, Sun, Moon, ImagePlus, Trash2 } from 'lucide-react';
 import type { BoardAction, BoardPayload, BoardPost, BoardRequest } from '@/lib/visitor/types';
 import { ppeRowFor, ppeText } from '@/lib/visitor/constants';
+import { fileToDataUrl } from '../../../_components/image';
 import { FetchError, ToastView, bangkokTime, hhmm, postJson, getJson, thaiDate, useToast } from '../../../_components/ui';
 
 // Two palettes for the guard monitor; VIZ hues kept for status colours. Background image is a per-device choice (localStorage).
@@ -24,26 +25,6 @@ function loadPrefs(): Prefs {
   try { const raw = localStorage.getItem(PREFS_KEY); return raw ? { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<Prefs>) } : DEFAULT_PREFS; } catch { return DEFAULT_PREFS; }
 }
 function savePrefs(p: Prefs) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* quota / private mode */ } }
-
-/** Downscale a picked image to ≤1920px JPEG so it fits in localStorage. */
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const scale = Math.min(1, 1920 / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { reject(new Error('canvas')); return; }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image')); };
-    img.src = url;
-  });
-}
 
 export default function BoardPage() {
   const { company } = useParams<{ company: string }>();
@@ -115,13 +96,16 @@ export default function BoardPage() {
   const bk = new Date(now.getTime() + 7 * 3600 * 1000);
   const clock = bk.toISOString().slice(11, 19);
   const nowHm = bk.toISOString().slice(11, 16);
-  const overlay = prefs.theme === 'dark' ? `rgba(15,23,32,${prefs.dim / 100})` : `rgba(243,245,248,${prefs.dim / 100})`;
+  // Device-chosen image wins; otherwise the company's form background (set by SHE in settings) is the default.
+  const bgUrl = prefs.bg || data?.background?.url || null;
+  const bgDim = prefs.bg ? prefs.dim : (data?.background?.dim ?? prefs.dim);
+  const overlay = prefs.theme === 'dark' ? `rgba(15,23,32,${bgDim / 100})` : `rgba(243,245,248,${bgDim / 100})`;
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, color: C.text, fontSize: 18 }}>
-      {prefs.bg && <div aria-hidden className="fixed inset-0 z-0" style={{ backgroundImage: `url(${prefs.bg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}><div className="absolute inset-0" style={{ background: overlay }} /></div>}
+      {bgUrl && <div aria-hidden className="fixed inset-0 z-0" style={{ backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}><div className="absolute inset-0" style={{ background: overlay }} /></div>}
       <div className="relative z-10">
-        <header className="flex items-center justify-between gap-4 px-6 py-4" style={{ borderBottom: `1px solid ${C.line}`, background: prefs.bg ? 'transparent' : C.panel }}>
+        <header className="flex items-center justify-between gap-4 px-6 py-4" style={{ borderBottom: `1px solid ${C.line}`, background: bgUrl ? 'transparent' : C.panel }}>
           <div>
             <div className="text-sm tracking-wide" style={{ color: C.dim }}>{data?.company.name || company.toUpperCase()} · ป้อม รปภ</div>
             <h1 className="text-2xl font-semibold">รายชื่อบุคคลภายนอกที่อนุมัติเข้าพื้นที่</h1>
@@ -192,7 +176,7 @@ function SettingsPanel({ C, prefs, onChange, onPick, onClose }: { C: Palette; pr
         <span style={{ color: C.dim }}>ภาพพื้นหลัง</span>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { onPick(e.target.files?.[0]); e.target.value = ''; }} />
         <button type="button" onClick={() => fileRef.current?.click()} className="px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5" style={{ border: `1px solid ${C.line}` }}><ImagePlus size={16} />{prefs.bg ? 'เปลี่ยนภาพ' : 'เลือกภาพ'}</button>
-        {prefs.bg && <button type="button" onClick={() => onChange({ bg: null })} className="px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5" style={{ border: `1px solid ${C.danger}`, color: C.danger }}><Trash2 size={16} />ลบภาพ</button>}
+        {prefs.bg && <button type="button" onClick={() => onChange({ bg: null })} className="px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5" style={{ border: `1px solid ${C.danger}`, color: C.danger }}><Trash2 size={16} />ลบภาพ (กลับไปใช้ของบริษัท)</button>}
       </div>
       {prefs.bg && (
         <label className="flex items-center gap-2"><span style={{ color: C.dim }}>ความทึบทับภาพ</span>

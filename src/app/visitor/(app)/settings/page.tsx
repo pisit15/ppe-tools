@@ -2,7 +2,8 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Copy, Link2, MonitorPlay, Plus, Ban, ExternalLink, QrCode, MapPin, Save } from 'lucide-react';
+import { Copy, Link2, MonitorPlay, Plus, Ban, ExternalLink, QrCode, MapPin, Save, ImagePlus, Trash2, Image as ImageIcon } from 'lucide-react';
+import { fileToBoundedDataUrl } from '../../_components/image';
 import { useAuth } from '@/components/AuthProvider';
 import type { VisitorCompanyOptionsRow, VisitorLinkRow } from '@/lib/visitor/types';
 import { useQr } from '../../_components/useQr';
@@ -24,6 +25,9 @@ export default function VisitorSettingsPage() {
   const [areasText, setAreasText] = useState('');
   const [deptText, setDeptText] = useState('');
   const [optionsDirty, setOptionsDirty] = useState(false);
+  const [bg, setBg] = useState<string | null>(null);
+  const [bgDim, setBgDim] = useState(75);
+  const [bgDirty, setBgDirty] = useState(false);
   const boardQr = useQr(company ? `${origin}/visitor/board/${company}` : null, 200);
 
   useEffect(() => {
@@ -36,20 +40,26 @@ export default function VisitorSettingsPage() {
     getJson<{ data: VisitorLinkRow[] }>(`/api/visitor/links?company=${encodeURIComponent(company)}`).then(r => setLinks(r.data))
       .catch((e: unknown) => setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'โหลดลิงก์ไม่สำเร็จ' }));
     getJson<{ data: VisitorCompanyOptionsRow }>(`/api/visitor/options?company=${encodeURIComponent(company)}`)
-      .then(r => { setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false); })
+      .then(r => { setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false); setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false); })
       .catch((e: unknown) => setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'โหลดรายการพื้นที่ไม่สำเร็จ' }));
   }, [company, setToast]);
 
-  async function saveOptions() {
+  const split = (t: string) => t.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  async function saveOptions(extra: Record<string, unknown> = {}, okMsg?: string) {
     if (busy || !company) return;
     setBusy(true);
     try {
-      const split = (t: string) => t.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-      const r = await postJson<{ data: VisitorCompanyOptionsRow }>('/api/visitor/options', { company_id: company, areas: split(areasText), departments: split(deptText) }, 'PUT');
+      const r = await postJson<{ data: VisitorCompanyOptionsRow }>('/api/visitor/options', { company_id: company, areas: split(areasText), departments: split(deptText), ...extra }, 'PUT');
       setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false);
-      setToast({ type: 'success', msg: `บันทึกแล้ว: พื้นที่ ${r.data.areas.length} · แผนก ${r.data.departments.length}` });
+      setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false);
+      setToast({ type: 'success', msg: okMsg || `บันทึกแล้ว: พื้นที่ ${r.data.areas.length} · แผนก ${r.data.departments.length}` });
     } catch (e) { setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'บันทึกไม่สำเร็จ' }); }
     finally { setBusy(false); }
+  }
+  async function pickBackground(file: File | undefined) {
+    if (!file) return;
+    try { setBg(await fileToBoundedDataUrl(file, 800_000)); setBgDirty(true); }
+    catch { setToast({ type: 'error', msg: 'ใช้ภาพนี้ไม่ได้ หรือภาพใหญ่เกินไป' }); }
   }
   useEffect(() => { load(); }, [load]);
 
@@ -134,6 +144,29 @@ export default function VisitorSettingsPage() {
         <div className="mt-3 flex items-center gap-3">
           <button type="button" disabled={busy || !optionsDirty || !company} onClick={() => void saveOptions()} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-white text-sm font-medium disabled:opacity-50" style={{ background: VIZ.secondary }}><Save size={16} />บันทึกรายการ</button>
           {optionsDirty && <span className="text-sm text-gray-500">มีการแก้ไขที่ยังไม่บันทึก</span>}
+        </div>
+      </section>
+      <section className={cardClass} style={{ borderLeft: `4px solid ${VIZ.neutral}` }}>
+        <h2 className="inline-flex items-center gap-2 font-semibold text-lg" style={{ color: VIZ.lightText }}><ImageIcon size={20} />ภาพพื้นหลังแบบฟอร์ม (ของบริษัทนี้)</h2>
+        <p className="text-sm text-gray-600 mt-1">แสดงหลังแบบฟอร์มขอเข้าพื้นที่ของทุกลิงก์ในบริษัทนี้ และเป็นค่าเริ่มต้นของจอ รปภ (ถ้าจอยังไม่ได้เลือกภาพเอง) แนะนำภาพแนวนอน เช่น ภาพโรงงาน ระบบย่อขนาดให้อัตโนมัติ</p>
+        <div className="mt-4 grid gap-4 md:grid-cols-[320px_1fr] items-start">
+          <div className="rounded-lg overflow-hidden border border-gray-200 aspect-video relative" style={{ background: '#F5F6F8' }}>
+            {bg ? <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={bg} alt="ตัวอย่างพื้นหลัง" className="absolute inset-0 w-full h-full object-cover" />
+              <div className="absolute inset-0" style={{ background: `rgba(245,246,248,${bgDim / 100})` }} />
+              <div className="absolute inset-4 rounded-lg bg-white shadow-sm border border-gray-100 flex items-center justify-center text-xs text-gray-500">ตัวอย่างการ์ดฟอร์ม</div>
+            </> : <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-400">ยังไม่มีภาพ (พื้นเทาเรียบ)</div>}
+          </div>
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <label className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-white cursor-pointer" style={{ background: VIZ.primary }}><ImagePlus size={16} />{bg ? 'เปลี่ยนภาพ' : 'เลือกภาพ'}<input type="file" accept="image/*" className="hidden" onChange={e => { void pickBackground(e.target.files?.[0]); e.target.value = ''; }} /></label>
+              {bg && <button type="button" onClick={() => { setBg(null); setBgDirty(true); }} className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm border" style={{ borderColor: VIZ.accent, color: VIZ.accent }}><Trash2 size={16} />ลบภาพ</button>}
+            </div>
+            <label className="block text-sm text-gray-700">ความทึบของชั้นสีขาวทับภาพ (ยิ่งมาก ฟอร์มยิ่งอ่านง่าย): <strong>{bgDim}%</strong>
+              <input type="range" min={0} max={95} value={bgDim} onChange={e => { setBgDim(Number(e.target.value)); setBgDirty(true); }} className="block w-full mt-1" disabled={!bg} /></label>
+            <button type="button" disabled={busy || !bgDirty || !company} onClick={() => void saveOptions({ form_background: bg ?? '', form_background_dim: bgDim }, 'บันทึกภาพพื้นหลังแล้ว')} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-white text-sm font-medium disabled:opacity-50" style={{ background: VIZ.primary }}><Save size={16} />บันทึกพื้นหลัง</button>
+          </div>
         </div>
       </section>
       <ToastView toast={toast} />

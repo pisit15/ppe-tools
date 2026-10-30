@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { CheckCircle2, Plus, Trash2, Users, Building2, CalendarDays, ClipboardList, Copy } from 'lucide-react';
 import { HAS_PERMIT_LABEL, PPE_LABEL, PPE_MATRIX, PURPOSE_OTHER, VISITOR_LIMITS, VISITOR_PURPOSES, ppeRowFor } from '@/lib/visitor/constants';
 import { Check, X } from 'lucide-react';
-import type { CreateVisitorRequestInput, HasPermit, VisitorLinkInfo } from '@/lib/visitor/types';
+import type { CreateVisitorRequestInput, HasPermit, VisitorBackground, VisitorLinkInfo } from '@/lib/visitor/types';
 import { useQr } from '../../../_components/useQr';
 import { FetchError, ToastView, VIZ, cardClass, getJson, inputClass, labelClass, postJson, thaiDate, useToast } from '../../../_components/ui';
 
@@ -89,10 +89,11 @@ export default function VisitorRequestPage() {
 
   if (linkError) return <Shell><div className={cardClass}><h1 className="text-xl font-semibold" style={{ color: VIZ.accent }}>ไม่สามารถเปิดแบบฟอร์มได้</h1><p className="mt-2 text-gray-600">{linkError}</p></div></Shell>;
   if (!link) return <Shell><p className="text-gray-500">กำลังโหลด…</p></Shell>;
+  const bg = link.background;
 
   if (done) {
     return (
-      <Shell company={link.company.name}>
+      <Shell company={link.company.name} background={bg}>
         <div className={cardClass} style={{ borderLeft: `4px solid ${VIZ.positive}` }}>
           <div className="flex items-center gap-3"><CheckCircle2 size={32} style={{ color: VIZ.positive }} /><h1 className="text-2xl font-semibold" style={{ color: VIZ.text }}>ส่งคำขอแล้ว</h1></div>
           <p className="mt-4 text-gray-700">เลขที่คำขอ <span className="font-mono font-semibold text-lg" style={{ color: VIZ.primary }}>{done.request_no}</span></p>
@@ -116,8 +117,14 @@ export default function VisitorRequestPage() {
   }
 
   return (
-    <Shell company={link.company.name}>
+    <Shell company={link.company.name} background={bg}>
       <form onSubmit={submit} className="space-y-6" aria-busy={busy}>
+        <section className={cardClass} style={{ borderTop: `4px solid ${VIZ.primary}` }}>
+          <h1 className="text-2xl sm:text-3xl font-bold leading-snug" style={{ color: VIZ.primary }}>แจ้งข้อมูลผู้มาติดต่อ หรือ ผู้รับเหมา<br /><span className="text-xl sm:text-2xl font-semibold">(Contractor / Supplier / Transportation / General Visitor)</span></h1>
+          <p className="mt-3 text-gray-700">แบบฟอร์มนี้ สำหรับแจ้งข้อมูล ผู้รับเหมา, ซัพพลายเออร์, รถส่งของ และผู้มาติดต่อทั่วไป ที่เข้ามาในพื้นที่บริษัท {link.company.name} — กรุณาแจ้งล่วงหน้า เพื่อให้ทีม SHE คัดกรองและอนุมัติก่อนวันเข้าพื้นที่</p>
+          <p className="mt-2 text-sm text-gray-500">ช่องที่มี * จำเป็นต้องกรอก · หลังส่งคำขอจะได้เลขที่คำขอและลิงก์ติดตามสถานะ</p>
+        </section>
+
         <section className={cardClass}>
           <h2 className="flex items-center gap-2 text-lg font-semibold mb-4" style={{ color: VIZ.primary }}><Users size={20} />ผู้แจ้งข้อมูล (พนักงาน)</h2>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -238,10 +245,12 @@ export default function VisitorRequestPage() {
   );
 }
 
-function Shell({ children, company }: { children: React.ReactNode; company?: string }) {
+function Shell({ children, company, background }: { children: React.ReactNode; company?: string; background?: VisitorBackground }) {
   return (
-    <div className="min-h-screen" style={{ background: '#F5F6F8', color: VIZ.text }}>
-      <header className="bg-white border-b border-gray-200">
+    <div className="min-h-screen relative" style={{ background: '#F5F6F8', color: VIZ.text }}>
+      {background && <div aria-hidden className="fixed inset-0 z-0" style={{ backgroundImage: `url(${background.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}><div className="absolute inset-0" style={{ background: `rgba(245,246,248,${background.dim / 100})` }} /></div>}
+      <div className="relative z-10">
+      <header className={background ? 'bg-white/85 backdrop-blur border-b border-gray-200' : 'bg-white border-b border-gray-200'}>
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/ea-logo.svg" alt="EA" width={40} height={32} />
@@ -249,6 +258,7 @@ function Shell({ children, company }: { children: React.ReactNode; company?: str
         </div>
       </header>
       <main className="max-w-3xl mx-auto px-4 py-6">{children}</main>
+      </div>
     </div>
   );
 }
