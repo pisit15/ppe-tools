@@ -6,6 +6,7 @@ import { text, textFallback } from '@/lib/line/flex';
 import type { LineMessage } from '@/lib/line/flex';
 import { handleFollow, handlePostback, handleText } from '@/lib/line/bot';
 import { recordGroupJoin, recordGroupLeave, touchGroup } from '@/lib/line/groups';
+import { groupCommandText, groupScope, handleGroupText } from '@/lib/line/groupBot';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +14,7 @@ type LineEvent = {
   type: string;
   replyToken?: string;
   source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
-  message?: { type?: string; text?: string };
+  message?: { type?: string; text?: string; mention?: { mentionees?: { isSelf?: boolean }[] } };
   postback?: { data?: string };
 };
 
@@ -55,6 +56,23 @@ export async function POST(request: NextRequest) {
           await recordGroupLeave(db, groupId);
         } else {
           await touchGroup(db, groupId);
+          // Commands addressed to the bot (@she … or a mention) — answered only for the company this group is linked to.
+          if (ev.type === 'message' && ev.message?.type === 'text' && ev.replyToken) {
+            const mentioned = Boolean(ev.message.mention?.mentionees?.some(m => m.isSelf));
+            const cmdText = groupCommandText(ev.message.text || '', mentioned);
+            if (cmdText !== null) {
+              const scope = await groupScope(db, groupId);
+              if (!scope) {
+                await replyMessages(ev.replyToken, [text('กลุ่มนี้ยังไม่ได้ผูกกับบริษัท — ทีม SHE ตั้งค่าได้ที่ tools.eashe.org/visitor/settings → การแจ้งเตือน LINE')], token);
+              } else {
+                const messages = await handleGroupText(db, scope, cmdText);
+                if (messages?.length) {
+                  const status = await replyMessages(ev.replyToken, messages, token);
+                  if (status === 400 && messages.some(m => m.type === 'flex')) await replyMessages(ev.replyToken, textFallback(messages), token);
+                }
+              }
+            }
+          }
         }
         continue;
       }

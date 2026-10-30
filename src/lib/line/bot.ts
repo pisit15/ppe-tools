@@ -434,6 +434,13 @@ async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAcc
   }
 }
 
+/** Group chats: run the same commands as a fixed, non-admin account for one company. No link/unlink/whoami, no quick replies. */
+export async function answerAs(db: SupabaseClient, account: LinkedAccount, input: string): Promise<LineMessage[]> {
+  const kind = parseCommand(input).kind;
+  if (kind === 'unlink' || kind === 'whoami') return [text('คำสั่งนี้ใช้ได้เฉพาะในแชทส่วนตัวกับบอท')];
+  return toMessages(await answer(db, `group:${account.companyId}`, account, input), false);
+}
+
 export async function handleText(db: SupabaseClient, lineUserId: string, input: string): Promise<LineMessage[]> {
   const account = await getLinkedAccount(db, lineUserId);
   if (!account) return toMessages(await linkPrompt(db, lineUserId), false);
