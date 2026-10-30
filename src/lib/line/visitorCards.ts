@@ -68,3 +68,10 @@ export function decisionCard(r: VisitorRequestWithPersons, companyName: string):
 }
 
 export const testMessage = (companyName: string) => text(`ทดสอบการแจ้งเตือน Visitor Access ของ ${companyName} — กลุ่มนี้จะได้รับคำขอเข้าพื้นที่ใหม่และผลการพิจารณา`);
+
+/** One text message with every request awaiting a decision (max 40 lines). */
+export function pendingDigest(rows: VisitorRequestWithPersons[], companyName: string): LineMessage {
+  if (rows.length === 0) return text(`${companyName}: ไม่มีคำขอเข้าพื้นที่ค้างอนุมัติ`);
+  const lines = rows.map(r => `• ${r.request_no} ${thaiDate(r.arrival_date)} ${hhmm(r.time_from)} ${r.visitor_company} (${r.visitor_persons.length} คน)${r.status === 'need_info' ? ' [ขอข้อมูลเพิ่ม]' : ''}`);
+  return text([`คำขอเข้าพื้นที่ค้างอนุมัติ ${rows.length} รายการ · ${companyName}`, ...lines, '', `เปิดคิวอนุมัติ: ${QUEUE}`].join('\n'));
+}

@@ -55,10 +55,10 @@ export default function VisitorSettingsPage() {
     getJson<{ data: { groups: LineGroupOption[]; log: NotifyLogRow[]; sent_this_month_all_companies: number; configured: boolean } }>(`/api/visitor/line?company=${encodeURIComponent(company)}`)
       .then(r => setLineInfo(r.data)).catch(() => setLineInfo(null));
   }
-  async function sendTest() {
+  async function sendTest(digest = false) {
     if (busy || !company) return;
     setBusy(true);
-    try { await postJson('/api/visitor/line', { company_id: company }); setToast({ type: 'success', msg: 'ส่งข้อความทดสอบเข้ากลุ่มแล้ว' }); loadLine(); }
+    try { const r = await postJson<{ data: { count: number } }>('/api/visitor/line', { company_id: company, ...(digest ? { action: 'digest' } : {}) }); setToast({ type: 'success', msg: digest ? `ส่งสรุปค้างอนุมัติ ${r.data.count} รายการเข้ากลุ่มแล้ว` : 'ส่งข้อความทดสอบเข้ากลุ่มแล้ว' }); loadLine(); }
     catch (e) { setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'ส่งไม่สำเร็จ' }); }
     finally { setBusy(false); }
   }
@@ -168,7 +168,7 @@ export default function VisitorSettingsPage() {
       </section>
       <section className={cardClass} style={{ borderLeft: `4px solid ${VIZ.positive}` }}>
         <h2 className="inline-flex items-center gap-2 font-semibold text-lg" style={{ color: VIZ.positive }}><Bell size={20} />การแจ้งเตือน LINE (ของบริษัทนี้)</h2>
-        <p className="text-sm text-gray-600 mt-1">เชิญ LINE OA <strong>EA SHE Center</strong> เข้ากลุ่ม LINE ของบริษัท แล้วเลือกกลุ่มด้านล่าง ระบบจะส่งการ์ด 1 ข้อความต่อเหตุการณ์ (คำขอใหม่ / ผลการพิจารณา) ไม่ว่าในกลุ่มมีกี่คน</p>
+        <p className="text-sm text-gray-600 mt-1">เชิญ LINE OA <strong>EA HSE Center</strong> เข้ากลุ่ม LINE ของบริษัท แล้วเลือกกลุ่มด้านล่าง ระบบจะส่งการ์ด 1 ข้อความต่อเหตุการณ์ (คำขอใหม่ / ผลการพิจารณา) ไม่ว่าในกลุ่มมีกี่คน</p>
         {lineInfo && !lineInfo.configured && <p className="mt-2 text-sm rounded-lg px-3 py-2" style={{ background: `${VIZ.accent}1A`, color: VIZ.accent }}>เซิร์ฟเวอร์ยังไม่ได้ตั้ง LINE_CHANNEL_ACCESS_TOKEN — ส่งข้อความไม่ได้</p>}
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div>
@@ -180,7 +180,7 @@ export default function VisitorSettingsPage() {
               </select>
               <button type="button" onClick={loadLine} className="shrink-0 rounded-lg border border-gray-300 bg-white px-3" aria-label="โหลดรายชื่อกลุ่มใหม่"><RefreshCw size={16} /></button>
             </div>
-            <p className="mt-1 text-xs text-gray-500">{lineInfo && lineInfo.groups.length === 0 ? 'ยังไม่มีกลุ่มที่บอทเข้าไป — เชิญ EA SHE Center เข้ากลุ่มแล้วกดรีเฟรช' : 'เห็นเฉพาะกลุ่มที่บอทอยู่ ณ ตอนนี้'}</p>
+            <p className="mt-1 text-xs text-gray-500">{lineInfo && lineInfo.groups.length === 0 ? 'ยังไม่มีกลุ่มที่บอทเข้าไป — เชิญ EA HSE Center เข้ากลุ่มแล้วกดรีเฟรช' : 'เห็นเฉพาะกลุ่มที่บอทอยู่ ณ ตอนนี้'}</p>
             <div className="mt-3 space-y-2 text-sm">
               <label className="flex items-center gap-2"><input type="checkbox" checked={notifyNew} onChange={e => { setNotifyNew(e.target.checked); setLineDirty(true); }} className="accent-[#4E79A7]" />แจ้งเมื่อมี<strong>คำขอใหม่</strong> (ให้ผู้อนุมัติเห็นทันที)</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={notifyDecision} onChange={e => { setNotifyDecision(e.target.checked); setLineDirty(true); }} className="accent-[#4E79A7]" />แจ้ง<strong>ผลการพิจารณา</strong> (อนุมัติ/ขอข้อมูลเพิ่ม/ไม่อนุมัติ/ยกเลิก)</label>
@@ -188,13 +188,14 @@ export default function VisitorSettingsPage() {
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" disabled={busy || !lineDirty || !company} onClick={() => void saveOptions({ line_group_id: lineGroup || null, notify_new: notifyNew, notify_decision: notifyDecision }, 'บันทึกการแจ้งเตือน LINE แล้ว')} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-white text-sm font-medium disabled:opacity-50" style={{ background: VIZ.positive }}><Save size={16} />บันทึก</button>
               <button type="button" disabled={busy || lineDirty || !lineGroup} onClick={() => void sendTest()} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-sm font-medium border border-gray-300 bg-white disabled:opacity-50" title={lineDirty ? 'บันทึกก่อนส่งทดสอบ' : ''}><Send size={16} />ส่งข้อความทดสอบ</button>
+              <button type="button" disabled={busy || lineDirty || !lineGroup} onClick={() => void sendTest(true)} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-sm font-medium border bg-white disabled:opacity-50" style={{ borderColor: VIZ.secondary, color: VIZ.secondary }} title="ส่งรายการที่ยังรออนุมัติทั้งหมดเข้ากลุ่ม 1 ข้อความ"><Bell size={16} />ส่งสรุปค้างอนุมัติเข้ากลุ่ม</button>
             </div>
           </div>
           <div className="text-sm">
             <div className="text-xs text-gray-500 mb-1">ประวัติการส่งล่าสุดของบริษัทนี้ · ส่งสำเร็จเดือนนี้ทุกบริษัทรวม <strong>{lineInfo?.sent_this_month_all_companies ?? '–'}</strong> ข้อความ (โควตาฟรี 200/เดือน)</div>
             <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100 max-h-56 overflow-y-auto">
               {(lineInfo?.log || []).length === 0 && <li className="px-3 py-3 text-gray-400">ยังไม่เคยส่ง</li>}
-              {(lineInfo?.log || []).map(l => <li key={l.id} className="px-3 py-2 flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: l.http_status && l.http_status < 300 ? VIZ.positive : VIZ.accent }} /><span className="text-gray-500 whitespace-nowrap">{thaiDateTime(l.sent_at)}</span><span>{l.kind === 'new_request' ? 'คำขอใหม่' : l.kind === 'decision' ? 'ผลพิจารณา' : 'ทดสอบ'}</span>{l.error && <span className="text-xs truncate" style={{ color: VIZ.accent }} title={l.error}>{l.http_status} {l.error}</span>}</li>)}
+              {(lineInfo?.log || []).map(l => <li key={l.id} className="px-3 py-2 flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: l.http_status && l.http_status < 300 ? VIZ.positive : VIZ.accent }} /><span className="text-gray-500 whitespace-nowrap">{thaiDateTime(l.sent_at)}</span><span>{l.kind === 'new_request' ? 'คำขอใหม่' : l.kind === 'decision' ? 'ผลพิจารณา' : 'ทดสอบ/สรุป'}</span>{l.error && <span className="text-xs truncate" style={{ color: VIZ.accent }} title={l.error}>{l.http_status} {l.error}</span>}</li>)}
             </ul>
           </div>
         </div>

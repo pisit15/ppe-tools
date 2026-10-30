@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AccessError, apiError, assertCompany } from '@/lib/toolsSession';
 import { requireVisitorApprover } from '@/lib/visitor/access';
 import { db } from '@/lib/visitor/server';
-import { notifyTest } from '@/lib/visitor/notify';
+import { notifyPendingDigest, notifyTest } from '@/lib/visitor/notify';
 import type { LineGroupOption, NotifyLogRow } from '@/lib/visitor/types';
 
 export const dynamic = 'force-dynamic';
@@ -29,20 +29,21 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** SHE: send a test message to the company's configured group. */
+/** SHE: send a test message, or a pending-requests digest ({ action: 'digest' }), to the company's configured group. */
 export async function POST(request: NextRequest) {
   try {
     const actor = await requireVisitorApprover(request);
-    const body = (await request.json().catch(() => null)) as { company_id?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as { company_id?: unknown; action?: unknown } | null;
     const company = body?.company_id;
     assertCompany(actor, company, true);
     const { data, error } = await db().from('visitor_company_options').select('line_group_id').eq('company_id', company).maybeSingle();
     if (error) throw error;
     const groupId = (data as { line_group_id: string | null } | null)?.line_group_id;
     if (!groupId) throw new AccessError('ยังไม่ได้เลือกกลุ่ม LINE ของบริษัทนี้', 400);
-    const result = await notifyTest(company, groupId);
+    const digest = body?.action === 'digest';
+    const result = digest ? await notifyPendingDigest(company, groupId) : { ...(await notifyTest(company, groupId)), count: 0 };
     if (result.status >= 300 || result.status === 0) throw new AccessError(`ส่งไม่สำเร็จ (LINE ตอบ ${result.status})${result.error ? `: ${result.error.slice(0, 120)}` : ''}`, 502);
-    return NextResponse.json({ data: { ok: true } });
+    return NextResponse.json({ data: { ok: true, count: result.count } });
   } catch (error) {
     return apiError(error);
   }

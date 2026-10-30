@@ -80,6 +80,12 @@ export default function VisitorQueuePage() {
     overdue: rows.filter(r => r.status === 'submitted' && r.arrival_date < today()).length,
   }), [rows]);
   const companyName = (id: string) => companies.find(c => c.company_id === id)?.company_name || id.toUpperCase();
+  // Browser tab shows how many are waiting, so an open tab works as a lightweight notifier.
+  useEffect(() => {
+    const n = kpi.pending + kpi.needInfo;
+    document.title = `${view === 'pending' && n ? `(${n}) ` : ''}คิวคัดกรอง-อนุมัติ · Visitor Access`;
+    return () => { document.title = 'EA SHE Tools - tools.eashe.org'; };
+  }, [kpi.pending, kpi.needInfo, view]);
 
   return (
     <div className="space-y-5">

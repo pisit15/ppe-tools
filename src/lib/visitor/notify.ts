@@ -1,6 +1,7 @@
 // LINE group notifications for visitor requests. Never throws: a failed push must not fail the request.
 import { pushMessages } from '@/lib/line/push';
-import { decisionCard, newRequestCard, testMessage } from '@/lib/line/visitorCards';
+import { decisionCard, newRequestCard, pendingDigest, testMessage } from '@/lib/line/visitorCards';
+import { REQUEST_SELECT, sortPersons } from './server';
 import { companyName, db } from './server';
 import type { VisitorRequestWithPersons } from './types';
 
@@ -39,4 +40,13 @@ export async function notifyDecision(r: VisitorRequestWithPersons) {
 /** Settings page "send test" — returns the LINE status so the UI can show quota/permission problems. */
 export async function notifyTest(companyId: string, groupId: string) {
   return send(companyId, groupId, 'test', null, testMessage(await companyName(companyId)));
+}
+
+/** Settings page: one message listing everything still waiting for a decision (e.g. after a bulk import). Logged as kind 'test'. */
+export async function notifyPendingDigest(companyId: string, groupId: string) {
+  const { data, error } = await db().from('visitor_requests').select(REQUEST_SELECT).eq('company_id', companyId)
+    .in('status', ['submitted', 'need_info']).order('arrival_date').order('time_from').limit(40);
+  if (error) throw error;
+  const rows = (data as VisitorRequestWithPersons[]).map(sortPersons);
+  return { ...(await send(companyId, groupId, 'test', null, pendingDigest(rows, await companyName(companyId)))), count: rows.length };
 }
