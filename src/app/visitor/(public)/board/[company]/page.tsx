@@ -17,12 +17,19 @@ const PALETTES: Record<ThemeName, Palette> = {
   light: { bg: '#F3F5F8', panel: '#FFFFFF', line: '#E2E8F0', text: '#1F2937', dim: '#6B7280', primary: '#4E79A7', positive: '#59A14F', warn: '#F28E2B', danger: '#E15759', onAccent: '#FFFFFF' },
 };
 type Tab = 'yesterday' | 'today' | 'tomorrow';
-type Prefs = { theme: ThemeName; bg: string | null; dim: number; collapsed: string[] };
+type BgMode = 'company' | 'custom' | 'none';
+type Prefs = { theme: ThemeName; bgMode: BgMode; bg: string | null; dim: number; collapsed: string[] };
 const PREFS_KEY = 'visitor_board_prefs_v1';
-const DEFAULT_PREFS: Prefs = { theme: 'dark', bg: null, dim: 55, collapsed: [] };
+const DEFAULT_PREFS: Prefs = { theme: 'dark', bgMode: 'company', bg: null, dim: 65, collapsed: [] };
 
 function loadPrefs(): Prefs {
-  try { const raw = localStorage.getItem(PREFS_KEY); return raw ? { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<Prefs>) } : DEFAULT_PREFS; } catch { return DEFAULT_PREFS; }
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return DEFAULT_PREFS;
+    const saved = JSON.parse(raw) as Partial<Prefs>;
+    // Prefs saved before bgMode existed: a device image meant "use my image".
+    return { ...DEFAULT_PREFS, ...saved, bgMode: saved.bgMode || (saved.bg ? 'custom' : 'company') };
+  } catch { return DEFAULT_PREFS; }
 }
 function savePrefs(p: Prefs) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* quota / private mode */ } }
 
@@ -89,23 +96,24 @@ export default function BoardPage() {
 
   async function pickBackground(file: File | undefined) {
     if (!file) return;
-    try { updatePrefs({ bg: await fileToDataUrl(file) }); setToast({ type: 'success', msg: 'ตั้งภาพพื้นหลังแล้ว (เฉพาะเครื่องนี้)' }); }
+    try { updatePrefs({ bg: await fileToDataUrl(file), bgMode: 'custom' }); setToast({ type: 'success', msg: 'ตั้งภาพพื้นหลังแล้ว (เฉพาะเครื่องนี้)' }); }
     catch { setToast({ type: 'error', msg: 'ใช้ภาพนี้ไม่ได้' }); }
   }
 
   const bk = new Date(now.getTime() + 7 * 3600 * 1000);
   const clock = bk.toISOString().slice(11, 19);
   const nowHm = bk.toISOString().slice(11, 16);
-  // Device-chosen image wins; otherwise the company's form background (set by SHE in settings) is the default.
-  const bgUrl = prefs.bg || data?.background?.url || null;
-  const bgDim = prefs.bg ? prefs.dim : (data?.background?.dim ?? prefs.dim);
-  const overlay = prefs.theme === 'dark' ? `rgba(15,23,32,${bgDim / 100})` : `rgba(243,245,248,${bgDim / 100})`;
+  // Background per device: company image (default, set by SHE in settings), this device's own image, or none.
+  const bgUrl = prefs.bgMode === 'custom' ? prefs.bg : prefs.bgMode === 'company' ? (data?.background?.url || null) : null;
+  const overlay = prefs.theme === 'dark' ? `rgba(15,23,32,${prefs.dim / 100})` : `rgba(243,245,248,${prefs.dim / 100})`;
+  // Over a photo, text blocks get a translucent panel so the clock/date stay legible in both themes.
+  const glass = bgUrl ? { background: `${C.panel}D9`, backdropFilter: 'blur(6px)' } : { background: C.panel };
 
   return (
     <div className="min-h-screen" style={{ background: C.bg, color: C.text, fontSize: 18 }}>
       {bgUrl && <div aria-hidden className="fixed inset-0 z-0" style={{ backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}><div className="absolute inset-0" style={{ background: overlay }} /></div>}
       <div className="relative z-10">
-        <header className="flex items-center justify-between gap-4 px-6 py-4" style={{ borderBottom: `1px solid ${C.line}`, background: bgUrl ? 'transparent' : C.panel }}>
+        <header className="flex items-center justify-between gap-4 px-6 py-4" style={{ borderBottom: `1px solid ${C.line}`, ...glass }}>
           <div>
             <div className="text-sm tracking-wide" style={{ color: C.dim }}>{data?.company.name || company.toUpperCase()} · ป้อม รปภ</div>
             <h1 className="text-2xl font-semibold">รายชื่อบุคคลภายนอกที่อนุมัติเข้าพื้นที่</h1>
@@ -135,7 +143,7 @@ export default function BoardPage() {
           <button type="button" onClick={() => document.documentElement.requestFullscreen?.()} className="p-2 rounded-lg" style={{ border: `1px solid ${C.line}`, color: C.dim }} aria-label="เต็มจอ"><Maximize2 size={18} /></button>
         </div>
 
-        {showSettings && <SettingsPanel C={C} prefs={prefs} onChange={updatePrefs} onPick={pickBackground} onClose={() => setShowSettings(false)} />}
+        {showSettings && <SettingsPanel C={C} prefs={prefs} hasCompanyBg={Boolean(data?.background)} onChange={updatePrefs} onPick={pickBackground} onClose={() => setShowSettings(false)} />}
 
         <main className="px-6 py-4 space-y-4">
           {error && <p style={{ color: C.danger }}>{error}</p>}
@@ -158,8 +166,12 @@ function Kpi({ C, label, value, color }: { C: Palette; label: string; value: num
   return <div className="rounded-lg px-4 py-1.5 flex items-baseline gap-2" style={{ background: C.panel, borderLeft: `4px solid ${color}` }}><span className="text-2xl font-semibold tabular-nums" style={{ color }}>{value}</span><span className="text-sm" style={{ color: C.dim }}>{label}</span></div>;
 }
 
-function SettingsPanel({ C, prefs, onChange, onPick, onClose }: { C: Palette; prefs: Prefs; onChange: (p: Partial<Prefs>) => void; onPick: (f: File | undefined) => void; onClose: () => void }) {
+function SettingsPanel({ C, prefs, hasCompanyBg, onChange, onPick, onClose }: { C: Palette; prefs: Prefs; hasCompanyBg: boolean; onChange: (p: Partial<Prefs>) => void; onPick: (f: File | undefined) => void; onClose: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const showingImage = prefs.bgMode === 'custom' ? Boolean(prefs.bg) : prefs.bgMode === 'company' && hasCompanyBg;
+  const modeBtn = (mode: BgMode, label: string, disabled = false) => (
+    <button key={mode} type="button" disabled={disabled} onClick={() => onChange({ bgMode: mode })} className="px-3 py-1.5 disabled:opacity-40" style={{ background: prefs.bgMode === mode ? C.primary : 'transparent', color: prefs.bgMode === mode ? C.onAccent : C.text }}>{label}</button>
+  );
   return (
     <section className="mx-6 mt-3 rounded-xl p-4 flex flex-wrap items-center gap-4 text-base" style={{ background: C.panel, border: `1px solid ${C.line}` }} aria-label="ตั้งค่าหน้าจอ">
       <div className="flex items-center gap-2">
@@ -172,13 +184,18 @@ function SettingsPanel({ C, prefs, onChange, onPick, onClose }: { C: Palette; pr
           ))}
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <span style={{ color: C.dim }}>ภาพพื้นหลัง</span>
+        <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
+          {modeBtn('company', hasCompanyBg ? 'ภาพของบริษัท' : 'ภาพของบริษัท (ยังไม่ตั้ง)', !hasCompanyBg)}
+          {modeBtn('custom', 'ภาพของเครื่องนี้', !prefs.bg)}
+          {modeBtn('none', 'ไม่ใช้ภาพ')}
+        </div>
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { onPick(e.target.files?.[0]); e.target.value = ''; }} />
-        <button type="button" onClick={() => fileRef.current?.click()} className="px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5" style={{ border: `1px solid ${C.line}` }}><ImagePlus size={16} />{prefs.bg ? 'เปลี่ยนภาพ' : 'เลือกภาพ'}</button>
-        {prefs.bg && <button type="button" onClick={() => onChange({ bg: null })} className="px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5" style={{ border: `1px solid ${C.danger}`, color: C.danger }}><Trash2 size={16} />ลบภาพ (กลับไปใช้ของบริษัท)</button>}
+        <button type="button" onClick={() => fileRef.current?.click()} className="px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5" style={{ border: `1px solid ${C.line}` }}><ImagePlus size={16} />{prefs.bg ? 'เปลี่ยนภาพของเครื่องนี้' : 'เลือกภาพสำหรับเครื่องนี้'}</button>
+        {prefs.bg && <button type="button" onClick={() => onChange({ bg: null, bgMode: hasCompanyBg ? 'company' : 'none' })} className="px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5" style={{ border: `1px solid ${C.danger}`, color: C.danger }}><Trash2 size={16} />ลบภาพของเครื่องนี้</button>}
       </div>
-      {prefs.bg && (
+      {showingImage && (
         <label className="flex items-center gap-2"><span style={{ color: C.dim }}>ความทึบทับภาพ</span>
           <input type="range" min={0} max={90} value={prefs.dim} onChange={e => onChange({ dim: Number(e.target.value) })} /><span className="tabular-nums w-10">{prefs.dim}%</span></label>
       )}
