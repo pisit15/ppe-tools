@@ -118,5 +118,5 @@ export const VEHICLE_POLICY: Record<string, VehiclePolicy> = {
 };
 const OTHER_POLICY: VehiclePolicy = { mode: 'conditional', note: 'วัตถุประสงค์นี้ไม่อยู่ในตาราง — ทีม SHE พิจารณารายคัน', reasonLabel: 'เหตุผลที่ต้องนำรถเข้าภายใน *' };
 export const vehiclePolicyFor = (purpose: string): VehiclePolicy => VEHICLE_POLICY[purpose] || OTHER_POLICY;
-export const VEHICLE_TYPES = ['รถยนต์นั่ง', 'กระบะ/ตู้', 'รถ 6 ล้อ', 'รถ 10 ล้อ/บรรทุก', 'จักรยานยนต์', 'อื่น ๆ'] as const;
+export const VEHICLE_TYPES = ['รถยนต์นั่ง', 'กระบะ/ตู้', 'รถ 6 ล้อ', 'รถ 10 ล้อ/บรรทุก', 'อื่น ๆ'] as const;
 export const VEHICLE_DECISION_LABEL = { allowed: 'เข้าภายในได้', pending: 'รอ SHE พิจารณา', outside: 'จอดลานด้านนอก' } as const;
