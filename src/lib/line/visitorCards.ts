@@ -46,7 +46,13 @@ export function newRequestCard(r: VisitorRequestWithPersons, companyName: string
     type: 'bubble', size: 'mega',
     header: header('VISITOR ACCESS · รออนุมัติ', `คำขอใหม่ ${r.request_no}`, C.warn),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents: body(r, companyName) },
-    footer: button('เปิดคิวคัดกรอง-อนุมัติ', QUEUE, C.primary),
+    footer: {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: [
+        { type: 'button', style: 'primary', color: C.ok, height: 'sm', action: { type: 'postback', label: 'อนุมัติ (ผู้มีสิทธิ์ที่ผูก LINE แล้ว)', data: `visitor:approve:${r.id}`, displayText: `อนุมัติ ${r.request_no}` } },
+        { type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: 'เปิดคิว · ใส่เงื่อนไข / ขอข้อมูลเพิ่ม / ไม่อนุมัติ', uri: QUEUE } },
+      ],
+    },
   });
 }
 

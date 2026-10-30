@@ -7,6 +7,7 @@ import type { LineMessage } from '@/lib/line/flex';
 import { handleFollow, handlePostback, handleText } from '@/lib/line/bot';
 import { recordGroupJoin, recordGroupLeave, touchGroup } from '@/lib/line/groups';
 import { groupCommandText, groupScope, handleGroupText } from '@/lib/line/groupBot';
+import { handleVisitorPostback } from '@/lib/line/visitorActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,14 @@ export async function POST(request: NextRequest) {
           await recordGroupLeave(db, groupId);
         } else {
           await touchGroup(db, groupId);
+          // Approve button on a visitor card: the tapping user must be linked to an approver account.
+          if (ev.type === 'postback' && ev.replyToken && (ev.postback?.data || '').startsWith('visitor:')) {
+            const scope = await groupScope(db, groupId);
+            const messages = scope ? await handleVisitorPostback(db, scope, userId, ev.postback?.data || '') : [text('กลุ่มนี้ยังไม่ได้ผูกกับบริษัท')];
+            const status = await replyMessages(ev.replyToken, messages, token);
+            if (status === 400 && messages.some(m => m.type === 'flex' || m.type === 'template')) await replyMessages(ev.replyToken, textFallback(messages), token);
+            continue;
+          }
           // Commands addressed to the bot (@she … or a mention) — answered only for the company this group is linked to.
           if (ev.type === 'message' && ev.message?.type === 'text' && ev.replyToken) {
             const mentioned = Boolean(ev.message.mention?.mentionees?.some(m => m.isSelf));
