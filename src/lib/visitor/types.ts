@@ -18,6 +18,18 @@ export type VisitorLinkRow = {
   revoked_by: string | null;
 };
 
+/** Per-company option lists for the request form (areas/departments differ by site). */
+export type VisitorCompanyOptionsRow = {
+  company_id: string;
+  areas: string[];
+  departments: string[];
+  updated_at: string;
+  updated_by: string | null;
+};
+
+/** What the public request form receives for a secret link. */
+export type VisitorLinkInfo = { company: { id: string; name: string }; label: string; areas: string[]; departments: string[] };
+
 export type VisitorPersonRow = {
   id: string;
   request_id: string;

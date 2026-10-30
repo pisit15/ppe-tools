@@ -9,7 +9,7 @@ import { FetchError, ToastView, bangkokTime, hhmm, postJson, getJson, thaiDate, 
 
 // Dark palette for a monitor at the guard post (high contrast, large type). VIZ hues kept for status.
 const C = { bg: '#0F1720', panel: '#172230', line: '#263445', text: '#F3F6FA', dim: '#9AA8B8', primary: '#6FA3D8', positive: '#7CC576', warn: '#F2A54A', danger: '#E8706E' };
-type Tab = 'today' | 'tomorrow';
+type Tab = 'yesterday' | 'today' | 'tomorrow';
 
 export default function BoardPage() {
   const { company } = useParams<{ company: string }>();
@@ -32,11 +32,14 @@ export default function BoardPage() {
   }, [load]);
 
   const tomorrow = useMemo(() => (data ? shift(data.today, 1) : ''), [data]);
+  const yesterday = useMemo(() => (data ? shift(data.today, -1) : ''), [data]);
+  // Today = today's requests + yesterday's visitors still inside (carry-over). Yesterday = read-only history.
   const list = useMemo(() => {
     if (!data) return [];
-    const day = tab === 'today' ? data.today : tomorrow;
-    return data.requests.filter(r => (tab === 'today' ? r.arrival_date <= day : r.arrival_date === day));
-  }, [data, tab, tomorrow]);
+    if (tab === 'tomorrow') return data.requests.filter(r => r.arrival_date === tomorrow);
+    if (tab === 'yesterday') return data.requests.filter(r => r.arrival_date === yesterday);
+    return data.requests.filter(r => r.arrival_date === data.today || (r.arrival_date < data.today && r.persons.some(p => p.arrived_at && !p.left_at)));
+  }, [data, tab, tomorrow, yesterday]);
 
   const counts = useMemo(() => {
     const persons = list.flatMap(r => r.persons);
@@ -77,9 +80,9 @@ export default function BoardPage() {
 
       <div className="px-6 pt-4 flex flex-wrap items-center gap-3">
         <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
-          {(['today', 'tomorrow'] as Tab[]).map(t => (
+          {(['yesterday', 'today', 'tomorrow'] as Tab[]).map(t => (
             <button key={t} type="button" onClick={() => setTab(t)} className="px-5 py-2 font-medium" style={{ background: tab === t ? C.primary : C.panel, color: tab === t ? '#0F1720' : C.text }}>
-              {t === 'today' ? 'วันนี้' : `พรุ่งนี้ ${tomorrow ? thaiDate(tomorrow) : ''}`}
+              {t === 'today' ? 'วันนี้' : t === 'tomorrow' ? `พรุ่งนี้ ${tomorrow ? thaiDate(tomorrow) : ''}` : `เมื่อวาน ${yesterday ? thaiDate(yesterday) : ''}`}
             </button>
           ))}
         </div>
@@ -94,7 +97,8 @@ export default function BoardPage() {
 
       <main className="px-6 py-4 space-y-4">
         {error && <p style={{ color: C.danger }}>{error}</p>}
-        {data && list.length === 0 && <p className="py-16 text-center text-2xl" style={{ color: C.dim }}>ไม่มีรายการที่อนุมัติสำหรับ{tab === 'today' ? 'วันนี้' : 'พรุ่งนี้'}</p>}
+        {tab === 'yesterday' && <p className="text-sm" style={{ color: C.dim }}>ประวัติย้อนหลัง 1 วัน (ดูอย่างเดียว) — รายชื่อที่ยังไม่ได้กด &quot;ออก&quot; จะยังแสดงในแท็บวันนี้ด้วย</p>}
+        {data && list.length === 0 && <p className="py-16 text-center text-2xl" style={{ color: C.dim }}>ไม่มีรายการที่อนุมัติสำหรับ{tab === 'today' ? 'วันนี้' : tab === 'tomorrow' ? 'พรุ่งนี้' : 'เมื่อวาน'}</p>}
         {list.map(r => <RequestCard key={r.id} r={r} today={data?.today || ''} busyId={busyId} onMark={mark} canMark={tab === 'today'} />)}
       </main>
       <ToastView toast={toast} />
@@ -107,8 +111,8 @@ function Kpi({ label, value, color }: { label: string; value: number; color: str
 }
 
 function RequestCard({ r, today, busyId, onMark, canMark }: { r: BoardRequest; today: string; busyId: string; canMark: boolean; onMark: (id: string, a: 'arrive' | 'leave' | 'undo_arrive' | 'undo_leave') => void }) {
-  const carried = r.arrival_date < today;
   const inside = r.persons.filter(p => p.arrived_at && !p.left_at).length;
+  const carried = r.arrival_date < today && inside > 0;
   return (
     <section className="rounded-xl overflow-hidden" style={{ background: C.panel, border: `1px solid ${carried ? C.warn : C.line}` }}>
       <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-3" style={{ borderBottom: `1px solid ${C.line}` }}>

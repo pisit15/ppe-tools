@@ -20,6 +20,14 @@ export async function companyName(companyId: string) {
   return String(data.company_name || data.company_id);
 }
 
+/** Option lists for a company; empty arrays when nothing has been configured yet. */
+export async function companyOptions(companyId: string): Promise<{ areas: string[]; departments: string[] }> {
+  const { data, error } = await db().from('visitor_company_options').select('areas, departments').eq('company_id', companyId).maybeSingle();
+  if (error) throw error;
+  const row = data as { areas: string[] | null; departments: string[] | null } | null;
+  return { areas: row?.areas || [], departments: row?.departments || [] };
+}
+
 export async function activeLink(token: string) {
   const { data, error } = await db().from('visitor_links').select('*').eq('token', token).maybeSingle();
   if (error) throw error;
@@ -61,7 +69,7 @@ export async function addEvent(requestId: string, actor: string, action: string,
   if (error) throw error;
 }
 
-/** Guard board: approved requests for today..today+N (Bangkok), plus yesterday's visitors who arrived but have not left. */
+/** Guard board: approved requests from yesterday (read-only history, and carry-over of visitors still inside) to today+N (Bangkok). */
 export async function boardPayload(companyId: string): Promise<BoardPayload> {
   const name = await companyName(companyId);
   const today = bangkokToday();
@@ -71,9 +79,7 @@ export async function boardPayload(companyId: string): Promise<BoardPayload> {
     .order('arrival_date').order('time_from');
   if (error) throw error;
   const rows = (data as VisitorRequestWithPersons[]).map(sortPersons);
-  const requests: BoardRequest[] = rows
-    .filter(r => r.arrival_date >= today || r.visitor_persons.some(p => p.arrived_at && !p.left_at))
-    .map(r => ({
+  const requests: BoardRequest[] = rows.map(r => ({
       id: r.id, request_no: r.request_no, visitor_company: r.visitor_company, arrival_date: r.arrival_date, time_from: r.time_from, time_to: r.time_to,
       purpose: r.purpose, purpose_other: r.purpose_other, work_areas: r.work_areas, work_area_detail: r.work_area_detail,
       informer_name: r.informer_name, informer_department: r.informer_department, informer_phone: r.informer_phone,

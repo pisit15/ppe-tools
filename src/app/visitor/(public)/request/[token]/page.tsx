@@ -4,11 +4,12 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { CheckCircle2, Plus, Trash2, Users, Building2, CalendarDays, ClipboardList, Copy } from 'lucide-react';
-import { HAS_PERMIT_LABEL, PURPOSE_OTHER, VISITOR_DEPARTMENTS, VISITOR_LIMITS, VISITOR_PURPOSES, VISITOR_WORK_AREAS } from '@/lib/visitor/constants';
-import type { CreateVisitorRequestInput, HasPermit } from '@/lib/visitor/types';
+import { HAS_PERMIT_LABEL, PURPOSE_OTHER, VISITOR_LIMITS, VISITOR_PURPOSES } from '@/lib/visitor/constants';
+import type { CreateVisitorRequestInput, HasPermit, VisitorLinkInfo } from '@/lib/visitor/types';
+import { useQr } from '../../../_components/useQr';
 import { FetchError, ToastView, VIZ, cardClass, getJson, inputClass, labelClass, postJson, thaiDate, useToast } from '../../../_components/ui';
 
-type LinkInfo = { company: { id: string; name: string }; label: string };
+type LinkInfo = VisitorLinkInfo;
 type Person = { name: string; detail: string };
 type Done = { request_no: string; track_code: string };
 
@@ -45,6 +46,8 @@ export default function VisitorRequestPage() {
   }, [token]);
 
   const isContractor = /ผู้รับเหมา/.test(purpose);
+  const trackUrl = done && typeof window !== 'undefined' ? `${window.location.origin}/visitor/track/${done.track_code}` : '';
+  const trackQr = useQr(trackUrl || null, 220);
   const filledPersons = useMemo(() => persons.filter(p => p.name.trim() || p.detail.trim()), [persons]);
 
   function toggleArea(a: string) { setAreas(prev => (prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a])); }
@@ -81,7 +84,6 @@ export default function VisitorRequestPage() {
   if (!link) return <Shell><p className="text-gray-500">กำลังโหลด…</p></Shell>;
 
   if (done) {
-    const trackUrl = `${window.location.origin}/visitor/track/${done.track_code}`;
     return (
       <Shell company={link.company.name}>
         <div className={cardClass} style={{ borderLeft: `4px solid ${VIZ.positive}` }}>
@@ -89,6 +91,8 @@ export default function VisitorRequestPage() {
           <p className="mt-4 text-gray-700">เลขที่คำขอ <span className="font-mono font-semibold text-lg" style={{ color: VIZ.primary }}>{done.request_no}</span></p>
           <p className="mt-1 text-gray-700">วันที่เข้าพื้นที่ {thaiDate(arrivalDate, true)} เวลา {timeFrom}–{timeTo} · {filledPersons.length} คน · {visitorCompany}</p>
           <p className="mt-4 text-sm text-gray-600">ทีม SHE จะคัดกรองและอนุมัติ ติดตามสถานะได้จากลิงก์นี้ (บันทึกไว้ หรือส่งต่อให้ผู้มาติดต่อ):</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {trackQr && <div className="mt-3 flex items-center gap-4"><img src={trackQr} alt="QR ลิงก์ติดตามสถานะ" width={110} height={110} className="rounded-lg border border-gray-200" /><p className="text-sm text-gray-600">ให้ผู้มาติดต่อสแกน QR นี้เพื่อดูสถานะ/เงื่อนไขการเข้าพื้นที่ด้วยตัวเอง</p></div>}
           <div className="mt-2 flex gap-2">
             <input readOnly value={trackUrl} className={`${inputClass} font-mono text-sm`} onFocus={e => e.currentTarget.select()} />
             <button type="button" className="shrink-0 inline-flex items-center gap-1 rounded-lg px-3 py-2 text-white text-sm" style={{ background: VIZ.primary }}
@@ -114,10 +118,13 @@ export default function VisitorRequestPage() {
             <div><label className={labelClass} htmlFor="emp">รหัสพนักงาน *</label><input id="emp" className={inputClass} value={employeeCode} onChange={e => setEmployeeCode(e.target.value)} required maxLength={40} inputMode="numeric" /></div>
             <div><label className={labelClass} htmlFor="phone">เบอร์โทรศัพท์ *</label><input id="phone" className={inputClass} value={phone} onChange={e => setPhone(e.target.value)} required minLength={6} maxLength={30} inputMode="tel" autoComplete="tel" /></div>
             <div><label className={labelClass} htmlFor="dept">แผนก *</label>
-              <select id="dept" className={inputClass} value={department} onChange={e => setDepartment(e.target.value)} required>
-                <option value="">— เลือกแผนก —</option>
-                {VISITOR_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select></div>
+              {link.departments.length > 0 ? (
+                <select id="dept" className={inputClass} value={department} onChange={e => setDepartment(e.target.value)} required>
+                  <option value="">— เลือกแผนก —</option>
+                  {link.departments.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              ) : <input id="dept" className={inputClass} value={department} onChange={e => setDepartment(e.target.value)} required maxLength={80} placeholder="ระบุแผนก" />}
+            </div>
           </div>
         </section>
 
@@ -161,15 +168,15 @@ export default function VisitorRequestPage() {
             <div><label className={labelClass} htmlFor="tt">เวลาสิ้นสุด *</label><input id="tt" type="time" className={inputClass} value={timeTo} onChange={e => setTimeTo(e.target.value)} required /></div>
           </div>
           <div className="mt-5">
-            <label className={labelClass}>พื้นที่ปฏิบัติงาน {isContractor && '*'}</label>
+            <label className={labelClass}>พื้นที่ปฏิบัติงาน {isContractor && '*'} {link.areas.length === 0 && <span className="text-gray-500 font-normal">(ระบุในช่องรายละเอียดด้านล่าง)</span>}</label>
             <div className="grid gap-2 sm:grid-cols-3">
-              {VISITOR_WORK_AREAS.map(a => (
+              {link.areas.map(a => (
                 <label key={a} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer ${areas.includes(a) ? 'border-[#4E79A7] bg-[#4E79A7]/10' : 'border-gray-200 hover:bg-gray-50'}`}>
                   <input type="checkbox" checked={areas.includes(a)} onChange={() => toggleArea(a)} className="accent-[#4E79A7]" />{a}
                 </label>
               ))}
             </div>
-            <div className="mt-3"><label className={labelClass} htmlFor="ad">รายละเอียดพื้นที่ (ชื่อห้อง, กริดไลน์ ฯลฯ)</label><input id="ad" className={inputClass} value={areaDetail} onChange={e => setAreaDetail(e.target.value)} maxLength={500} /></div>
+            <div className="mt-3"><label className={labelClass} htmlFor="ad">{link.areas.length ? 'รายละเอียดพื้นที่ (ชื่อห้อง, กริดไลน์ ฯลฯ)' : 'พื้นที่ปฏิบัติงาน / อาคาร / ห้อง'}</label><input id="ad" className={inputClass} value={areaDetail} onChange={e => setAreaDetail(e.target.value)} maxLength={500} required={isContractor && link.areas.length === 0} /></div>
           </div>
         </section>
 
