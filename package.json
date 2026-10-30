@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:chemical": "node --test tests/chemical-integrity.test.cjs tests/chemical-legal.test.cjs tests/chemical-label-versions.test.cjs",
+    "test:chemical": "node --test tests/chemical-integrity.test.cjs tests/chemical-legal.test.cjs tests/chemical-label-versions.test.cjs tests/chemical-safety-rules.test.cjs",
     "test:chemical:e2e": "playwright test --config playwright.chemical.config.cjs",
     "test:home-cards": "node --test tests/home-cards.test.cjs",
     "test:procurement": "node --test tests/procurement.test.cjs tests/procurement-scope.test.cjs tests/procurement-period.test.cjs tests/procurement-sync.test.cjs tests/procurement-vendors.test.cjs tests/procurement-comparability.test.cjs tests/procurement-offers.test.cjs tests/procurement-import-preview.test.cjs tests/procurement-requests.test.cjs tests/procurement-search-chart-model.test.cjs",

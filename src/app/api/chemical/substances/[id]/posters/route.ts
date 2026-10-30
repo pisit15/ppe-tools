@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase";
 import {
-  requireToolsActor,
+  requireModuleActor,
   assertCompany,
   AccessError,
   apiError,
@@ -14,7 +14,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const summary = "id,version,title,created_at,created_by";
 const noStore = { "Cache-Control": "private, no-store" };
 async function scope(request: NextRequest, context: Context) {
-  const actor = await requireToolsActor(request);
+  const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
   const { id } = await context.params;
   if (!uuid.test(id)) throw new AccessError("ไม่พบสารเคมี", 404);
   let query = getSupabaseServer()

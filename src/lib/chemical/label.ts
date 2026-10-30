@@ -92,10 +92,38 @@ export function labelLayout(options: LabelOptions) {
   return { columns, rows, perPage, pages: Math.ceil(copies / perPage), margin, gap, pageWidth, pageHeight };
 }
 
+// GHS hazard statements whose category always carries the signal word "Danger"
+// (Rev.9 Annex 1). Mixed-category codes (e.g. H228, H242) are deliberately left out.
+const DANGER_CODES = new Set([
+  'H200', 'H201', 'H202', 'H203', 'H220', 'H222', 'H224', 'H225', 'H230', 'H240', 'H241', 'H250', 'H260', 'H261',
+  'H270', 'H271', 'H300', 'H301', 'H304', 'H310', 'H311', 'H314', 'H318', 'H330', 'H331', 'H334', 'H340', 'H350',
+  'H360', 'H370', 'H372',
+]);
+// Codes that need at least "Warning" (their category never has "no signal word").
+const SIGNAL_REQUIRED_CODES = new Set([
+  ...DANGER_CODES, 'H204', 'H221', 'H223', 'H226', 'H227', 'H229', 'H252', 'H272', 'H280', 'H281', 'H290', 'H302',
+  'H312', 'H315', 'H317', 'H319', 'H320', 'H332', 'H335', 'H336', 'H341', 'H351', 'H361', 'H362', 'H371', 'H373',
+  'H400', 'H410',
+]);
+const hazardCodesIn = (text: string) => [...new Set((text.toUpperCase().match(/H\d{3}/g) || []))];
+
+/** GHS label completeness checks — every problem blocks the PDF download. */
 export function labelProblems(draft: LabelDraft, options?: LabelOptions) {
   const problems: string[] = [];
   if (!draft.name.trim()) problems.push('กรอกชื่อสารเคมี');
   if (!draft.signal) problems.push('ระบุคำสัญญาณตาม SDS (หรือเลือกไม่มีคำสัญญาณ)');
+  const codes = hazardCodesIn(draft.hazards);
+  const hasSignal = draft.signal === 'Danger' || draft.signal === 'Warning';
+  if ((hasSignal || draft.pictograms.length > 0) && codes.length === 0) {
+    problems.push('มีคำสัญญาณหรือรูปสัญลักษณ์อันตราย แต่ยังไม่มีข้อความแสดงอันตราย (รหัส H) — เติมจาก SDS ข้อ 2');
+  }
+  const dangerCodes = codes.filter(c => DANGER_CODES.has(c));
+  if (dangerCodes.length && draft.signal !== 'Danger') {
+    problems.push(`คำสัญญาณต้องเป็น "อันตราย (Danger)" เพราะมี ${dangerCodes.slice(0, 3).join(', ')}`);
+  } else if (draft.signal === 'None' && codes.some(c => SIGNAL_REQUIRED_CODES.has(c))) {
+    problems.push('รหัส H ที่ระบุต้องมีคำสัญญาณ — เลือก "ระวัง (Warning)" หรือ "อันตราย (Danger)" ตาม SDS');
+  }
+  if (!draft.supplier.trim()) problems.push('กรอกชื่อผู้ผลิต/ผู้จำหน่าย (ข้อมูลบังคับบนฉลาก GHS)');
   if ([draft.hazards, ...(options?.content === 'compact' ? [] : [draft.precautions])].some(t => t.includes(MISSING_LABEL_TEXT))) problems.push('เติมข้อความของรหัสที่ระบบไม่มีข้อมูลให้ครบตาม SDS');
   return problems;
 }

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
-import { requireToolsActor, assertCompany, apiError } from '@/lib/toolsSession';
+import { requireModuleActor, assertCompany, apiError } from '@/lib/toolsSession';
 import { SUBSTANCE_SELECT } from '@/lib/chemical/sanitize';
 import { prepareSubstance } from '@/lib/chemical/access';
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const sp = request.nextUrl.searchParams;
     const companyId = sp.get('company_id');
     assertCompany(actor, companyId);
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 }
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const row = await prepareSubstance(await request.json(), actor);
     const { data, error } = await getSupabaseServer().from('chem_substances').insert(row).select(SUBSTANCE_SELECT).single();
     if (error) throw error;

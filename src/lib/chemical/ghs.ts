@@ -139,24 +139,28 @@ export function suggestStorageClass(input: {
   if (has('H260', 'H261')) return { code: '4.3', reason: 'H260/H261 สัมผัสน้ำให้ก๊าซไวไฟ' };
   if (has('H240', 'H241', 'H242') && G.has('GHS02') && (state === 'solid' || state === 'liquid'))
     return { code: '5.2', reason: 'H240–H242 + ไวไฟ → น่าจะเป็นเปอร์ออกไซด์อินทรีย์/self-reactive (ตรวจสอบ SDS ข้อ 14)' };
-  if (has('H271')) return { code: '5.1A', reason: 'H271 ออกซิไดส์รุนแรง' };
-  if (has('H270', 'H272') || G.has('GHS03')) return { code: '5.1B', reason: 'H270/H272 / GHS03 สารออกซิไดส์' };
   const toxic = has('H300', 'H301', 'H310', 'H311', 'H330', 'H331') || G.has('GHS06');
   const flammableLiquid = has('H224', 'H225', 'H226') || (state === 'liquid' && fp !== null && fp <= 60);
+  const combustibleLiquid = state === 'liquid' && !flammableLiquid && (has('H227') || (fp !== null && fp <= 93));
   const flammableSolid = has('H228') || (state === 'solid' && G.has('GHS02'));
   const corrosive = has('H314', 'H290') || G.has('GHS05');
-  const combustible = flammableLiquid || flammableSolid || has('H227') || (fp !== null && fp <= 93);
+  // Anything with a measured flash point burns (class 10 = flash point > 93 °C).
+  const combustible = flammableLiquid || combustibleLiquid || flammableSolid || has('H227') || fp !== null;
+  // Order follows the manual: flammable → oxidizer → toxic → corrosive → others.
+  // Flammable liquids that are also toxic stay in class 3 (e.g. methanol), as on supplier SDS (TRGS 510).
+  if (flammableLiquid) return { code: '3A', reason: `ของเหลวไวไฟ (H224–H226)${fp !== null ? ` จุดวาบไฟ ${fp} °C` : ''}${toxic ? ' — เป็นพิษด้วย ต้องแยกเก็บตามเงื่อนไขสารพิษเพิ่มเติม' : ''}` };
+  if (combustibleLiquid) return { code: '3B', reason: `ของเหลวไวไฟ จุดวาบไฟ 60–93 °C${fp !== null ? ` (${fp} °C)` : ' / H227'}` };
+  if (flammableSolid) return { code: '4.1B', reason: 'H228 / ของแข็งไวไฟ' };
+  if (has('H271')) return { code: '5.1A', reason: 'H271 ออกซิไดส์รุนแรง' };
+  if (has('H270', 'H272') || G.has('GHS03')) return { code: '5.1B', reason: 'H270/H272 / GHS03 สารออกซิไดส์' };
   if (toxic) return combustible
     ? { code: '6.1A', reason: 'เป็นพิษ (H300/H301/H310/H311/H330/H331) และติดไฟได้' }
     : { code: '6.1B', reason: 'เป็นพิษ (H300/H301/H310/H311/H330/H331) ไม่ติดไฟ' };
-  if (flammableLiquid) return { code: '3A', reason: `ของเหลวไวไฟ จุดวาบไฟ ≤ 60 °C${fp !== null ? ` (${fp} °C)` : ''}` };
-  if (state === 'liquid' && fp !== null && fp > 60 && fp <= 93) return { code: '3B', reason: `ของเหลวไวไฟ จุดวาบไฟ ${fp} °C (60–93)` };
-  if (flammableSolid) return { code: '4.1B', reason: 'H228 / ของแข็งไวไฟ' };
   if (corrosive) return combustible
     ? { code: '8A', reason: 'กัดกร่อน (H314/H290/GHS05) และติดไฟได้' }
     : { code: '8B', reason: 'กัดกร่อน (H314/H290/GHS05) ไม่ติดไฟ' };
   if (state === 'liquid') return combustible
-    ? { code: '10', reason: 'ของเหลวติดไฟได้ (จุดวาบไฟ > 93 °C / H227)' }
+    ? { code: '10', reason: `ของเหลวติดไฟได้ (จุดวาบไฟ > 93 °C${fp !== null ? `: ${fp} °C` : ''})` }
     : { code: '12', reason: 'ของเหลวที่ไม่เข้าข่ายประเภทอื่น' };
   if (state === 'solid') return combustible
     ? { code: '11', reason: 'ของแข็งติดไฟได้' }

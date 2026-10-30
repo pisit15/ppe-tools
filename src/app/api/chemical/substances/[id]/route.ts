@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
-import { requireToolsActor, assertCompany, apiError, AccessError } from '@/lib/toolsSession';
+import { requireModuleActor, assertCompany, apiError, AccessError } from '@/lib/toolsSession';
 import { SUBSTANCE_SELECT } from '@/lib/chemical/sanitize';
 import { prepareSubstance } from '@/lib/chemical/access';
 export const dynamic = 'force-dynamic';
 type Ctx = { params: Promise<{ id: string }> };
 async function record(request: NextRequest, ctx: Ctx) {
-  const actor = await requireToolsActor(request);
+  const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
   const { id } = await ctx.params;
   let q = getSupabaseServer().from('chem_substances').select(SUBSTANCE_SELECT).eq('id', id);
   if (!actor.isAdmin) q = q.eq('company_id', actor.companyId);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
-import { requireToolsActor, assertCompany, AccessError, apiError } from '@/lib/toolsSession';
+import { requireModuleActor, assertCompany, AccessError, apiError } from '@/lib/toolsSession';
 import { validateLabelSnapshot } from '@/lib/chemical/label-versions';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const summary = 'id,version,title,created_at,created_by';
 const noStore = { 'Cache-Control': 'private, no-store' };
 async function scope(request: NextRequest, context: Context) {
-  const actor = await requireToolsActor(request);
+  const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
   const { id } = await context.params;
   if (!uuid.test(id)) throw new AccessError('ไม่พบสารเคมี', 404);
   let query = getSupabaseServer().from('chem_substances').select('id,company_id').eq('id', id).eq('is_active', true);

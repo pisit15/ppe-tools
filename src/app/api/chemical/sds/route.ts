@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { getSupabaseServer } from '@/lib/supabase';
 
-import { requireToolsActor, assertCompany, apiError } from '@/lib/toolsSession';
+import { requireModuleActor, assertCompany, apiError } from '@/lib/toolsSession';
 import { assertSdsPath, assertExistingCompany } from '@/lib/chemical/access';
 import { sdsImporter } from '@/lib/chemical/sds-provenance';
 
@@ -15,7 +15,7 @@ const ALLOWED = ['application/pdf', 'image/png', 'image/jpeg'];
 /** GET ?path=<storage path> → signed URL อายุ 1 ชม. */
 export async function GET(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const path = request.nextUrl.searchParams.get('path') || '';
     assertCompany(actor, assertSdsPath(path), request.method !== 'GET');
     const db = getSupabaseServer();
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 /** POST FormData { file, company_id } → { path, file_name, size } */
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const form = await request.formData();
     const file = form.get('file');
     const companyId = String(form.get('company_id') || '').trim();
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 /** DELETE ?path= → ลบไฟล์ออกจาก bucket */
 export async function DELETE(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const path = request.nextUrl.searchParams.get('path') || '';
     assertCompany(actor, assertSdsPath(path), request.method !== 'GET');
     const db = getSupabaseServer();

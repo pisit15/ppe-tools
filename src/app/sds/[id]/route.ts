@@ -27,7 +27,8 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     }
     if (!target) return unavailable();
     const url = new URL(target);
-    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return unavailable();
+    // https only: printed QR codes must never bounce to plain-http / non-web targets.
+    if (url.protocol !== 'https:' || url.username || url.password) return unavailable();
     return NextResponse.redirect(url, { status: 307, headers });
   } catch { return unavailable(503); }
 }

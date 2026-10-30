@@ -11,6 +11,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { SA_COOKIE, verifySessionToken } from '@/lib/superAdminSession';
 import { apiError, TOOLS_COOKIE, verifyToolsSession } from '@/lib/toolsSession';
 import { requirePPEActor, guardLegacyPPE } from '@/lib/ppe-access';
+import { guardSHE } from '@/lib/she-access';
 
 const ADMIN_HOST_PREFIX = 'admin.';
 
@@ -76,6 +77,12 @@ export default async function proxy(request: NextRequest) {
   // current staff account; a dedicated Work Permit contractor cookie is not one.
   if (pathname.startsWith('/api/ppe/')) {
     try { const actor = await requirePPEActor(request); await guardLegacyPPE(request, actor); } catch (error) { return apiError(error); }
+  }
+
+  // Legacy SHE Workforce handlers: session + 'she' module + company scoping
+  // (the PIN-based public org viewer stays public).
+  if (pathname.startsWith('/api/she-workforce')) {
+    try { await guardSHE(request); } catch (error) { return apiError(error); }
   }
 
   return NextResponse.next();

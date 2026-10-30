@@ -5,7 +5,7 @@ import { getSupabaseServer } from "@/lib/supabase";
 import type { ChemCompanySettings, ChemEmergencyContact } from "@/lib/types";
 
 import {
-  requireToolsActor,
+  requireModuleActor,
   assertCompany,
   apiError,
   AccessError,
@@ -26,7 +26,7 @@ const DEFAULTS = (companyId: string): ChemCompanySettings => ({
 /** GET ?company_id= → การตั้งค่าของบริษัท (คืนค่าเริ่มต้นถ้ายังไม่เคยบันทึก) */
 export async function GET(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const companyId = request.nextUrl.searchParams.get("company_id") || "";
     assertCompany(actor, companyId);
     if (companyId === "all") {
@@ -64,13 +64,27 @@ function cleanContacts(raw: unknown): ChemEmergencyContact[] {
 /** PUT { company_id, emergency_contacts?, show_emergency? } → upsert */
 export async function PUT(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const body = (await request.json()) as Partial<ChemCompanySettings>;
     if (!body.company_id || body.company_id === "all")
       return NextResponse.json({ error: "กรุณาเลือกบริษัท" }, { status: 400 });
     assertCompany(actor, body.company_id, true);
     await assertExistingCompany(body.company_id);
     const row: Record<string, unknown> = { company_id: body.company_id };
+    // Governance fields (SDS review cycle, default poster template) are admin-only;
+    // company users keep editing their own emergency contacts, and every change is logged.
+    const governance = body.default_poster_template_id !== undefined || body.sds_review_years !== undefined || body.sds_review_policy !== undefined;
+    if (governance && !actor.isAdmin) {
+      const { data: current } = await db().from("chem_company_settings")
+        .select("default_poster_template_id, sds_review_years, sds_review_policy")
+        .eq("company_id", body.company_id).maybeSingle();
+      const changed =
+        (body.default_poster_template_id !== undefined && body.default_poster_template_id !== (current?.default_poster_template_id ?? null)) ||
+        (body.sds_review_years !== undefined && body.sds_review_years !== (current?.sds_review_years ?? null)) ||
+        (body.sds_review_policy !== undefined && (body.sds_review_policy?.trim() || null) !== (current?.sds_review_policy ?? null));
+      if (changed) throw new AccessError("เฉพาะผู้ดูแลระบบเท่านั้นที่เปลี่ยนรอบทบทวน SDS หรือแม่แบบโปสเตอร์ได้", 403);
+      delete body.default_poster_template_id; delete body.sds_review_years; delete body.sds_review_policy;
+    }
     if (body.default_poster_template_id !== undefined) {
       const id = body.default_poster_template_id;
       if (id !== null) {
@@ -111,11 +125,18 @@ export async function PUT(request: NextRequest) {
       row.emergency_contacts = cleanContacts(body.emergency_contacts);
     if (body.show_emergency !== undefined)
       row.show_emergency = !!body.show_emergency;
+    const { data: before } = await db().from("chem_company_settings").select("*").eq("company_id", body.company_id).maybeSingle();
+    row.updated_by = actor.username;
+    row.updated_at = new Date().toISOString();
     const { data, error } = await db()
       .from("chem_company_settings")
       .upsert([row], { onConflict: "company_id" })
       .select();
     if (error) throw error;
+    // Append-only audit trail of values printed on posters (best effort, never blocks the save).
+    const { error: logError } = await db().from("chem_company_settings_history")
+      .insert([{ company_id: body.company_id, changed_by: actor.username, before: before ?? null, after: data[0] }]);
+    if (logError) console.error("chem settings history insert failed", logError.message);
     return NextResponse.json({ data: data[0] as ChemCompanySettings });
   } catch (error: unknown) {
     return apiError(error);

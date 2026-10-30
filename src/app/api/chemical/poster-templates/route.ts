@@ -4,14 +4,14 @@ import {
   AccessError,
   apiError,
   assertCompany,
-  requireToolsActor,
+  requireModuleActor,
 } from "@/lib/toolsSession";
 import { posterUuid, validatePosterConfig } from "@/lib/chemical/poster";
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store" };
 export async function GET(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const company =
       request.nextUrl.searchParams.get("company_id") || actor.companyId;
     const manage = request.nextUrl.searchParams.get("manage") === "1";
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 }
 async function write(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     if (!actor.isAdmin)
       throw new AccessError("เฉพาะ Admin เท่านั้นที่จัดการแม่แบบได้");
     const raw = await request.text();

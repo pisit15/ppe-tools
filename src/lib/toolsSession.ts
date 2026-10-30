@@ -55,6 +55,25 @@ export async function requireToolsActor(request: NextRequest, allowPPERequester 
   const isAdmin = session.table === 'admin_accounts';
   return { id: session.id, accountTable: session.table, username: String(data.username), companyId: session.companyId, isAdmin, displayName: String(data.display_name || data.username), row: data };
 }
+/**
+ * Server-side module permission (allowed_modules on the account row).
+ * null/empty = every module (legacy default); admins always pass.
+ * PPE requester accounts only ever have 'ppe'.
+ */
+export function hasModule(actor: Pick<ToolsActor, 'isAdmin' | 'accountTable' | 'row'>, moduleId: string): boolean {
+  if (actor.isAdmin) return true;
+  if (actor.accountTable === 'ppe_requesters') return moduleId === 'ppe';
+  const modules = actor.row.allowed_modules;
+  return !Array.isArray(modules) || modules.length === 0 || modules.includes(moduleId);
+}
+export function assertModule(actor: ToolsActor, moduleId: string, label = moduleId) {
+  if (!hasModule(actor, moduleId)) throw new AccessError(`บัญชีนี้ไม่มีสิทธิ์ใช้งาน ${label}`);
+}
+export async function requireModuleActor(request: NextRequest, moduleId: string, label?: string): Promise<ToolsActor> {
+  const actor = await requireToolsActor(request);
+  assertModule(actor, moduleId, label);
+  return actor;
+}
 export function assertCompany(actor: ToolsActor, companyId: unknown, write = false): asserts companyId is string {
   if (typeof companyId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(companyId) || companyId === 'admin' || (write && companyId === 'all')) throw new AccessError('กรุณาเลือกบริษัทที่ถูกต้อง', 400);
   if (!actor.isAdmin && (companyId === 'all' || companyId !== actor.companyId)) throw new AccessError('ไม่มีสิทธิ์เข้าถึงบริษัทนี้');

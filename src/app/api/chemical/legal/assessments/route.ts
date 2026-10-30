@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
-import { AccessError, apiError, assertCompany, requireToolsActor } from '@/lib/toolsSession';
+import { AccessError, apiError, assertCompany, requireModuleActor } from '@/lib/toolsSession';
 import { getLegalCatalog } from '@/lib/chemical/legal/catalog';
 import { checkLegalCatalog, evaluateObligations, normalizeCas, parseLegalContext } from '@/lib/chemical/legal/engine';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const params = request.nextUrl.searchParams;
     const company = params.get('company_id');
     assertCompany(actor, company, true);
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 }
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const body = await request.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new AccessError('ข้อมูลไม่ถูกต้อง', 400);
     assertCompany(actor, body.company_id, true);

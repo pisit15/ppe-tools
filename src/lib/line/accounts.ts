@@ -13,7 +13,15 @@ export type LinkedAccount = {
   displayName: string;
   companyId: string; // 'admin' for admin_accounts
   isGroupAdmin: boolean; // sees every company
+  modules: string[] | null; // allowed_modules (null = every module)
 };
+
+const modulesOf = (row: Record<string, unknown>): string[] | null =>
+  Array.isArray(row.allowed_modules) && row.allowed_modules.length ? (row.allowed_modules as string[]) : null;
+
+/** Module permission for a LINE-linked account (admins and null = every module). */
+export const lineHasModule = (account: LinkedAccount, moduleId: string) =>
+  account.isGroupAdmin || !account.modules || account.modules.includes(moduleId);
 
 export type VerifyResult =
   | { ok: true; account: LinkedAccount }
@@ -56,6 +64,7 @@ export async function verifyCredentials(
         displayName: String(admin.display_name || admin.username),
         companyId: 'admin',
         isGroupAdmin: true,
+        modules: null,
       },
     };
   }
@@ -91,6 +100,7 @@ export async function verifyCredentials(
       displayName: String(chosen.display_name || chosen.username),
       companyId: String(chosen.company_id),
       isGroupAdmin: false,
+      modules: modulesOf(chosen),
     },
   };
 }
@@ -126,5 +136,6 @@ export async function getLinkedAccount(db: SupabaseClient, lineUserId: string): 
     displayName: String(acc.display_name || acc.username),
     companyId: source === 'admin_accounts' ? 'admin' : String(acc.company_id),
     isGroupAdmin: source === 'admin_accounts',
+    modules: source === 'admin_accounts' ? null : modulesOf(acc),
   };
 }

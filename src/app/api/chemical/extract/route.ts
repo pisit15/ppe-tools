@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
-import { requireToolsActor, assertCompany, apiError, type ToolsActor } from '@/lib/toolsSession';
+import { requireModuleActor, assertCompany, apiError, type ToolsActor } from '@/lib/toolsSession';
 import { assertSdsPath } from '@/lib/chemical/access';
 import { extractSds, SdsExtractionError } from '@/lib/chemical/sds-extraction';
+import { fetchSdsFromUrl } from '@/lib/chemical/safe-fetch';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -39,26 +40,24 @@ async function readSource(request: NextRequest, actor: ToolsActor): Promise<{ ba
     if (buf.length > MAX_BYTES) throw new SdsExtractionError('ไฟล์ใหญ่เกิน 20 MB สำหรับการสกัดอัตโนมัติ', 'FILE_TOO_LARGE', 413);
     return { base64: buf.toString('base64'), mediaType: data.type || 'application/pdf', label: body.path };
   }
-  if (body.url) {
-    const res = await fetch(body.url, { redirect: 'follow', signal: AbortSignal.timeout(20000) });
-    if (!res.ok) throw new SdsExtractionError('เปิดลิงก์ SDS ไม่สำเร็จ กรุณาใช้ลิงก์ไฟล์ที่เปิดได้หรือเลือกไฟล์จากเครื่อง', 'SOURCE_UNAVAILABLE', 422);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > MAX_BYTES) throw new SdsExtractionError('ไฟล์ใหญ่เกิน 20 MB สำหรับการสกัดอัตโนมัติ', 'FILE_TOO_LARGE', 413);
-    const mt = (res.headers.get('content-type') || 'application/pdf').split(';')[0];
-    return { base64: buf.toString('base64'), mediaType: mt, label: body.url };
+  if (typeof body.url === 'string' && body.url) {
+    // SSRF-safe: https only, public addresses only, re-checked redirects, streamed size cap
+    const { buf, mediaType, label } = await fetchSdsFromUrl(body.url, MAX_BYTES);
+    return { base64: buf.toString('base64'), mediaType, label };
   }
+
   throw new SdsExtractionError('เลือกไฟล์ SDS หรือใส่ลิงก์ก่อนสกัดข้อมูล', 'MISSING_SOURCE', 400);
 }
 
 /** GET → บอก UI ว่าเปิดใช้การสกัดอัตโนมัติได้หรือไม่ */
 export async function GET(request: NextRequest) {
-  try { await requireToolsActor(request); return NextResponse.json({ available: !!process.env.ANTHROPIC_API_KEY }); }
+  try { await requireModuleActor(request, 'chemical', 'Chemical Management'); return NextResponse.json({ available: !!process.env.ANTHROPIC_API_KEY }); }
   catch (e) { return apiError(e); }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return NextResponse.json(

@@ -250,6 +250,17 @@ export type ChemCompanySettings = {
   emergency_contacts: ChemEmergencyContact[];
   show_emergency: boolean;
   updated_at?: string;
+  updated_by?: string | null;
+};
+
+/** Append-only audit of chem_company_settings changes (values printed on posters). */
+export type ChemCompanySettingsHistory = {
+  id: number;
+  company_id: string;
+  changed_by: string;
+  changed_at: string;
+  before: ChemCompanySettings | null;
+  after: ChemCompanySettings;
 };
 
 export type SdsImport = {

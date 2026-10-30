@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { assertExistingCompany } from '@/lib/chemical/access';
 import { getSupabaseServer } from '@/lib/supabase';
 
-import { requireToolsActor, assertCompany, apiError, AccessError } from '@/lib/toolsSession';
+import { requireModuleActor, assertCompany, apiError, AccessError } from '@/lib/toolsSession';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,7 @@ function db() {
 
 export async function GET(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const companyId = request.nextUrl.searchParams.get('company_id') || '';
     assertCompany(actor, companyId);
     let q = db().from('chem_storage_areas').select('*').eq('is_active', true).order('name');
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const body = (await request.json()) as { company_id?: string; name?: string; description?: string };
     if (!body.company_id || !body.name?.trim()) {
       return NextResponse.json({ error: 'กรุณาระบุบริษัทและชื่อพื้นที่เก็บ' }, { status: 400 });
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const body = (await request.json()) as { id?: string; name?: string; description?: string; is_active?: boolean };
     if (!body.id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
     const { data: current, error: lookupError } = await db().from('chem_storage_areas').select('company_id').eq('id', body.id).maybeSingle();

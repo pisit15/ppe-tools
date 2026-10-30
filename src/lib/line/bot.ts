@@ -1,7 +1,7 @@
 // Server-only: turns one LINE event into reply messages (plain strings or Flex cards).
 import { randomBytes } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { companyNames, getLinkedAccount, type LinkedAccount } from './accounts';
+import { companyNames, getLinkedAccount, lineHasModule, type LinkedAccount } from './accounts';
 import { HELP_TEXT, parseCommand, type Command } from './commands';
 import { incidentMonth, type ManHourRow } from './incidentStats';
 import { LAW_PAGE_SIZE, lawHelpCard, lawResultsCard, lawTopicsCard, type LawRow } from './lawCards';
@@ -407,6 +407,7 @@ async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAcc
       case 'law_search':
         return await lawSearch(db, cmd.query, cmd.page);
       case 'chem_search':
+        if (!lineHasModule(account, 'chemical')) return ['บัญชีนี้ไม่มีสิทธิ์ดูข้อมูลสารเคมี'];
         return await chemSearch(db, account, cmd.query, cmd.page);
       case 'law_topics':
         return await lawTopics(db);
@@ -424,6 +425,7 @@ async function answer(db: SupabaseClient, lineUserId: string, account: LinkedAcc
       case 'incident_stats':
         return await handleIncidents(db, account, cmd.company, cmd.year);
       default:
+        if (!lineHasModule(account, 'ppe')) return ['บัญชีนี้ไม่มีสิทธิ์ดูข้อมูล PPE'];
         return await handlePpe(db, account, cmd);
     }
   } catch (err) {
@@ -448,7 +450,7 @@ export async function handlePostback(db: SupabaseClient, lineUserId: string, dat
   const company = account.isGroupAdmin ? pb.c : account.companyId;
 
   try {
-    if (pb.a === 'chem') return toMessages(await chemDetail(db, account, pb.id), true);
+    if (pb.a === 'chem') return toMessages(lineHasModule(account, 'chemical') ? await chemDetail(db, account, pb.id) : ['บัญชีนี้ไม่มีสิทธิ์ดูข้อมูลสารเคมี'], true);
     if (pb.a === 'inc') return toMessages(await incidentStats(db, account, company, pb.y), true);
     if (pb.a === 'incm') return toMessages(await incidentMonthList(db, company, pb.y, pb.m), true);
     if (pb.a === 'incd') return toMessages(await incidentDetail(db, account, pb.id), true);
@@ -469,6 +471,8 @@ export async function handlePostback(db: SupabaseClient, lineUserId: string, dat
       const names = await companyNames(db);
       return toMessages([incidentCompanyPicker(names, Object.keys(names), pb.y)], true);
     }
+    // Remaining postbacks are PPE stock views.
+    if (!lineHasModule(account, 'ppe')) return toMessages(['บัญชีนี้ไม่มีสิทธิ์ดูข้อมูล PPE'], true);
     if (company === 'all') return toMessages(['พิมพ์ "รายการ PPE" แล้วเลือกบริษัทก่อน'], true);
     const names = await companyNames(db, [company]);
     const name = names[company] || company;

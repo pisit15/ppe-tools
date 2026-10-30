@@ -2,7 +2,7 @@ import { checkRegisteredProduct, type ProductLegalInput } from '@/lib/chemical/l
 import type { LegalCheck } from '@/lib/chemical/legal/types';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
-import { AccessError, apiError, assertCompany, requireToolsActor } from '@/lib/toolsSession';
+import { AccessError, apiError, assertCompany, requireModuleActor } from '@/lib/toolsSession';
 import { getLegalCatalog } from '@/lib/chemical/legal/catalog';
 import { checkLegalCatalog, normalizeCas, searchLegalCatalog } from '@/lib/chemical/legal/engine';
 import { LEGAL_CATEGORIES } from '@/lib/chemical/legal/types';
@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const actor = await requireToolsActor(request);
+    const actor = await requireModuleActor(request, 'chemical', 'Chemical Management');
     const params = request.nextUrl.searchParams;
     const company = params.get('company_id');
     assertCompany(actor, company);
