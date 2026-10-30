@@ -6,13 +6,14 @@ import { getLinkedAccount, type LinkedAccount } from './accounts';
 import { decisionCard } from './visitorCards';
 import { text, type Json, type LineMessage } from './flex';
 import type { GroupScope } from './groupBot';
-import type { VisitorRequestWithPersons } from '../visitor/types';
+import type { VehicleDecision, VisitorRequestWithPersons } from '../visitor/types';
+import { VEHICLE_DECISION_LABEL } from '../visitor/constants';
 
 const UUID = /^[0-9a-f-]{36}$/;
 type Req = VisitorRequestWithPersons;
 
 export const approvePostback = (id: string) => `visitor:approve:${id}`;
-const confirmPostback = (id: string) => `visitor:confirm:${id}`;
+const confirmPostback = (id: string, vehicles?: VehicleDecision) => `visitor:confirm:${id}${vehicles ? `:${vehicles}` : ''}`;
 
 function canApprove(a: LinkedAccount, companyId: string) {
   if (a.isGroupAdmin) return true;
@@ -33,7 +34,7 @@ const linkHint = 'ยังไม่ได้ผูก LINE ของคุณ�
 
 /** Handles postback data "visitor:…" sent from a group. Returns reply messages. */
 export async function handleVisitorPostback(db: SupabaseClient, scope: GroupScope, lineUserId: string | undefined, data: string): Promise<LineMessage[]> {
-  const [, action, id] = data.split(':');
+  const [, action, id, vehicleChoice] = data.split(':');
   if (!UUID.test(id || '')) return [text('คำสั่งไม่ถูกต้อง')];
   const r = await loadRequest(db, id);
   if (!r || r.company_id !== scope.companyId) return [text('ไม่พบคำขอนี้ในบริษัทของกลุ่ม')];
@@ -43,25 +44,51 @@ export async function handleVisitorPostback(db: SupabaseClient, scope: GroupScop
   if (!canApprove(account, scope.companyId)) return [text(`บัญชี ${account.displayName} ไม่มีสิทธิ์อนุมัติคำขอของ ${scope.companyName}`)];
   if (!['submitted', 'need_info'].includes(r.status)) return [text(`${r.request_no} ถูกพิจารณาแล้ว (${r.status === 'approved' ? 'อนุมัติ' : r.status === 'rejected' ? 'ไม่อนุมัติ' : 'ยกเลิก'}${r.decided_by ? ` โดย ${r.decided_by}` : ''})`)];
 
+  const pendingVehicles = (r.visitor_vehicles || []).filter(v => v.decision === 'pending');
   if (action === 'approve') {
+    const who = `ในนาม ${account.displayName}`;
+    if (pendingVehicles.length === 0) {
+      return [{
+        type: 'template', altText: `ยืนยันอนุมัติ ${r.request_no}?`,
+        template: {
+          type: 'confirm',
+          text: `ยืนยันอนุมัติ ${r.request_no}\n${r.visitor_company} · ${r.visitor_persons.length} คน\n${who}\n(ถ้าต้องใส่เงื่อนไข PPE/PTW ให้อนุมัติในระบบแทน)`.slice(0, 240),
+          actions: [
+            { type: 'postback', label: 'ยืนยันอนุมัติ', data: confirmPostback(r.id), displayText: `ยืนยันอนุมัติ ${r.request_no}` },
+            { type: 'uri', label: 'เปิดในระบบ', uri: 'https://tools.eashe.org/visitor' },
+          ] as Json,
+        },
+      }];
+    }
+    // Vehicles waiting for a decision: approve people + decide all pending vehicles the same way, or go to the web for per-vehicle.
+    const plates = pendingVehicles.map(v => `${v.plate}${v.reason ? ` (${v.reason.slice(0, 40)})` : ''}`).join(', ');
     return [{
-      type: 'template', altText: `ยืนยันอนุมัติ ${r.request_no}?`,
+      type: 'template', altText: `ยืนยันอนุมัติ ${r.request_no} — มีรถรอพิจารณา ${pendingVehicles.length} คัน`,
       template: {
-        type: 'confirm',
-        text: `ยืนยันอนุมัติ ${r.request_no}\n${r.visitor_company} · ${r.visitor_persons.length} คน\nในนาม ${account.displayName}\n(ถ้าต้องใส่เงื่อนไข PPE/PTW ให้อนุมัติในระบบแทน)`.slice(0, 240),
+        type: 'buttons',
+        title: `อนุมัติ ${r.request_no}`.slice(0, 40),
+        text: `${r.visitor_company} · ${r.visitor_persons.length} คน\nรถรอพิจารณา ${pendingVehicles.length} คัน: ${plates}\n${who}`.slice(0, 160),
         actions: [
-          { type: 'postback', label: 'ยืนยันอนุมัติ', data: confirmPostback(r.id), displayText: `ยืนยันอนุมัติ ${r.request_no}` },
-          { type: 'uri', label: 'เปิดในระบบ', uri: 'https://tools.eashe.org/visitor' },
+          { type: 'postback', label: 'อนุมัติ + รถเข้าได้ทุกคัน', data: confirmPostback(r.id, 'allowed'), displayText: `อนุมัติ ${r.request_no} รถเข้าได้` },
+          { type: 'postback', label: 'อนุมัติ + รถจอดลานนอก', data: confirmPostback(r.id, 'outside'), displayText: `อนุมัติ ${r.request_no} รถจอดนอก` },
+          { type: 'uri', label: 'เปิดในระบบ (ตัดสินรายคัน)', uri: 'https://tools.eashe.org/visitor' },
         ] as Json,
       },
     }];
   }
   if (action === 'confirm') {
     const now = new Date().toISOString();
-    const { error } = await db.from('visitor_requests').update({ status: 'approved', decided_by: `${account.displayName} (LINE)`, decided_at: now, decision_note: '' })
+    const actor = `${account.displayName} (LINE)`;
+    const { error } = await db.from('visitor_requests').update({ status: 'approved', decided_by: actor, decided_at: now, decision_note: '' })
       .eq('id', r.id).in('status', ['submitted', 'need_info']);
     if (error) throw error;
-    await db.from('visitor_events').insert([{ request_id: r.id, actor: `${account.displayName} (LINE)`, action: 'approved', note: 'อนุมัติจากกลุ่ม LINE' }]);
+    await db.from('visitor_events').insert([{ request_id: r.id, actor, action: 'approved', note: 'อนุมัติจากกลุ่ม LINE' }]);
+    if ((vehicleChoice === 'allowed' || vehicleChoice === 'outside') && pendingVehicles.length) {
+      const { error: vErr } = await db.from('visitor_vehicles').update({ decision: vehicleChoice, decided_by: actor, decided_at: now })
+        .eq('request_id', r.id).eq('decision', 'pending');
+      if (vErr) throw vErr;
+      await db.from('visitor_events').insert([{ request_id: r.id, actor, action: 'vehicle_decision', note: `${pendingVehicles.map(v => v.plate).join(', ')}: ${VEHICLE_DECISION_LABEL[vehicleChoice]} (จาก LINE)` }]);
+    }
     const updated = await loadRequest(db, r.id);
     return updated ? [decisionCard(updated, scope.companyName)] : [text(`อนุมัติ ${r.request_no} แล้ว`)];
   }
