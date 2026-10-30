@@ -60,6 +60,14 @@ export function validateCreate(body: unknown): CreateVisitorRequestInput {
   const purpose = str(b.purpose, 80, 'วัตถุประสงค์');
   const purpose_other = opt(b.purpose_other, 200, 'วัตถุประสงค์ (อื่นๆ)');
   if (/อื่น/.test(purpose) && !purpose_other) throw bad('กรุณาระบุวัตถุประสงค์ (กรณีเลือกอื่นๆ)');
+  // Jotform conditions 3–5: contractor work needs an area and a yes/no permit answer; "อื่น ๆ" needs detail.
+  const work_area_detail = opt(b.work_area_detail, 500, 'รายละเอียดพื้นที่');
+  const isContractor = /ผู้รับเหมา/.test(purpose);
+  if (isContractor) {
+    if (work_areas.length === 0 && !work_area_detail) throw bad('ผู้รับเหมาปฏิบัติงาน: กรุณาระบุพื้นที่ปฏิบัติงาน');
+    if (work_areas.some(a => /อื่น/.test(a)) && !work_area_detail) throw bad('เลือกพื้นที่ "อื่น ๆ" กรุณาระบุรายละเอียดพื้นที่');
+    if (has_permit === 'unknown') throw bad('ผู้รับเหมาปฏิบัติงาน: กรุณาตอบว่ามี Permit to Work ที่อนุมัติแล้วหรือไม่');
+  }
 
   return {
     token,
@@ -68,8 +76,7 @@ export function validateCreate(body: unknown): CreateVisitorRequestInput {
     informer_phone: str(b.informer_phone, 30, 'เบอร์โทรศัพท์', 6),
     informer_department: str(b.informer_department, 80, 'แผนก'),
     visitor_company: str(b.visitor_company, 160, 'ชื่อบริษัทผู้มาติดต่อ'),
-    arrival_date, time_from, time_to, purpose, purpose_other, work_areas,
-    work_area_detail: opt(b.work_area_detail, 500, 'รายละเอียดพื้นที่'),
+    arrival_date, time_from, time_to, purpose, purpose_other, work_areas, work_area_detail,
     has_permit,
     permit_ref: opt(b.permit_ref, 80, 'เลขที่ Permit'),
     note: opt(b.note, 1000, 'หมายเหตุ'),

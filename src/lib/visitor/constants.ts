@@ -57,3 +57,31 @@ export const VISITOR_LIMITS = {
   maxRequestsPerLinkPerHour: 60,
   boardDaysAhead: 1, // today + tomorrow
 };
+
+// "ตรวจอุปกรณ์ PPE ที่ทางเข้า โดย รปภ." — the matrix image on the Jotform, as data so the form and the
+// guard board can highlight the row that applies to a request.
+export type PpeRow = { key: string; label: string; en: string; hat: boolean; vest: boolean; shoes: boolean };
+export const PPE_MATRIX: PpeRow[] = [
+  { key: 'contractor', label: 'ผู้รับเหมา', en: 'Contractor', hat: true, vest: true, shoes: true },
+  { key: 'transport', label: 'พนักงานขับรถส่งสินค้า', en: 'Transportation Driver', hat: true, vest: true, shoes: true },
+  { key: 'visitor_work', label: 'ผู้มาติดต่อ (เข้าพื้นที่ทำงาน)', en: 'Visitor (At working area)', hat: true, vest: true, shoes: true },
+  { key: 'delivery', label: 'บริษัทขนส่งเอกชน', en: 'Private Delivery Driver', hat: false, vest: true, shoes: false },
+  { key: 'garbage', label: 'รถขยะทั่วไป รีไซเคิล ติดเชื้อ', en: 'Garbage truck', hat: false, vest: true, shoes: false },
+  { key: 'visitor_meeting', label: 'ผู้มาติดต่อ (ไม่มีการทำงาน)', en: 'Visitor (At Meeting room)', hat: false, vest: false, shoes: false },
+];
+export const PPE_LABEL = { hat: 'หมวกเซฟตี้', vest: 'เสื้อสะท้อนแสง', shoes: 'รองเท้าเซฟตี้' } as const;
+
+/** Which PPE row applies to a request (purpose + work areas). Returns null when nothing is chosen yet. */
+export function ppeRowFor(purpose: string, workAreas: string[]): PpeRow | null {
+  if (!purpose) return null;
+  const find = (k: string) => PPE_MATRIX.find(r => r.key === k) || null;
+  if (/ผู้รับเหมา/.test(purpose)) return find('contractor');
+  if (/สินค้า/.test(purpose)) return workAreas.some(a => /ขยะ|waste/i.test(a)) ? find('garbage') : find('transport');
+  if (/เอกสาร/.test(purpose)) return find('delivery');
+  return workAreas.length > 0 ? find('visitor_work') : find('visitor_meeting');
+}
+export function ppeText(row: PpeRow | null) {
+  if (!row) return '';
+  const items = (['hat', 'vest', 'shoes'] as const).filter(k => row[k]).map(k => PPE_LABEL[k]);
+  return items.length ? items.join(' · ') : 'ไม่ต้องใช้ PPE';
+}

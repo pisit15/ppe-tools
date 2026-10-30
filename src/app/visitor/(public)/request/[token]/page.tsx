@@ -4,7 +4,8 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { CheckCircle2, Plus, Trash2, Users, Building2, CalendarDays, ClipboardList, Copy } from 'lucide-react';
-import { HAS_PERMIT_LABEL, PURPOSE_OTHER, VISITOR_LIMITS, VISITOR_PURPOSES } from '@/lib/visitor/constants';
+import { HAS_PERMIT_LABEL, PPE_LABEL, PPE_MATRIX, PURPOSE_OTHER, VISITOR_LIMITS, VISITOR_PURPOSES, ppeRowFor } from '@/lib/visitor/constants';
+import { Check, X } from 'lucide-react';
 import type { CreateVisitorRequestInput, HasPermit, VisitorLinkInfo } from '@/lib/visitor/types';
 import { useQr } from '../../../_components/useQr';
 import { FetchError, ToastView, VIZ, cardClass, getJson, inputClass, labelClass, postJson, thaiDate, useToast } from '../../../_components/ui';
@@ -46,6 +47,9 @@ export default function VisitorRequestPage() {
   }, [token]);
 
   const isContractor = /ผู้รับเหมา/.test(purpose);
+  const otherAreaPicked = areas.some(a => /อื่น/.test(a));
+  const ppeRow = ppeRowFor(purpose, isContractor ? areas : []);
+  const needsAreaDetail = isContractor && (otherAreaPicked || link?.areas.length === 0);
   const trackUrl = done && typeof window !== 'undefined' ? `${window.location.origin}/visitor/track/${done.track_code}` : '';
   const trackQr = useQr(trackUrl || null, 220);
   const filledPersons = useMemo(() => persons.filter(p => p.name.trim() || p.detail.trim()), [persons]);
@@ -64,10 +68,13 @@ export default function VisitorRequestPage() {
     e.preventDefault();
     if (busy || !link) return;
     if (filledPersons.length === 0) { setToast({ type: 'error', msg: 'กรุณากรอกรายชื่อผู้มาติดต่ออย่างน้อย 1 คน' }); return; }
+    if (isContractor && link.areas.length > 0 && areas.length === 0) { setToast({ type: 'error', msg: 'ผู้รับเหมาปฏิบัติงาน: กรุณาเลือกพื้นที่ปฏิบัติงาน' }); return; }
+    if (needsAreaDetail && !areaDetail.trim()) { setToast({ type: 'error', msg: 'กรุณาระบุรายละเอียดพื้นที่ปฏิบัติงาน' }); return; }
+    if (isContractor && hasPermit === 'unknown') { setToast({ type: 'error', msg: 'กรุณาตอบว่ามีเอกสาร Permit to Work ที่อนุมัติแล้วหรือไม่' }); return; }
     const body: CreateVisitorRequestInput = {
       token, informer_name: informerName, informer_employee_code: employeeCode, informer_phone: phone, informer_department: department,
       visitor_company: visitorCompany, arrival_date: arrivalDate, time_from: timeFrom, time_to: timeTo, purpose, purpose_other: purposeOther,
-      work_areas: areas, work_area_detail: areaDetail, has_permit: hasPermit, permit_ref: permitRef, note,
+      work_areas: isContractor ? areas : [], work_area_detail: isContractor ? areaDetail : '', has_permit: isContractor ? hasPermit : 'unknown', permit_ref: isContractor && hasPermit === 'yes' ? permitRef : '', note,
       persons: filledPersons.map(p => ({ name: p.name.trim(), detail: p.detail.trim() })),
     };
     setBusy(true);
@@ -167,8 +174,9 @@ export default function VisitorRequestPage() {
             <div><label className={labelClass} htmlFor="tf">เวลาเริ่ม *</label><input id="tf" type="time" className={inputClass} value={timeFrom} onChange={e => setTimeFrom(e.target.value)} required /></div>
             <div><label className={labelClass} htmlFor="tt">เวลาสิ้นสุด *</label><input id="tt" type="time" className={inputClass} value={timeTo} onChange={e => setTimeTo(e.target.value)} required /></div>
           </div>
-          <div className="mt-5">
-            <label className={labelClass}>พื้นที่ปฏิบัติงาน {isContractor && '*'} {link.areas.length === 0 && <span className="text-gray-500 font-normal">(ระบุในช่องรายละเอียดด้านล่าง)</span>}</label>
+          {/* Same rules as the Jotform conditions: area + permit only for contractor work; "อื่น ๆ" needs detail. */}
+          {isContractor && <div className="mt-5">
+            <label className={labelClass}>พื้นที่ปฏิบัติงาน * {link.areas.length === 0 && <span className="text-gray-500 font-normal">(ระบุในช่องรายละเอียดด้านล่าง)</span>}</label>
             <div className="grid gap-2 sm:grid-cols-3">
               {link.areas.map(a => (
                 <label key={a} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer ${areas.includes(a) ? 'border-[#4E79A7] bg-[#4E79A7]/10' : 'border-gray-200 hover:bg-gray-50'}`}>
@@ -176,23 +184,49 @@ export default function VisitorRequestPage() {
                 </label>
               ))}
             </div>
-            <div className="mt-3"><label className={labelClass} htmlFor="ad">{link.areas.length ? 'รายละเอียดพื้นที่ (ชื่อห้อง, กริดไลน์ ฯลฯ)' : 'พื้นที่ปฏิบัติงาน / อาคาร / ห้อง'}</label><input id="ad" className={inputClass} value={areaDetail} onChange={e => setAreaDetail(e.target.value)} maxLength={500} required={isContractor && link.areas.length === 0} /></div>
-          </div>
+            <div className="mt-3"><label className={labelClass} htmlFor="ad">{link.areas.length ? 'รายละเอียดพื้นที่ (ชื่อห้อง, กริดไลน์ ฯลฯ)' : 'พื้นที่ปฏิบัติงาน / อาคาร / ห้อง'} {needsAreaDetail && '*'}</label><input id="ad" className={inputClass} value={areaDetail} onChange={e => setAreaDetail(e.target.value)} maxLength={500} required={needsAreaDetail} placeholder={otherAreaPicked ? 'เลือก "อื่น ๆ" กรุณาระบุพื้นที่ให้ชัดเจน' : undefined} /></div>
+          </div>}
         </section>
 
         <section className={cardClass}>
-          <h2 className="flex items-center gap-2 text-lg font-semibold mb-4" style={{ color: VIZ.primary }}><ClipboardList size={20} />ใบอนุญาตทำงาน และหมายเหตุ</h2>
-          <label className={labelClass}>มีเอกสารขออนุญาตทำงาน (Permit to Work) ที่อนุมัติแล้วหรือไม่ {isContractor && '*'}</label>
-          <div className="flex flex-wrap gap-3">
-            {(Object.keys(HAS_PERMIT_LABEL) as HasPermit[]).map(k => (
-              <label key={k} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer ${hasPermit === k ? 'border-[#4E79A7] bg-[#4E79A7]/10' : 'border-gray-200'}`}>
-                <input type="radio" name="permit" checked={hasPermit === k} onChange={() => setHasPermit(k)} className="accent-[#4E79A7]" />{HAS_PERMIT_LABEL[k]}
-              </label>
-            ))}
-          </div>
-          {hasPermit === 'yes' && <div className="mt-3 max-w-sm"><label className={labelClass} htmlFor="pr">เลขที่ Permit (ถ้ามี)</label><input id="pr" className={inputClass} value={permitRef} onChange={e => setPermitRef(e.target.value)} maxLength={80} /></div>}
+          <h2 className="flex items-center gap-2 text-lg font-semibold mb-4" style={{ color: VIZ.primary }}><ClipboardList size={20} />{isContractor ? 'ใบอนุญาตทำงาน และหมายเหตุ' : 'หมายเหตุ'}</h2>
+          {isContractor && <>
+            <label className={labelClass}>มีเอกสารขออนุญาตทำงาน (Permit to Work) ที่อนุมัติแล้วหรือไม่ *</label>
+            <div className="flex flex-wrap gap-3">
+              {(['yes', 'no'] as HasPermit[]).map(k => (
+                <label key={k} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer ${hasPermit === k ? 'border-[#4E79A7] bg-[#4E79A7]/10' : 'border-gray-200'}`}>
+                  <input type="radio" name="permit" required checked={hasPermit === k} onChange={() => setHasPermit(k)} className="accent-[#4E79A7]" />{HAS_PERMIT_LABEL[k]}
+                </label>
+              ))}
+            </div>
+            {hasPermit === 'yes' && <div className="mt-3 max-w-sm"><label className={labelClass} htmlFor="pr">เลขที่ Permit (ถ้ามี)</label><input id="pr" className={inputClass} value={permitRef} onChange={e => setPermitRef(e.target.value)} maxLength={80} /></div>}
+          </>}
           <div className="mt-4"><label className={labelClass} htmlFor="note">หมายเหตุถึงทีม SHE</label><textarea id="note" className={inputClass} rows={3} value={note} onChange={e => setNote(e.target.value)} maxLength={1000} /></div>
-          {isContractor && <p className="mt-3 text-sm rounded-lg px-3 py-2" style={{ background: `${VIZ.secondary}1A`, color: '#8a4b00' }}>ผู้รับเหมาปฏิบัติงานต้องสวม PPE ตามข้อกำหนดของพื้นที่ และต้องมี Permit to Work ก่อนเริ่มงานที่มีความเสี่ยง</p>}
+        </section>
+
+        <section className={cardClass}>
+          <h2 className="text-lg font-semibold mb-1" style={{ color: VIZ.primary }}>ตรวจอุปกรณ์ PPE ที่ทางเข้า โดย รปภ.</h2>
+          <p className="text-sm text-gray-500 mb-3">{ppeRow ? <>คำขอนี้เข้าข่าย <strong style={{ color: VIZ.text }}>{ppeRow.label}</strong> — แจ้งผู้มาติดต่อเตรียม PPE ตามแถวที่ไฮไลต์</> : 'เลือกวัตถุประสงค์แล้วระบบจะไฮไลต์แถวที่ใช้กับคำขอนี้'}</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead><tr className="text-gray-600" style={{ background: VIZ.bg }}>
+                <th className="text-left px-3 py-2 border border-gray-200">ประเภทผู้มาติดต่อ</th>
+                {(['hat', 'vest', 'shoes'] as const).map(k => <th key={k} className="px-3 py-2 border border-gray-200 text-center font-medium">{PPE_LABEL[k]}</th>)}
+              </tr></thead>
+              <tbody>
+                {PPE_MATRIX.map(r => {
+                  const hit = ppeRow?.key === r.key;
+                  return (
+                    <tr key={r.key} style={hit ? { background: `${VIZ.secondary}22`, outline: `2px solid ${VIZ.secondary}`, outlineOffset: -2 } : undefined}>
+                      <td className="px-3 py-2 border border-gray-200"><span className={hit ? 'font-semibold' : ''}>{r.label}</span><span className="block text-xs text-gray-500">{r.en}</span></td>
+                      {(['hat', 'vest', 'shoes'] as const).map(k => <td key={k} className="px-3 py-2 border border-gray-200 text-center">{r[k] ? <Check size={20} className="inline" style={{ color: VIZ.positive }} aria-label="ต้องใช้" /> : <X size={20} className="inline" style={{ color: VIZ.accent }} aria-label="ไม่ต้องใช้" />}</td>)}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {isContractor && <p className="mt-3 text-sm rounded-lg px-3 py-2" style={{ background: `${VIZ.secondary}1A`, color: '#8a4b00' }}>ผู้รับเหมาปฏิบัติงานต้องมี Permit to Work ที่อนุมัติแล้วก่อนเริ่มงานที่มีความเสี่ยง</p>}
         </section>
 
         <div className="flex justify-end gap-3">

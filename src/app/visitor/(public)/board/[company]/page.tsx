@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { LogIn, LogOut, RotateCcw, Phone, MapPin, ShieldAlert, Maximize2, ChevronDown, ChevronRight, UserX, UserPlus, Settings2, X, Sun, Moon, ImagePlus, Trash2 } from 'lucide-react';
 import type { BoardAction, BoardPayload, BoardPost, BoardRequest } from '@/lib/visitor/types';
+import { ppeRowFor, ppeText } from '@/lib/visitor/constants';
 import { FetchError, ToastView, bangkokTime, hhmm, postJson, getJson, thaiDate, useToast } from '../../../_components/ui';
 
 // Two palettes for the guard monitor; VIZ hues kept for status colours. Background image is a per-device choice (localStorage).
@@ -219,6 +220,7 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
   const carried = r.arrival_date < today && inside > 0;
   const timePassed = r.arrival_date < today || (r.arrival_date === today && hhmm(r.time_to) <= nowHm);
   const nobodyCame = expected > 0 && inside === 0 && left === 0;
+  const ppe = ppeRowFor(r.purpose, r.work_areas);
 
   function submitAdd() {
     const n = name.trim();
@@ -241,6 +243,7 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
             </span>
             {!collapsed && (r.work_areas.length > 0 || r.work_area_detail) && <span className="mt-1 inline-flex items-start gap-1 text-base" style={{ color: C.primary }}><MapPin size={16} className="mt-1 shrink-0" /><span>{[...r.work_areas, r.work_area_detail].filter(Boolean).join(' · ')}</span></span>}
             {!collapsed && r.conditions && <span className="mt-1 flex items-start gap-1 text-base" style={{ color: C.warn }}><ShieldAlert size={16} className="mt-1 shrink-0" /><span>เงื่อนไข: {r.conditions}</span></span>}
+            {!collapsed && ppe && <span className="mt-1 flex items-center gap-2 text-base"><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${C.positive}33`, color: C.positive }}>ตรวจ PPE</span><span style={{ color: C.dim }}>{ppe.label}:</span><span className="font-medium">{ppeText(ppe)}</span></span>}
           </span>
         </button>
         <div className="text-right shrink-0">
