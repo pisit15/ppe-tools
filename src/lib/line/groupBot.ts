@@ -21,10 +21,21 @@ export async function groupScope(db: SupabaseClient, groupId: string): Promise<G
 
 const TRIGGER = /^\s*(?:@\s*(?:she|ea\s*she\s*center|ea\s*hse\s*center)\b|she[\s:：]|\/she\b)\s*/i;
 
-/** Strip the trigger. Returns null when the message is not addressed to the bot. */
-export function groupCommandText(raw: string, mentionedBot: boolean): string | null {
+export type Mentionee = { index: number; length: number; isSelf?: boolean };
+
+/**
+ * Strip the trigger. Returns null when the message is not addressed to the bot.
+ * A LINE mention of the OA ("@EA SHE Center เมนู") arrives with index/length of the mention text,
+ * so it is cut out exactly instead of guessing how many words the account name has.
+ */
+export function groupCommandText(raw: string, mentionees: Mentionee[] = []): string | null {
+  const self = mentionees.filter(m => m.isSelf).sort((a, b) => b.index - a.index);
+  if (self.length) {
+    let t = raw;
+    for (const m of self) t = t.slice(0, m.index) + ' ' + t.slice(m.index + m.length);
+    return t.replace(TRIGGER, '').replace(/\s+/g, ' ').trim();
+  }
   const t = raw.trim();
-  if (mentionedBot) return t.replace(/^@\S+(?:\s+\S+){0,3}?\s*/u, '').replace(TRIGGER, '').trim();
   const m = t.match(TRIGGER);
   return m ? t.slice(m[0].length).trim() : null;
 }

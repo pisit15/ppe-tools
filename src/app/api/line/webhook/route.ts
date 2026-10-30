@@ -15,7 +15,7 @@ type LineEvent = {
   type: string;
   replyToken?: string;
   source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
-  message?: { type?: string; text?: string; mention?: { mentionees?: { isSelf?: boolean }[] } };
+  message?: { type?: string; text?: string; mention?: { mentionees?: { index: number; length: number; isSelf?: boolean }[] } };
   postback?: { data?: string };
 };
 
@@ -67,8 +67,7 @@ export async function POST(request: NextRequest) {
           }
           // Commands addressed to the bot (@she … or a mention) — answered only for the company this group is linked to.
           if (ev.type === 'message' && ev.message?.type === 'text' && ev.replyToken) {
-            const mentioned = Boolean(ev.message.mention?.mentionees?.some(m => m.isSelf));
-            const cmdText = groupCommandText(ev.message.text || '', mentioned);
+            const cmdText = groupCommandText(ev.message.text || '', ev.message.mention?.mentionees || []);
             if (cmdText !== null) {
               const scope = await groupScope(db, groupId);
               if (!scope) {
