@@ -1,6 +1,6 @@
 import { AccessError } from '@/lib/toolsSession';
-import { VISITOR_LIMITS } from './constants';
-import type { CreateVisitorRequestInput, DecisionInput, HasPermit } from './types';
+import { VISITOR_LIMITS, vehiclePolicyFor } from './constants';
+import type { CreateVisitorRequestInput, DecisionInput, HasPermit, VehicleDecision, VehicleInput } from './types';
 
 const bad = (msg: string) => new AccessError(msg, 400);
 const str = (v: unknown, max: number, label: string, min = 1) => {
@@ -69,6 +69,26 @@ export function validateCreate(body: unknown): CreateVisitorRequestInput {
     if (has_permit === 'unknown') throw bad('ผู้รับเหมาปฏิบัติงาน: กรุณาตอบว่ามี Permit to Work ที่อนุมัติแล้วหรือไม่');
   }
 
+  // Vehicles: policy by purpose (constants.VEHICLE_POLICY). deny → none accepted; conditional → reason required.
+  const policy = vehiclePolicyFor(purpose);
+  const rawVehicles = Array.isArray(b.vehicles) ? b.vehicles : [];
+  if (rawVehicles.length > 10) throw bad('ระบุรถได้ไม่เกิน 10 คัน');
+  const vehicles: VehicleInput[] = rawVehicles
+    .map(v => (v && typeof v === 'object' ? v as Record<string, unknown> : {}))
+    .map(v => ({
+      plate: typeof v.plate === 'string' ? v.plate.trim().replace(/\s+/g, ' ') : '',
+      province: typeof v.province === 'string' ? v.province.trim().slice(0, 40) : '',
+      vehicle_type: typeof v.vehicle_type === 'string' ? v.vehicle_type.trim().slice(0, 40) : '',
+      reason: typeof v.reason === 'string' ? v.reason.trim().slice(0, 500) : '',
+    }))
+    .filter(v => v.plate || v.reason);
+  if (vehicles.length && policy.mode === 'deny') throw bad('วัตถุประสงค์นี้ไม่อนุญาตนำรถเข้าภายในโรงงาน');
+  for (const v of vehicles) {
+    if (!v.plate) throw bad('กรุณากรอกทะเบียนรถทุกคัน');
+    if (v.plate.length > 40) throw bad('ทะเบียนรถยาวเกินไป');
+    if (policy.mode === 'conditional' && !v.reason) throw bad(policy.reasonLabel?.replace(' *', '') || 'กรุณาระบุเหตุผลที่ต้องนำรถเข้า');
+  }
+
   return {
     token,
     informer_name: str(b.informer_name, 120, 'ชื่อผู้แจ้ง'),
@@ -81,6 +101,7 @@ export function validateCreate(body: unknown): CreateVisitorRequestInput {
     permit_ref: opt(b.permit_ref, 80, 'เลขที่ Permit'),
     note: opt(b.note, 1000, 'หมายเหตุ'),
     persons,
+    vehicles,
   };
 }
 
@@ -88,8 +109,15 @@ export function validateDecision(body: unknown): DecisionInput {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw bad('ข้อมูลการตัดสินใจไม่ถูกต้อง');
   const b = body as Record<string, unknown>;
   const action = String(b.action);
-  if (!['approve', 'reject', 'need_info', 'cancel'].includes(action)) throw bad('คำสั่งไม่ถูกต้อง');
+  if (!['approve', 'reject', 'need_info', 'cancel', 'vehicles'].includes(action)) throw bad('คำสั่งไม่ถูกต้อง');
   const note = opt(b.note, 1000, 'หมายเหตุ');
   if ((action === 'reject' || action === 'need_info') && !note) throw bad('กรุณาระบุเหตุผล');
-  return { action: action as DecisionInput['action'], note, conditions: opt(b.conditions, 1000, 'เงื่อนไข') };
+  const vehicles = Array.isArray(b.vehicles) ? b.vehicles.map(v => {
+    const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+    const id = String(o.id || ''); const decision = String(o.decision || '') as VehicleDecision;
+    if (!/^[0-9a-f-]{36}$/.test(id) || !['allowed', 'pending', 'outside'].includes(decision)) throw bad('สถานะรถไม่ถูกต้อง');
+    return { id, decision };
+  }) : undefined;
+  if (action === 'vehicles' && !vehicles?.length) throw bad('ไม่มีรถให้บันทึก');
+  return { action: action as DecisionInput['action'], note, conditions: opt(b.conditions, 1000, 'เงื่อนไข'), vehicles };
 }

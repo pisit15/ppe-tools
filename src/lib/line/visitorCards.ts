@@ -1,6 +1,6 @@
 // Flex cards pushed to a company's LINE group for visitor access requests.
 import { C, flex, header, text, type Json, type LineMessage } from './flex';
-import { VISITOR_STATUS_LABEL } from '../visitor/constants';
+import { VEHICLE_DECISION_LABEL, VISITOR_STATUS_LABEL } from '../visitor/constants';
 import type { VisitorRequestWithPersons } from '../visitor/types';
 
 const QUEUE = 'https://tools.eashe.org/visitor';
@@ -29,6 +29,7 @@ function body(r: VisitorRequestWithPersons, companyName: string): Json[] {
     row('พื้นที่', [...r.work_areas, r.work_area_detail].filter(Boolean).join(', ')),
     row('ผู้แจ้ง', `${r.informer_name} (${r.informer_department}) ${r.informer_phone}`),
     row(`รายชื่อ ${r.visitor_persons.length} คน`, names),
+    ...((r.visitor_vehicles || []).length ? [row(`รถ ${r.visitor_vehicles.length} คัน`, r.visitor_vehicles.map(v => `${v.plate}${v.province ? ` ${v.province}` : ''} — ${VEHICLE_DECISION_LABEL[v.decision]}${v.reason ? ` (${v.reason})` : ''}`).join('\n'), true)] : []),
     ...(r.note ? [row('หมายเหตุ', r.note)] : []),
     { type: 'text', text: `${companyName} · ${r.request_no}`, size: 'xs', color: C.faint, margin: 'lg' },
   ];
@@ -62,6 +63,7 @@ export function decisionCard(r: VisitorRequestWithPersons, companyName: string):
   const label = VISITOR_STATUS_LABEL[r.status];
   const extra: Json[] = [];
   if (r.status === 'approved' && r.conditions) extra.push(row('เงื่อนไข', r.conditions, true));
+  if (r.status === 'approved' && (r.visitor_vehicles || []).length) extra.push(row('รถ', r.visitor_vehicles.map(v => `${v.plate} — ${VEHICLE_DECISION_LABEL[v.decision]}`).join('\n'), true));
   if (r.decision_note) extra.push(row('จาก SHE', r.decision_note));
   if (r.decided_by) extra.push(row('ผู้ตัดสิน', r.decided_by));
   const alt = `${label} ${r.request_no}: ${r.visitor_company} ${thaiDate(r.arrival_date)}${r.conditions ? ` · เงื่อนไข: ${r.conditions}` : ''}`;

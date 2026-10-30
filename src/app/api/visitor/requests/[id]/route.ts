@@ -5,6 +5,7 @@ import { validateDecision } from '@/lib/visitor/validation';
 import { REQUEST_SELECT, addEvent, db, sortPersons } from '@/lib/visitor/server';
 import { notifyDecision } from '@/lib/visitor/notify';
 import type { VisitorEventRow, VisitorRequestDetail, VisitorRequestWithPersons, VisitorStatus } from '@/lib/visitor/types';
+import { VEHICLE_DECISION_LABEL } from '@/lib/visitor/constants';
 
 export const dynamic = 'force-dynamic';
 const UUID = /^[0-9a-f-]{36}$/;
@@ -42,9 +43,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     assertCompany(actor, row.company_id, true);
     const decision = validateDecision(await request.json().catch(() => null));
     if (['rejected', 'cancelled'].includes(row.status)) throw new AccessError('คำขอนี้ปิดแล้ว แก้ไขไม่ได้', 409);
+    const actorName = actor.displayName || actor.username;
+    // Per-vehicle entry decision (can accompany approve, or stand alone with action 'vehicles').
+    if (decision.vehicles?.length) {
+      const own = new Set(row.visitor_vehicles.map(v => v.id));
+      const changed: string[] = [];
+      for (const v of decision.vehicles) {
+        if (!own.has(v.id)) throw new AccessError('ไม่พบรถคันนี้ในคำขอ', 400);
+        const before = row.visitor_vehicles.find(x => x.id === v.id);
+        if (before && before.decision === v.decision) continue;
+        const { error } = await db().from('visitor_vehicles').update({ decision: v.decision, decided_by: actorName, decided_at: new Date().toISOString() }).eq('id', v.id);
+        if (error) throw error;
+        changed.push(`${before?.plate || ''}: ${VEHICLE_DECISION_LABEL[v.decision]}`);
+      }
+      if (changed.length) await addEvent(row.id, actorName, 'vehicle_decision', changed.join(' · ').slice(0, 1000));
+      if (decision.action === 'vehicles') return NextResponse.json({ data: await load(row.id) });
+    }
     if (row.status === 'approved' && decision.action !== 'cancel' && decision.action !== 'approve') throw new AccessError('คำขอที่อนุมัติแล้วทำได้เฉพาะยกเลิกหรือแก้เงื่อนไข', 409);
 
-    const actorName = actor.displayName || actor.username;
     const { error } = await db().from('visitor_requests').update({
       status: NEXT[decision.action],
       decision_note: decision.note || '',

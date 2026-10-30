@@ -1,16 +1,18 @@
 import { randomBytes } from 'node:crypto';
 import { getSupabaseServer } from '@/lib/supabase';
 import { AccessError } from '@/lib/toolsSession';
-import { VISITOR_LIMITS } from './constants';
+import { VISITOR_LIMITS, vehiclePolicyFor } from './constants';
 import { addDays, bangkokToday } from './validation';
-import type { BoardPayload, BoardRequest, CreateVisitorRequestInput, VisitorBackground, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons } from './types';
+import type { BoardPayload, BoardRequest, CreateVisitorRequestInput, VisitorBackground, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons, VisitorVehicleRow } from './types';
 
 export const db = () => getSupabaseServer();
 export const newToken = (bytes = 24) => randomBytes(bytes).toString('base64url');
 
-export const REQUEST_SELECT = '*, visitor_persons(*)';
-export const sortPersons = <T extends { visitor_persons: VisitorPersonRow[] }>(r: T): T => ({
-  ...r, visitor_persons: [...(r.visitor_persons || [])].sort((a, b) => a.seq - b.seq),
+export const REQUEST_SELECT = '*, visitor_persons(*), visitor_vehicles(*)';
+export const sortPersons = <T extends { visitor_persons: VisitorPersonRow[]; visitor_vehicles?: VisitorVehicleRow[] }>(r: T): T => ({
+  ...r,
+  visitor_persons: [...(r.visitor_persons || [])].sort((a, b) => a.seq - b.seq),
+  visitor_vehicles: [...(r.visitor_vehicles || [])].sort((a, b) => a.seq - b.seq),
 });
 
 export async function companyName(companyId: string) {
@@ -52,7 +54,7 @@ export async function createRequest(input: CreateVisitorRequestInput): Promise<V
   const { data: no, error: noError } = await client.rpc('visitor_next_request_no', { p_company: link.company_id, p_period: period });
   if (noError) throw noError;
 
-  const { token: _token, persons, ...fields } = input;
+  const { token: _token, persons, vehicles = [], ...fields } = input;
   void _token;
   const { data: created, error } = await client.from('visitor_requests').insert([{
     ...fields, company_id: link.company_id, link_id: link.id, request_no: String(no), track_code: newToken(18), status: 'submitted', source: 'web',
@@ -61,7 +63,15 @@ export async function createRequest(input: CreateVisitorRequestInput): Promise<V
   const row = created as VisitorRequestRow;
   const { error: personsError } = await client.from('visitor_persons').insert(persons.map((p, i) => ({ request_id: row.id, seq: i + 1, name: p.name, detail: p.detail || '' })));
   if (personsError) throw personsError;
-  await addEvent(row.id, `${input.informer_name} (${input.informer_employee_code})`, 'submitted', `${persons.length} คน`);
+  if (vehicles.length) {
+    const policy = vehiclePolicyFor(input.purpose);
+    const { error: vErr } = await client.from('visitor_vehicles').insert(vehicles.map((v, i) => ({
+      request_id: row.id, seq: i + 1, plate: v.plate, province: v.province || '', vehicle_type: v.vehicle_type || '', reason: v.reason || '',
+      decision: policy.mode === 'allow' ? 'allowed' : 'pending',
+    })));
+    if (vErr) throw vErr;
+  }
+  await addEvent(row.id, `${input.informer_name} (${input.informer_employee_code})`, 'submitted', `${persons.length} คน${vehicles.length ? ` · รถ ${vehicles.length} คัน` : ''}`);
   const { data: full, error: fullError } = await client.from('visitor_requests').select(REQUEST_SELECT).eq('id', row.id).single();
   if (fullError) throw fullError;
   return sortPersons(full as VisitorRequestWithPersons);
@@ -88,6 +98,7 @@ export async function boardPayload(companyId: string): Promise<BoardPayload> {
       informer_name: r.informer_name, informer_department: r.informer_department, informer_phone: r.informer_phone,
       conditions: r.conditions, has_permit: r.has_permit, permit_ref: r.permit_ref,
       persons: r.visitor_persons.map(p => ({ id: p.id, seq: p.seq, name: p.name, detail: p.detail, arrived_at: p.arrived_at, left_at: p.left_at, no_show_at: p.no_show_at, added_by_guard: p.added_by_guard })),
+      vehicles: (r.visitor_vehicles || []).map(v => ({ id: v.id, seq: v.seq, plate: v.plate, province: v.province, vehicle_type: v.vehicle_type, decision: v.decision })),
     }));
   return { company: { id: companyId, name }, today, requests, background: options.background };
 }

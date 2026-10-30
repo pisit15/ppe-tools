@@ -85,3 +85,42 @@ export function ppeText(row: PpeRow | null) {
   const items = (['hat', 'vest', 'shoes'] as const).filter(k => row[k]).map(k => PPE_LABEL[k]);
   return items.length ? items.join(' · ') : 'ไม่ต้องใช้ PPE';
 }
+
+// "การพิจารณาการอนุญาตให้นำรถเข้าภายในโรงงาน" — vehicle-entry policy per purpose (owner, 30 Oct 2026).
+// allow: vehicle may enter, no reason needed · conditional: form asks for a reason, SHE decides per vehicle ·
+// deny: the vehicle question is hidden and the form tells the requester to park outside.
+export type VehiclePolicy = { mode: 'allow' | 'conditional' | 'deny'; note: string; reasonLabel?: string; reasonHint?: string };
+const CONDITIONAL_BULKY: VehiclePolicy = {
+  mode: 'conditional',
+  note: 'นำรถเข้าได้เฉพาะกรณีมีสิ่งของจำเป็นสำหรับการปฏิบัติงาน ซึ่งมีขนาดใหญ่/จำนวนมากจนถือเข้าไปไม่ได้ — ทีม SHE พิจารณารายคัน',
+  reasonLabel: 'สิ่งของที่ต้องขนเข้า และเหตุใดจึงถือเข้าไปไม่ได้ *',
+  reasonHint: 'เช่น นั่งร้าน 20 ชุด, เครื่องเชื่อม 2 เครื่อง, ตัวอย่างสินค้า 15 ลัง',
+};
+export const VEHICLE_POLICY: Record<string, VehiclePolicy> = {
+  'ผู้รับเหมาปฏิบัติงาน (Contractor\'s Working)': CONDITIONAL_BULKY,
+  'ส่งสินค้า (Deliver Goods)': { mode: 'allow', note: 'รถส่งสินค้านำเข้าภายในได้' },
+  'รับสินค้า (Received Goods)': { mode: 'allow', note: 'รถรับสินค้านำเข้าภายในได้' },
+  'รับ/ส่งเอกสาร (Receive/Send Documents)': {
+    mode: 'conditional',
+    note: 'นำรถเข้าได้เฉพาะรถรับ-ส่งเอกสารของ EA ที่ลงชื่อโดยแผนก Administration — ทีม SHE พิจารณารายคัน',
+    reasonLabel: 'ยืนยันว่าเป็นรถรับ-ส่งเอกสารของ EA (ระบุหน่วยงาน/ผู้รับผิดชอบ) *',
+    reasonHint: 'เช่น รถเอกสารสำนักงานใหญ่ EA ประจำวันจันทร์ ผู้ประสานงาน …',
+  },
+  'ประชุมธุรกิจ (Business Meeting)': {
+    mode: 'conditional',
+    note: 'การประชุมธุรกิจโดยทั่วไป ให้จอดรถที่ลานจอดนอกพื้นที่โรงงาน เฉพาะกรณีผู้มาประชุมเป็นบุคคลสำคัญระดับ VIP เท่านั้น จึงนำรถเข้ามาจอดได้ — ทีม SHE พิจารณารายคัน',
+    reasonLabel: 'เป็นบุคคลสำคัญระดับ VIP อย่างไร มีความสำคัญอย่างไร *',
+    reasonHint: 'เช่น CEO บริษัทคู่ค้า มาลงนามสัญญา, ผู้บริหารระดับสูงของลูกค้ารายใหญ่',
+  },
+  'นำเสนอสินค้า (Present Product)': { ...CONDITIONAL_BULKY, note: 'นำรถเข้าได้เฉพาะกรณีมีสิ่งของจำเป็นสำหรับการนำเสนอสินค้า ซึ่งมีขนาดใหญ่/จำนวนมากจนถือเข้าไปไม่ได้ — ทีม SHE พิจารณารายคัน' },
+  'วิทยากร / ที่ปรึกษา (Trainer / Consultant)': { mode: 'allow', note: 'นำรถเข้าภายในได้' },
+  'อาจารย์นิเทศน์นักศึกษา (The instructor visits the trainee)': { mode: 'allow', note: 'นำรถเข้าภายในได้' },
+  'มาเข้ารับการอบรม (Trainee)': { mode: 'deny', note: 'ผู้เข้ารับการอบรมไม่อนุญาตนำรถเข้าภายในโรงงาน กรุณาแจ้งผู้มาติดต่อให้จอดที่ลานจอดด้านนอก' },
+  'หน่วยงานรัฐ (Government Department)': { mode: 'allow', note: 'นำรถเข้าภายในได้' },
+  'ออดิท (Audit)': { mode: 'allow', note: 'นำรถเข้าภายในได้' },
+  'ฉีดวัคซีน': { mode: 'deny', note: 'ไม่อนุญาตนำรถเข้าภายในโรงงาน กรุณาจอดที่ลานจอดด้านนอก' },
+};
+const OTHER_POLICY: VehiclePolicy = { mode: 'conditional', note: 'วัตถุประสงค์นี้ไม่อยู่ในตาราง — ทีม SHE พิจารณารายคัน', reasonLabel: 'เหตุผลที่ต้องนำรถเข้าภายใน *' };
+export const vehiclePolicyFor = (purpose: string): VehiclePolicy => VEHICLE_POLICY[purpose] || OTHER_POLICY;
+export const VEHICLE_TYPES = ['รถยนต์นั่ง', 'กระบะ/ตู้', 'รถ 6 ล้อ', 'รถ 10 ล้อ/บรรทุก', 'จักรยานยนต์', 'อื่น ๆ'] as const;
+export const VEHICLE_DECISION_LABEL = { allowed: 'เข้าภายในได้', pending: 'รอ SHE พิจารณา', outside: 'จอดลานด้านนอก' } as const;

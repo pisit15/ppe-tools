@@ -3,9 +3,9 @@ export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { LogIn, LogOut, RotateCcw, Phone, MapPin, ShieldAlert, Maximize2, ChevronDown, ChevronRight, UserX, UserPlus, Settings2, X, Sun, Moon, ImagePlus, Trash2 } from 'lucide-react';
+import { LogIn, LogOut, RotateCcw, Phone, MapPin, ShieldAlert, Maximize2, ChevronDown, ChevronRight, UserX, UserPlus, Settings2, X, Sun, Moon, ImagePlus, Trash2, Car } from 'lucide-react';
 import type { BoardAction, BoardPayload, BoardPost, BoardRequest } from '@/lib/visitor/types';
-import { ppeRowFor, ppeText } from '@/lib/visitor/constants';
+import { VEHICLE_DECISION_LABEL, ppeRowFor, ppeText } from '@/lib/visitor/constants';
 import { fileToDataUrl } from '../../../_components/image';
 import { FetchError, ToastView, bangkokTime, hhmm, postJson, getJson, thaiDate, useToast } from '../../../_components/ui';
 
@@ -244,6 +244,7 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
             </span>
             {!collapsed && (r.work_areas.length > 0 || r.work_area_detail) && <span className="mt-1 inline-flex items-start gap-1 text-base" style={{ color: C.primary }}><MapPin size={16} className="mt-1 shrink-0" /><span>{[...r.work_areas, r.work_area_detail].filter(Boolean).join(' · ')}</span></span>}
             {!collapsed && r.conditions && <span className="mt-1 flex items-start gap-1 text-base" style={{ color: C.warn }}><ShieldAlert size={16} className="mt-1 shrink-0" /><span>เงื่อนไข: {r.conditions}</span></span>}
+            {r.vehicles.length > 0 && <span className="mt-1 flex flex-wrap items-center gap-2 text-base"><Car size={16} style={{ color: C.dim }} />{r.vehicles.map(v => <span key={v.id} className="px-2 py-0.5 rounded-md font-medium" style={{ background: v.decision === 'allowed' ? `${C.positive}33` : v.decision === 'outside' ? `${C.dim}33` : `${C.warn}33`, color: v.decision === 'allowed' ? C.positive : v.decision === 'outside' ? C.dim : C.warn }}>{v.plate}{v.province ? ` ${v.province}` : ''} · {VEHICLE_DECISION_LABEL[v.decision]}</span>)}</span>}
             {!collapsed && ppe && <span className="mt-1 flex items-center gap-2 text-base"><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${C.positive}33`, color: C.positive }}>ตรวจ PPE</span><span style={{ color: C.dim }}>{ppe.label}:</span><span className="font-medium">{ppeText(ppe)}</span></span>}
           </span>
         </button>

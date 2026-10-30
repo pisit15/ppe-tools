@@ -4,7 +4,7 @@ export type VisitorStatus = 'submitted' | 'need_info' | 'approved' | 'rejected' 
 export type HasPermit = 'yes' | 'no' | 'unknown';
 export type VisitorEventAction =
   | 'submitted' | 'approved' | 'rejected' | 'need_info' | 'resubmitted' | 'cancelled'
-  | 'arrived' | 'left' | 'undo_arrived' | 'undo_left' | 'no_show' | 'undo_no_show' | 'guard_added';
+  | 'arrived' | 'left' | 'undo_arrived' | 'undo_left' | 'no_show' | 'undo_no_show' | 'guard_added' | 'vehicle_decision';
 
 export type VisitorLinkRow = {
   id: string;
@@ -49,6 +49,21 @@ export type VisitorPersonRow = {
   added_at: string | null;
 };
 
+export type VehicleDecision = 'allowed' | 'pending' | 'outside';
+export type VisitorVehicleRow = {
+  id: string;
+  request_id: string;
+  seq: number;
+  plate: string;
+  province: string;
+  vehicle_type: string;
+  reason: string;
+  decision: VehicleDecision;
+  decided_by: string | null;
+  decided_at: string | null;
+};
+export type VehicleInput = { plate: string; province?: string; vehicle_type?: string; reason?: string };
+
 export type VisitorRequestRow = {
   id: string;
   company_id: string;
@@ -89,7 +104,7 @@ export type VisitorEventRow = {
   note: string;
 };
 
-export type VisitorRequestWithPersons = VisitorRequestRow & { visitor_persons: VisitorPersonRow[] };
+export type VisitorRequestWithPersons = VisitorRequestRow & { visitor_persons: VisitorPersonRow[]; visitor_vehicles: VisitorVehicleRow[] };
 export type VisitorRequestDetail = VisitorRequestWithPersons & { visitor_events: VisitorEventRow[] };
 
 /** Body accepted by POST /api/visitor/public/requests (also used for resubmit after need_info). */
@@ -111,16 +126,17 @@ export type CreateVisitorRequestInput = {
   permit_ref?: string;
   note?: string;
   persons: { name: string; detail?: string }[];
+  vehicles?: VehicleInput[];
 };
 
-export type DecisionAction = 'approve' | 'reject' | 'need_info' | 'cancel';
-export type DecisionInput = { action: DecisionAction; note?: string; conditions?: string };
+export type DecisionAction = 'approve' | 'reject' | 'need_info' | 'cancel' | 'vehicles';
+export type DecisionInput = { action: DecisionAction; note?: string; conditions?: string; vehicles?: { id: string; decision: VehicleDecision }[] };
 
 /** What the public guard board receives — only approved requests for the requested days. */
 export type BoardRequest = Pick<VisitorRequestRow,
   'id' | 'request_no' | 'visitor_company' | 'arrival_date' | 'time_from' | 'time_to' | 'purpose' | 'purpose_other'
   | 'work_areas' | 'work_area_detail' | 'informer_name' | 'informer_department' | 'informer_phone' | 'conditions' | 'has_permit' | 'permit_ref'>
-  & { persons: Pick<VisitorPersonRow, 'id' | 'seq' | 'name' | 'detail' | 'arrived_at' | 'left_at' | 'no_show_at' | 'added_by_guard'>[] };
+  & { persons: Pick<VisitorPersonRow, 'id' | 'seq' | 'name' | 'detail' | 'arrived_at' | 'left_at' | 'no_show_at' | 'added_by_guard'>[]; vehicles: Pick<VisitorVehicleRow, 'id' | 'seq' | 'plate' | 'province' | 'vehicle_type' | 'decision'>[] };
 
 /** Guard board actions (POST /api/visitor/public/board/[company]). */
 export type BoardAction = 'arrive' | 'leave' | 'undo_arrive' | 'undo_leave' | 'no_show' | 'undo_no_show';
@@ -131,7 +147,7 @@ export type BoardPayload = { company: { id: string; name: string }; today: strin
 /** Public status view by track code — no phone numbers or decision details beyond the note. */
 export type TrackPayload = Pick<VisitorRequestRow,
   'request_no' | 'status' | 'visitor_company' | 'arrival_date' | 'time_from' | 'time_to' | 'purpose' | 'decision_note' | 'conditions' | 'decided_at' | 'created_at'>
-  & { company_name: string; persons: Pick<VisitorPersonRow, 'seq' | 'name' | 'detail'>[] };
+  & { company_name: string; persons: Pick<VisitorPersonRow, 'seq' | 'name' | 'detail'>[]; vehicles: Pick<VisitorVehicleRow, 'seq' | 'plate' | 'province' | 'vehicle_type' | 'decision'>[] };
 
 export type LineGroupOption = { group_id: string; group_name: string; active: boolean; joined_at: string };
 export type NotifyLogRow = { id: number; company_id: string; request_id: string | null; kind: 'new_request' | 'decision' | 'test'; group_id: string; http_status: number | null; error: string | null; sent_at: string };

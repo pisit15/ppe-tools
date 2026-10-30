@@ -6,10 +6,10 @@ import { getLinkedAccount, type LinkedAccount } from './accounts';
 import { decisionCard } from './visitorCards';
 import { text, type Json, type LineMessage } from './flex';
 import type { GroupScope } from './groupBot';
-import type { VisitorPersonRow, VisitorRequestRow } from '../visitor/types';
+import type { VisitorRequestWithPersons } from '../visitor/types';
 
 const UUID = /^[0-9a-f-]{36}$/;
-type Req = VisitorRequestRow & { visitor_persons: VisitorPersonRow[] };
+type Req = VisitorRequestWithPersons;
 
 export const approvePostback = (id: string) => `visitor:approve:${id}`;
 const confirmPostback = (id: string) => `visitor:confirm:${id}`;
@@ -23,9 +23,9 @@ function canApprove(a: LinkedAccount, companyId: string) {
 }
 
 async function loadRequest(db: SupabaseClient, id: string): Promise<Req | null> {
-  const { data } = await db.from('visitor_requests').select('*, visitor_persons(*)').eq('id', id).maybeSingle();
+  const { data } = await db.from('visitor_requests').select('*, visitor_persons(*), visitor_vehicles(*)').eq('id', id).maybeSingle();
   const r = data as Req | null;
-  if (r) r.visitor_persons = [...(r.visitor_persons || [])].sort((a, b) => a.seq - b.seq);
+  if (r) { r.visitor_persons = [...(r.visitor_persons || [])].sort((a, b) => a.seq - b.seq); r.visitor_vehicles = [...(r.visitor_vehicles || [])].sort((a, b) => a.seq - b.seq); }
   return r;
 }
 

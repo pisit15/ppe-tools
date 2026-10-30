@@ -2,10 +2,10 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, XCircle, MessageCircleQuestion, Ban, RefreshCw, Search, X, Phone, MapPin, ClipboardList, History, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { CheckCircle2, XCircle, MessageCircleQuestion, Ban, RefreshCw, Search, X, Phone, MapPin, ClipboardList, History, ChevronUp, ChevronDown, ChevronsUpDown, Car } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-import { HAS_PERMIT_LABEL, VISITOR_STATUS_LABEL } from '@/lib/visitor/constants';
-import type { DecisionAction, VisitorEventRow, VisitorRequestDetail, VisitorRequestWithPersons, VisitorStatus } from '@/lib/visitor/types';
+import { HAS_PERMIT_LABEL, VEHICLE_DECISION_LABEL, VISITOR_STATUS_LABEL, vehiclePolicyFor } from '@/lib/visitor/constants';
+import type { DecisionAction, VehicleDecision, VisitorEventRow, VisitorRequestDetail, VisitorRequestWithPersons, VisitorStatus } from '@/lib/visitor/types';
 import { FetchError, STATUS_COLOR, StatusBadge, ToastView, VIZ, cardClass, getJson, hhmm, inputClass, labelClass, postJson, thaiDate, thaiDateTime, useToast } from '../_components/ui';
 
 type Company = { company_id: string; company_name: string };
@@ -132,7 +132,7 @@ export default function VisitorQueuePage() {
                 <td className="px-4 py-3 font-mono font-medium" style={{ color: VIZ.primary }}>{r.request_no}</td>
                 <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                 <td className="px-4 py-3 whitespace-nowrap">{thaiDate(r.arrival_date)} <span className="text-gray-500">{hhmm(r.time_from)}–{hhmm(r.time_to)}</span></td>
-                <td className="px-4 py-3 font-medium">{r.visitor_company}</td>
+                <td className="px-4 py-3 font-medium">{r.visitor_company}{r.visitor_vehicles?.length > 0 && <span className="ml-1 inline-flex items-center gap-0.5 text-xs font-normal" style={{ color: r.visitor_vehicles.some(v => v.decision === 'pending') ? VIZ.secondary : VIZ.lightText }} title="รถที่ขอนำเข้า"><Car size={12} />{r.visitor_vehicles.length}</span>}</td>
                 <td className="px-4 py-3 text-gray-600 max-w-56 truncate">{r.purpose}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{r.visitor_persons.length}</td>
                 <td className="px-4 py-3 text-gray-600">{r.informer_name}<span className="block text-xs text-gray-400">{r.informer_department}</span></td>
@@ -174,10 +174,11 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
   const [conditions, setConditions] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<DecisionAction | null>(null);
+  const [vehicleDecisions, setVehicleDecisions] = useState<Record<string, VehicleDecision>>({});
 
   useEffect(() => {
     setData(null); setError(''); setConfirm(null);
-    getJson<{ data: VisitorRequestDetail }>(`/api/visitor/requests/${id}`).then(r => { setData(r.data); setConditions(r.data.conditions || ''); })
+    getJson<{ data: VisitorRequestDetail }>(`/api/visitor/requests/${id}`).then(r => { setData(r.data); setConditions(r.data.conditions || ''); setVehicleDecisions(Object.fromEntries(r.data.visitor_vehicles.map(v => [v.id, v.decision]))); })
       .catch((e: unknown) => setError(e instanceof FetchError ? e.message : 'โหลดไม่สำเร็จ'));
   }, [id]);
   useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
@@ -188,8 +189,9 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
     if (action !== 'approve' && confirm !== action) { setConfirm(action); return; }
     setBusy(true);
     try {
-      const r = await postJson<{ data: VisitorRequestDetail }>(`/api/visitor/requests/${id}`, { action, note: note.trim(), conditions: conditions.trim() }, 'PATCH');
-      setData(r.data); setNote(''); setConfirm(null);
+      const vehicles = data.visitor_vehicles.filter(v => vehicleDecisions[v.id] && vehicleDecisions[v.id] !== v.decision).map(v => ({ id: v.id, decision: vehicleDecisions[v.id] }));
+      const r = await postJson<{ data: VisitorRequestDetail }>(`/api/visitor/requests/${id}`, { action, note: note.trim(), conditions: conditions.trim(), ...(vehicles.length ? { vehicles } : {}) }, 'PATCH');
+      setData(r.data); setNote(''); setConfirm(null); setVehicleDecisions(Object.fromEntries(r.data.visitor_vehicles.map(v => [v.id, v.decision])));
       notify({ type: 'success', msg: `${r.data.request_no}: ${VISITOR_STATUS_LABEL[r.data.status]}` });
       onChanged();
     } catch (e) { notify({ type: 'error', msg: e instanceof FetchError ? e.message : 'บันทึกไม่สำเร็จ' }); }
@@ -239,6 +241,36 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
               </ol>
             </section>
 
+            {data.visitor_vehicles.length > 0 && (
+              <section>
+                <h4 className="text-sm font-semibold text-gray-700 mb-1 inline-flex items-center gap-1"><Car size={14} />รถที่ขอนำเข้าภายใน ({data.visitor_vehicles.length} คัน)</h4>
+                <p className="text-xs text-gray-500 mb-2">{vehiclePolicyFor(data.purpose).note}</p>
+                <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+                  {data.visitor_vehicles.map(v => {
+                    const cur = vehicleDecisions[v.id] || v.decision;
+                    const color = (d: VehicleDecision) => (d === 'allowed' ? VIZ.positive : d === 'outside' ? VIZ.neutral : VIZ.secondary);
+                    return (
+                      <li key={v.id} className="px-3 py-2 text-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold">{v.plate}</span>{v.province && <span className="text-gray-500">{v.province}</span>}{v.vehicle_type && <span className="text-gray-500">· {v.vehicle_type}</span>}
+                          <span className="ml-auto flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                            {(['allowed', 'pending', 'outside'] as VehicleDecision[]).map(d => (
+                              <button key={d} type="button" disabled={!open || busy} onClick={() => setVehicleDecisions(prev => ({ ...prev, [v.id]: d }))} className="px-2.5 py-1.5 disabled:opacity-60" style={cur === d ? { background: color(d), color: 'white' } : { color: VIZ.lightText }}>{VEHICLE_DECISION_LABEL[d]}</button>
+                            ))}
+                          </span>
+                        </div>
+                        {v.reason && <div className="mt-1 text-gray-600">เหตุผล: {v.reason}</div>}
+                        {v.decided_by && <div className="text-xs text-gray-400">ตัดสินโดย {v.decided_by} {thaiDateTime(v.decided_at)}</div>}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {open && data.visitor_vehicles.some(v => vehicleDecisions[v.id] && vehicleDecisions[v.id] !== v.decision) && (
+                  <button type="button" disabled={busy} onClick={() => void decide('vehicles')} className="mt-2 inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-white" style={{ background: VIZ.primary }}>บันทึกสถานะรถ (ไม่เปลี่ยนสถานะคำขอ)</button>
+                )}
+              </section>
+            )}
+
             {data.note && <section className="rounded-lg p-4 text-sm" style={{ background: `${VIZ.secondary}14` }}><strong>หมายเหตุจากผู้แจ้ง:</strong> {data.note}</section>}
             {data.decision_note && <section className="rounded-lg p-4 text-sm" style={{ background: `${STATUS_COLOR[data.status]}14` }}><strong>บันทึกการตัดสิน ({data.decided_by}):</strong> {data.decision_note}</section>}
 
@@ -275,7 +307,7 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
   );
 }
 
-const EVENT_LABEL: Record<string, string> = { submitted: 'ส่งคำขอ', approved: 'อนุมัติ', rejected: 'ไม่อนุมัติ', need_info: 'ขอข้อมูลเพิ่ม', resubmitted: 'ส่งข้อมูลเพิ่ม', cancelled: 'ยกเลิก', arrived: 'มาถึง', left: 'ออกจากพื้นที่', undo_arrived: 'ยกเลิกมาถึง', undo_left: 'ยกเลิกออก', no_show: 'ไม่มา', undo_no_show: 'ยกเลิกไม่มา', guard_added: 'รปภ เพิ่มคนหน้างาน' };
+const EVENT_LABEL: Record<string, string> = { submitted: 'ส่งคำขอ', approved: 'อนุมัติ', rejected: 'ไม่อนุมัติ', need_info: 'ขอข้อมูลเพิ่ม', resubmitted: 'ส่งข้อมูลเพิ่ม', cancelled: 'ยกเลิก', arrived: 'มาถึง', left: 'ออกจากพื้นที่', undo_arrived: 'ยกเลิกมาถึง', undo_left: 'ยกเลิกออก', no_show: 'ไม่มา', undo_no_show: 'ยกเลิกไม่มา', guard_added: 'รปภ เพิ่มคนหน้างาน', vehicle_decision: 'สถานะรถ' };
 
 function Action({ children, color, onClick, busy, outline }: { children: React.ReactNode; color: string; onClick: () => void; busy: boolean; outline?: boolean }) {
   return <button type="button" disabled={busy} onClick={onClick} className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50" style={outline ? { border: `1px solid ${color}`, color, background: 'white' } : { background: color, color: 'white' }}>{children}</button>;

@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import type { TrackPayload } from '@/lib/visitor/types';
+import { VEHICLE_DECISION_LABEL } from '@/lib/visitor/constants';
 import { FetchError, StatusBadge, VIZ, cardClass, getJson, hhmm, thaiDate, thaiDateTime } from '../../../_components/ui';
 
 export default function TrackPage() {
@@ -38,6 +39,7 @@ export default function TrackPage() {
               <dt className="text-gray-500">วันที่</dt><dd>{thaiDate(data.arrival_date, true)} · {hhmm(data.time_from)}–{hhmm(data.time_to)}</dd>
               <dt className="text-gray-500">วัตถุประสงค์</dt><dd>{data.purpose}</dd>
               <dt className="text-gray-500">รายชื่อ</dt><dd><ol className="list-decimal ml-4">{data.persons.map(p => <li key={p.seq}>{p.name}{p.detail && <span className="text-gray-500"> — {p.detail}</span>}</li>)}</ol></dd>
+              {data.vehicles.length > 0 && <><dt className="text-gray-500">รถ</dt><dd><ul>{data.vehicles.map(v => <li key={v.seq}>{v.plate}{v.province && ` ${v.province}`}{v.vehicle_type && ` · ${v.vehicle_type}`} — <span style={{ color: v.decision === 'allowed' ? VIZ.positive : v.decision === 'outside' ? VIZ.lightText : VIZ.secondary }}>{VEHICLE_DECISION_LABEL[v.decision]}</span></li>)}</ul></dd></>}
               <dt className="text-gray-500">ส่งคำขอเมื่อ</dt><dd>{thaiDateTime(data.created_at)}</dd>
               {data.decided_at && <><dt className="text-gray-500">ตัดสินเมื่อ</dt><dd>{thaiDateTime(data.decided_at)}</dd></>}
             </dl>

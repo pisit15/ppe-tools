@@ -19,6 +19,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       time_from: r.time_from, time_to: r.time_to, purpose: r.purpose, decision_note: r.decision_note, conditions: r.conditions,
       decided_at: r.decided_at, created_at: r.created_at, company_name: await companyName(r.company_id),
       persons: r.visitor_persons.map(p => ({ seq: p.seq, name: p.name, detail: p.detail })),
+      vehicles: (r.visitor_vehicles || []).map(v => ({ seq: v.seq, plate: v.plate, province: v.province, vehicle_type: v.vehicle_type, decision: v.decision })),
     };
     return NextResponse.json({ data: payload });
   } catch (error) {

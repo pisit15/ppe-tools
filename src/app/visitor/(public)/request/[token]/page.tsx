@@ -4,9 +4,10 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { CheckCircle2, Plus, Trash2, Users, Building2, CalendarDays, ClipboardList, Copy } from 'lucide-react';
-import { HAS_PERMIT_LABEL, PPE_LABEL, PPE_MATRIX, PURPOSE_OTHER, VISITOR_LIMITS, VISITOR_PURPOSES, ppeRowFor } from '@/lib/visitor/constants';
+import { HAS_PERMIT_LABEL, PPE_LABEL, PPE_MATRIX, PURPOSE_OTHER, VEHICLE_TYPES, VISITOR_LIMITS, VISITOR_PURPOSES, ppeRowFor, vehiclePolicyFor } from '@/lib/visitor/constants';
+import { Car, ParkingCircle } from 'lucide-react';
 import { Check, X } from 'lucide-react';
-import type { CreateVisitorRequestInput, HasPermit, VisitorBackground, VisitorLinkInfo } from '@/lib/visitor/types';
+import type { CreateVisitorRequestInput, HasPermit, VehicleInput, VisitorBackground, VisitorLinkInfo } from '@/lib/visitor/types';
 import { useQr } from '../../../_components/useQr';
 import { FetchError, ToastView, VIZ, cardClass, getJson, inputClass, labelClass, postJson, thaiDate, useToast } from '../../../_components/ui';
 
@@ -40,6 +41,8 @@ export default function VisitorRequestPage() {
   const [permitRef, setPermitRef] = useState('');
   const [note, setNote] = useState('');
   const [persons, setPersons] = useState<Person[]>([{ name: '', detail: '' }]);
+  const [hasVehicle, setHasVehicle] = useState(false);
+  const [vehicles, setVehicles] = useState<VehicleInput[]>([{ plate: '', province: '', vehicle_type: '', reason: '' }]);
 
   useEffect(() => {
     getJson<LinkInfo>(`/api/visitor/public/link/${encodeURIComponent(token)}`).then(setLink)
@@ -49,6 +52,9 @@ export default function VisitorRequestPage() {
   const isContractor = /ผู้รับเหมา/.test(purpose);
   const otherAreaPicked = areas.some(a => /อื่น/.test(a));
   const ppeRow = ppeRowFor(purpose, isContractor ? areas : []);
+  const vehiclePolicy = purpose ? vehiclePolicyFor(purpose) : null;
+  const filledVehicles = vehicles.filter(v => v.plate?.trim() || v.reason?.trim());
+  const updateVehicle = (i: number, patch: Partial<VehicleInput>) => setVehicles(prev => prev.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
   const needsAreaDetail = isContractor && (otherAreaPicked || link?.areas.length === 0);
   const trackUrl = done && typeof window !== 'undefined' ? `${window.location.origin}/visitor/track/${done.track_code}` : '';
   const trackQr = useQr(trackUrl || null, 220);
@@ -71,11 +77,18 @@ export default function VisitorRequestPage() {
     if (isContractor && link.areas.length > 0 && areas.length === 0) { setToast({ type: 'error', msg: 'ผู้รับเหมาปฏิบัติงาน: กรุณาเลือกพื้นที่ปฏิบัติงาน' }); return; }
     if (needsAreaDetail && !areaDetail.trim()) { setToast({ type: 'error', msg: 'กรุณาระบุรายละเอียดพื้นที่ปฏิบัติงาน' }); return; }
     if (isContractor && hasPermit === 'unknown') { setToast({ type: 'error', msg: 'กรุณาตอบว่ามีเอกสาร Permit to Work ที่อนุมัติแล้วหรือไม่' }); return; }
+    const sendVehicles = vehiclePolicy && vehiclePolicy.mode !== 'deny' && hasVehicle ? filledVehicles : [];
+    if (hasVehicle && vehiclePolicy?.mode !== 'deny' && sendVehicles.length === 0) { setToast({ type: 'error', msg: 'กรุณากรอกทะเบียนรถ หรือเลือก "ไม่มีรถ"' }); return; }
+    for (const v of sendVehicles) {
+      if (!v.plate?.trim()) { setToast({ type: 'error', msg: 'กรุณากรอกทะเบียนรถทุกคัน' }); return; }
+      if (vehiclePolicy?.mode === 'conditional' && !v.reason?.trim()) { setToast({ type: 'error', msg: vehiclePolicy.reasonLabel?.replace(' *', '') || 'กรุณาระบุเหตุผล' }); return; }
+    }
     const body: CreateVisitorRequestInput = {
       token, informer_name: informerName, informer_employee_code: employeeCode, informer_phone: phone, informer_department: department,
       visitor_company: visitorCompany, arrival_date: arrivalDate, time_from: timeFrom, time_to: timeTo, purpose, purpose_other: purposeOther,
       work_areas: isContractor ? areas : [], work_area_detail: isContractor ? areaDetail : '', has_permit: isContractor ? hasPermit : 'unknown', permit_ref: isContractor && hasPermit === 'yes' ? permitRef : '', note,
       persons: filledPersons.map(p => ({ name: p.name.trim(), detail: p.detail.trim() })),
+      vehicles: sendVehicles.map(v => ({ plate: (v.plate || '').trim(), province: (v.province || '').trim(), vehicle_type: v.vehicle_type || '', reason: (v.reason || '').trim() })),
     };
     setBusy(true);
     try {
@@ -108,7 +121,7 @@ export default function VisitorRequestPage() {
           </div>
           <div className="mt-6 flex gap-3">
             <a href={trackUrl} className="rounded-lg px-4 py-2 text-white text-sm font-medium" style={{ background: VIZ.positive }}>ดูสถานะ</a>
-            <button type="button" className="rounded-lg px-4 py-2 text-sm font-medium border border-gray-300 text-gray-700 bg-white" onClick={() => { setDone(null); setVisitorCompany(''); setPersons([{ name: '', detail: '' }]); setNote(''); }}>ส่งคำขอใหม่ (ผู้แจ้งคนเดิม)</button>
+            <button type="button" className="rounded-lg px-4 py-2 text-sm font-medium border border-gray-300 text-gray-700 bg-white" onClick={() => { setDone(null); setVisitorCompany(''); setPersons([{ name: '', detail: '' }]); setNote(''); setHasVehicle(false); setVehicles([{ plate: '', province: '', vehicle_type: '', reason: '' }]); }}>ส่งคำขอใหม่ (ผู้แจ้งคนเดิม)</button>
           </div>
         </div>
         <ToastView toast={toast} />
@@ -193,6 +206,48 @@ export default function VisitorRequestPage() {
             <div className="mt-3"><label className={labelClass} htmlFor="ad">{link.areas.length ? 'รายละเอียดพื้นที่ (ชื่อห้อง, กริดไลน์ ฯลฯ)' : 'พื้นที่ปฏิบัติงาน / อาคาร / ห้อง'} {needsAreaDetail && '*'}</label><input id="ad" className={inputClass} value={areaDetail} onChange={e => setAreaDetail(e.target.value)} maxLength={500} required={needsAreaDetail} placeholder={otherAreaPicked ? 'เลือก "อื่น ๆ" กรุณาระบุพื้นที่ให้ชัดเจน' : undefined} /></div>
           </div>}
         </section>
+
+        {vehiclePolicy && (
+          <section className={cardClass}>
+            <h2 className="flex items-center gap-2 text-lg font-semibold mb-2" style={{ color: VIZ.primary }}><Car size={20} />รถที่นำเข้าภายในโรงงาน</h2>
+            {vehiclePolicy.mode === 'deny' ? (
+              <p className="flex items-start gap-2 text-sm rounded-lg px-3 py-2" style={{ background: VIZ.bg, color: VIZ.text }}><ParkingCircle size={18} className="shrink-0 mt-0.5" style={{ color: VIZ.lightText }} />{vehiclePolicy.note}</p>
+            ) : (
+              <>
+                <p className="text-sm rounded-lg px-3 py-2 mb-3" style={{ background: vehiclePolicy.mode === 'allow' ? `${VIZ.positive}1A` : `${VIZ.secondary}1A`, color: vehiclePolicy.mode === 'allow' ? '#2f6b2a' : '#8a4b00' }}>{vehiclePolicy.note}</p>
+                <div className="flex flex-wrap gap-3">
+                  {[false, true].map(v => (
+                    <label key={String(v)} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer ${hasVehicle === v ? 'border-[#4E79A7] bg-[#4E79A7]/10' : 'border-gray-200'}`}>
+                      <input type="radio" name="hasVehicle" checked={hasVehicle === v} onChange={() => setHasVehicle(v)} className="accent-[#4E79A7]" />{v ? 'มีรถที่ต้องนำเข้าภายใน' : 'ไม่มีรถ / จอดลานด้านนอก'}
+                    </label>
+                  ))}
+                </div>
+                {hasVehicle && (
+                  <div className="mt-4 space-y-3">
+                    {vehicles.map((v, i) => (
+                      <div key={i} className="rounded-lg border border-gray-200 p-3 space-y-2">
+                        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_2.5rem] items-center">
+                          <input className={inputClass} placeholder="ทะเบียนรถ * เช่น กข 1234" value={v.plate} onChange={e => updateVehicle(i, { plate: e.target.value })} maxLength={40} />
+                          <input className={inputClass} placeholder="จังหวัด" value={v.province || ''} onChange={e => updateVehicle(i, { province: e.target.value })} maxLength={40} />
+                          <select className={inputClass} value={v.vehicle_type || ''} onChange={e => updateVehicle(i, { vehicle_type: e.target.value })}>
+                            <option value="">ประเภทรถ</option>
+                            {VEHICLE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                          <button type="button" aria-label="ลบรถ" onClick={() => setVehicles(prev => (prev.length === 1 ? [{ plate: '', province: '', vehicle_type: '', reason: '' }] : prev.filter((_, idx) => idx !== i)))} className="text-gray-400 hover:text-red-500 flex justify-center"><Trash2 size={18} /></button>
+                        </div>
+                        {vehiclePolicy.mode === 'conditional' && (
+                          <div><label className={labelClass}>{vehiclePolicy.reasonLabel}</label><textarea className={inputClass} rows={2} value={v.reason || ''} onChange={e => updateVehicle(i, { reason: e.target.value })} maxLength={500} placeholder={vehiclePolicy.reasonHint} required /></div>
+                        )}
+                      </div>
+                    ))}
+                    {vehicles.length < 10 && <button type="button" onClick={() => setVehicles(prev => [...prev, { plate: '', province: '', vehicle_type: '', reason: '' }])} className="inline-flex items-center gap-1 text-sm font-medium" style={{ color: VIZ.primary }}><Plus size={16} />เพิ่มรถอีกคัน</button>}
+                    {vehiclePolicy.mode === 'conditional' && <p className="text-xs text-gray-500">ทีม SHE จะพิจารณาอนุญาตรถเป็นรายคัน ผลจะแสดงในหน้าติดตามสถานะ — ถ้าไม่อนุญาตให้จอดลานด้านนอก</p>}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
         <section className={cardClass}>
           <h2 className="flex items-center gap-2 text-lg font-semibold mb-4" style={{ color: VIZ.primary }}><ClipboardList size={20} />{isContractor ? 'ใบอนุญาตทำงาน และหมายเหตุ' : 'หมายเหตุ'}</h2>
