@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, XCircle, MessageCircleQuestion, Ban, RefreshCw, Search, X, Phone, MapPin, ClipboardList, History } from 'lucide-react';
+import { CheckCircle2, XCircle, MessageCircleQuestion, Ban, RefreshCw, Search, X, Phone, MapPin, ClipboardList, History, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { HAS_PERMIT_LABEL, VISITOR_STATUS_LABEL } from '@/lib/visitor/constants';
 import type { DecisionAction, VisitorEventRow, VisitorRequestDetail, VisitorRequestWithPersons, VisitorStatus } from '@/lib/visitor/types';
@@ -49,7 +49,30 @@ export default function VisitorQueuePage() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
 
-  const sorted = useMemo(() => [...rows].sort((a, b) => (view === 'pending' ? a.created_at.localeCompare(b.created_at) : b.arrival_date.localeCompare(a.arrival_date) || b.created_at.localeCompare(a.created_at))), [rows, view]);
+  // Sortable columns; default = arrival date ascending (soonest visit first), then start time.
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'arrival', dir: 'asc' });
+  const toggleSort = (key: SortKey) => setSort(prev => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'created' ? 'desc' : 'asc' }));
+  const sorted = useMemo(() => {
+    const val = (r: VisitorRequestWithPersons): string | number => {
+      switch (sort.key) {
+        case 'no': return r.request_no;
+        case 'status': return STATUS_ORDER.indexOf(r.status);
+        case 'arrival': return `${r.arrival_date} ${r.time_from}`;
+        case 'company': return r.visitor_company.toLowerCase();
+        case 'purpose': return r.purpose;
+        case 'persons': return r.visitor_persons.length;
+        case 'informer': return r.informer_name.toLowerCase();
+        case 'site': return r.company_id;
+        case 'created': return r.created_at;
+      }
+    };
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const x = val(a), y = val(b);
+      const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'th');
+      return (c || a.created_at.localeCompare(b.created_at)) * dir;
+    });
+  }, [rows, sort]);
   const kpi = useMemo(() => ({
     pending: rows.filter(r => r.status === 'submitted').length,
     needInfo: rows.filter(r => r.status === 'need_info').length,
@@ -94,7 +117,7 @@ export default function VisitorQueuePage() {
       <div className={`${cardClass} !p-0 overflow-x-auto`}>
         <table className="w-full text-sm">
           <thead><tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-            <th className="px-4 py-3">เลขคำขอ</th><th className="px-4 py-3">สถานะ</th><th className="px-4 py-3">วันที่เข้า</th><th className="px-4 py-3">บริษัทผู้มาติดต่อ</th><th className="px-4 py-3">วัตถุประสงค์</th><th className="px-4 py-3 text-right">คน</th><th className="px-4 py-3">ผู้แจ้ง</th>{company === 'all' && <th className="px-4 py-3">บริษัท</th>}<th className="px-4 py-3">ส่งเมื่อ</th>
+            <Th k="no" sort={sort} onSort={toggleSort}>เลขคำขอ</Th><Th k="status" sort={sort} onSort={toggleSort}>สถานะ</Th><Th k="arrival" sort={sort} onSort={toggleSort}>วันที่เข้า</Th><Th k="company" sort={sort} onSort={toggleSort}>บริษัทผู้มาติดต่อ</Th><Th k="purpose" sort={sort} onSort={toggleSort}>วัตถุประสงค์</Th><Th k="persons" sort={sort} onSort={toggleSort} right>คน</Th><Th k="informer" sort={sort} onSort={toggleSort}>ผู้แจ้ง</Th>{company === 'all' && <Th k="site" sort={sort} onSort={toggleSort}>บริษัท</Th>}<Th k="created" sort={sort} onSort={toggleSort}>ส่งเมื่อ</Th>
           </tr></thead>
           <tbody>
             {sorted.length === 0 && <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">{loading ? 'กำลังโหลด…' : 'ไม่มีรายการ'}</td></tr>}
@@ -118,6 +141,19 @@ export default function VisitorQueuePage() {
       {selected && <DetailDrawer id={selected} onClose={() => setSelected(null)} onChanged={() => { void load(); }} notify={setToast} />}
       <ToastView toast={toast} />
     </div>
+  );
+}
+
+type SortKey = 'no' | 'status' | 'arrival' | 'company' | 'purpose' | 'persons' | 'informer' | 'site' | 'created';
+const STATUS_ORDER: VisitorStatus[] = ['submitted', 'need_info', 'approved', 'rejected', 'cancelled'];
+
+function Th({ k, sort, onSort, right, children }: { k: SortKey; sort: { key: SortKey; dir: 'asc' | 'desc' }; onSort: (k: SortKey) => void; right?: boolean; children: React.ReactNode }) {
+  const active = sort.key === k;
+  const Icon = active ? (sort.dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+  return (
+    <th className={`px-4 py-3 font-medium ${right ? 'text-right' : 'text-left'}`} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" onClick={() => onSort(k)} className={`inline-flex items-center gap-1 hover:text-gray-900 ${active ? 'text-gray-900' : ''}`}>{children}<Icon size={14} className={active ? '' : 'opacity-40'} /></button>
+    </th>
   );
 }
 
