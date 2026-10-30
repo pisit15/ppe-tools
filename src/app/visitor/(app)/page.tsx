@@ -193,7 +193,7 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
             <section>
               <h4 className="text-sm font-semibold text-gray-700 mb-2">รายชื่อผู้มาติดต่อ</h4>
               <ol className="divide-y divide-gray-100 rounded-lg border border-gray-100">
-                {data.visitor_persons.map(p => <li key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm"><span className="w-6 text-gray-400 text-right">{p.seq}.</span><span className="flex-1 font-medium">{p.name}{p.detail && <span className="text-gray-500 font-normal"> — {p.detail}</span>}</span><span className="text-xs text-gray-500">{p.arrived_at && `เข้า ${thaiDateTime(p.arrived_at).slice(-5)}`}{p.left_at && ` · ออก ${thaiDateTime(p.left_at).slice(-5)}`}</span></li>)}
+                {data.visitor_persons.map(p => <li key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm"><span className="w-6 text-gray-400 text-right">{p.seq}.</span><span className="flex-1 font-medium" style={{ textDecoration: p.no_show_at ? 'line-through' : 'none' }}>{p.name}{p.detail && <span className="text-gray-500 font-normal"> — {p.detail}</span>}{p.added_by_guard && <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: `${VIZ.primary}1A`, color: VIZ.primary }}>รปภ เพิ่มหน้างาน</span>}</span><span className="text-xs" style={{ color: p.no_show_at ? VIZ.accent : VIZ.lightText }}>{p.no_show_at && 'ไม่มา'}{p.arrived_at && `เข้า ${thaiDateTime(p.arrived_at).slice(-5)}`}{p.left_at && ` · ออก ${thaiDateTime(p.left_at).slice(-5)}`}</span></li>)}
               </ol>
             </section>
 
@@ -233,7 +233,7 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
   );
 }
 
-const EVENT_LABEL: Record<string, string> = { submitted: 'ส่งคำขอ', approved: 'อนุมัติ', rejected: 'ไม่อนุมัติ', need_info: 'ขอข้อมูลเพิ่ม', resubmitted: 'ส่งข้อมูลเพิ่ม', cancelled: 'ยกเลิก', arrived: 'มาถึง', left: 'ออกจากพื้นที่', undo_arrived: 'ยกเลิกมาถึง', undo_left: 'ยกเลิกออก' };
+const EVENT_LABEL: Record<string, string> = { submitted: 'ส่งคำขอ', approved: 'อนุมัติ', rejected: 'ไม่อนุมัติ', need_info: 'ขอข้อมูลเพิ่ม', resubmitted: 'ส่งข้อมูลเพิ่ม', cancelled: 'ยกเลิก', arrived: 'มาถึง', left: 'ออกจากพื้นที่', undo_arrived: 'ยกเลิกมาถึง', undo_left: 'ยกเลิกออก', no_show: 'ไม่มา', undo_no_show: 'ยกเลิกไม่มา', guard_added: 'รปภ เพิ่มคนหน้างาน' };
 
 function Action({ children, color, onClick, busy, outline }: { children: React.ReactNode; color: string; onClick: () => void; busy: boolean; outline?: boolean }) {
   return <button type="button" disabled={busy} onClick={onClick} className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50" style={outline ? { border: `1px solid ${color}`, color, background: 'white' } : { background: color, color: 'white' }}>{children}</button>;

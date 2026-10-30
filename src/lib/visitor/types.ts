@@ -4,7 +4,7 @@ export type VisitorStatus = 'submitted' | 'need_info' | 'approved' | 'rejected' 
 export type HasPermit = 'yes' | 'no' | 'unknown';
 export type VisitorEventAction =
   | 'submitted' | 'approved' | 'rejected' | 'need_info' | 'resubmitted' | 'cancelled'
-  | 'arrived' | 'left' | 'undo_arrived' | 'undo_left';
+  | 'arrived' | 'left' | 'undo_arrived' | 'undo_left' | 'no_show' | 'undo_no_show' | 'guard_added';
 
 export type VisitorLinkRow = {
   id: string;
@@ -38,6 +38,9 @@ export type VisitorPersonRow = {
   detail: string;
   arrived_at: string | null;
   left_at: string | null;
+  no_show_at: string | null;
+  added_by_guard: boolean;
+  added_at: string | null;
 };
 
 export type VisitorRequestRow = {
@@ -111,7 +114,11 @@ export type DecisionInput = { action: DecisionAction; note?: string; conditions?
 export type BoardRequest = Pick<VisitorRequestRow,
   'id' | 'request_no' | 'visitor_company' | 'arrival_date' | 'time_from' | 'time_to' | 'purpose' | 'purpose_other'
   | 'work_areas' | 'work_area_detail' | 'informer_name' | 'informer_department' | 'informer_phone' | 'conditions' | 'has_permit' | 'permit_ref'>
-  & { persons: Pick<VisitorPersonRow, 'id' | 'seq' | 'name' | 'detail' | 'arrived_at' | 'left_at'>[] };
+  & { persons: Pick<VisitorPersonRow, 'id' | 'seq' | 'name' | 'detail' | 'arrived_at' | 'left_at' | 'no_show_at' | 'added_by_guard'>[] };
+
+/** Guard board actions (POST /api/visitor/public/board/[company]). */
+export type BoardAction = 'arrive' | 'leave' | 'undo_arrive' | 'undo_leave' | 'no_show' | 'undo_no_show';
+export type BoardPost = { person_id: string; action: BoardAction } | { request_id: string; action: 'add_person'; name: string; detail?: string } | { request_id: string; action: 'no_show_all' };
 
 export type BoardPayload = { company: { id: string; name: string }; today: string; requests: BoardRequest[] };
 

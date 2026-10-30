@@ -84,7 +84,7 @@ export async function boardPayload(companyId: string): Promise<BoardPayload> {
       purpose: r.purpose, purpose_other: r.purpose_other, work_areas: r.work_areas, work_area_detail: r.work_area_detail,
       informer_name: r.informer_name, informer_department: r.informer_department, informer_phone: r.informer_phone,
       conditions: r.conditions, has_permit: r.has_permit, permit_ref: r.permit_ref,
-      persons: r.visitor_persons.map(p => ({ id: p.id, seq: p.seq, name: p.name, detail: p.detail, arrived_at: p.arrived_at, left_at: p.left_at })),
+      persons: r.visitor_persons.map(p => ({ id: p.id, seq: p.seq, name: p.name, detail: p.detail, arrived_at: p.arrived_at, left_at: p.left_at, no_show_at: p.no_show_at, added_by_guard: p.added_by_guard })),
     }));
   return { company: { id: companyId, name }, today, requests };
 }
