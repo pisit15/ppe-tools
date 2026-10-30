@@ -100,12 +100,8 @@ export const VEHICLE_POLICY: Record<string, VehiclePolicy> = {
   'ผู้รับเหมาปฏิบัติงาน (Contractor\'s Working)': CONDITIONAL_BULKY,
   'ส่งสินค้า (Deliver Goods)': { mode: 'allow', note: 'รถส่งสินค้านำเข้าภายในได้' },
   'รับสินค้า (Received Goods)': { mode: 'allow', note: 'รถรับสินค้านำเข้าภายในได้' },
-  'รับ/ส่งเอกสาร (Receive/Send Documents)': {
-    mode: 'conditional',
-    note: 'นำรถเข้าได้เฉพาะรถรับ-ส่งเอกสารของ EA ที่ลงชื่อโดยแผนก Administration — ทีม SHE พิจารณารายคัน',
-    reasonLabel: 'ยืนยันว่าเป็นรถรับ-ส่งเอกสารของ EA (ระบุหน่วยงาน/ผู้รับผิดชอบ) *',
-    reasonHint: 'เช่น รถเอกสารสำนักงานใหญ่ EA ประจำวันจันทร์ ผู้ประสานงาน …',
-  },
+  // Owner (30 Oct): document runs are EA's own cars signed in by Administration — allowed by default.
+  'รับ/ส่งเอกสาร (Receive/Send Documents)': { mode: 'allow', note: 'รถรับ-ส่งเอกสารของ EA (ลงชื่อโดยแผนก Administration) นำเข้าภายในได้' },
   'ประชุมธุรกิจ (Business Meeting)': {
     mode: 'conditional',
     note: 'การประชุมธุรกิจโดยทั่วไป ให้จอดรถที่ลานจอดนอกพื้นที่โรงงาน เฉพาะกรณีผู้มาประชุมเป็นบุคคลสำคัญระดับ VIP เท่านั้น จึงนำรถเข้ามาจอดได้ — ทีม SHE พิจารณารายคัน',
