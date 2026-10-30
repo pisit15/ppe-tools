@@ -274,3 +274,6 @@ export type SdsExtraction = Partial<Pick<ChemSubstance,
   /** ข้อสังเกตจาก AI เช่น หน้าที่อ่านไม่ออก หรือค่าที่ไม่แน่ใจ */
   extraction_notes?: string;
 };
+
+// Visitor access module (tables visitor_*): see src/lib/visitor/types.ts
+export type * from './visitor/types';

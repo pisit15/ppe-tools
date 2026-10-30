@@ -65,6 +65,15 @@ export const PROJECTS: Project[] = [
     href: '/procurement',
     ready: true,
   },
+  {
+    id: 'visitor',
+    name: 'Visitor Access',
+    description: 'ขออนุญาตบุคคลภายนอกเข้าพื้นที่ คัดกรอง-อนุมัติโดยทีม SHE และจอรายชื่อสำหรับป้อม รปภ',
+    icon: 'users',
+    color: 'from-amber-500 to-orange-600',
+    href: '/visitor',
+    ready: true,
+  },
 ];
 
 // Module-level access control
