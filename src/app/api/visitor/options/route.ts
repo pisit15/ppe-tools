@@ -67,7 +67,7 @@ export async function PUT(request: NextRequest) {
       else if (typeof g === 'string' && /^[CR][0-9a-f]{32}$/.test(g)) {
         const { data: grp, error: gErr } = await db().from('line_groups').select('group_id, active').eq('group_id', g).maybeSingle();
         if (gErr) throw gErr;
-        if (!grp) throw new AccessError('ไม่พบกลุ่ม LINE นี้ — เชิญ EA HSE Center เข้ากลุ่มก่อน', 400);
+        if (!grp) throw new AccessError('ไม่พบกลุ่ม LINE นี้ — เชิญ EA SHE Center เข้ากลุ่มก่อน', 400);
         patch.line_group_id = g;
       } else throw new AccessError('รหัสกลุ่ม LINE ไม่ถูกต้อง', 400);
     }

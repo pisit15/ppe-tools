@@ -168,7 +168,7 @@ export default function VisitorSettingsPage() {
       </section>
       <section className={cardClass} style={{ borderLeft: `4px solid ${VIZ.positive}` }}>
         <h2 className="inline-flex items-center gap-2 font-semibold text-lg" style={{ color: VIZ.positive }}><Bell size={20} />การแจ้งเตือน LINE (ของบริษัทนี้)</h2>
-        <p className="text-sm text-gray-600 mt-1">เชิญ LINE OA <strong>EA HSE Center</strong> เข้ากลุ่ม LINE ของบริษัท แล้วเลือกกลุ่มด้านล่าง ระบบจะส่งการ์ด 1 ข้อความต่อเหตุการณ์ (คำขอใหม่ / ผลการพิจารณา) ไม่ว่าในกลุ่มมีกี่คน</p>
+        <p className="text-sm text-gray-600 mt-1">เชิญ LINE OA <strong>EA SHE Center</strong> เข้ากลุ่ม LINE ของบริษัท แล้วเลือกกลุ่มด้านล่าง ระบบจะส่งการ์ด 1 ข้อความต่อเหตุการณ์ (คำขอใหม่ / ผลการพิจารณา) ไม่ว่าในกลุ่มมีกี่คน</p>
         {lineInfo && !lineInfo.configured && <p className="mt-2 text-sm rounded-lg px-3 py-2" style={{ background: `${VIZ.accent}1A`, color: VIZ.accent }}>เซิร์ฟเวอร์ยังไม่ได้ตั้ง LINE_CHANNEL_ACCESS_TOKEN — ส่งข้อความไม่ได้</p>}
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div>
@@ -180,7 +180,7 @@ export default function VisitorSettingsPage() {
               </select>
               <button type="button" onClick={loadLine} className="shrink-0 rounded-lg border border-gray-300 bg-white px-3" aria-label="โหลดรายชื่อกลุ่มใหม่"><RefreshCw size={16} /></button>
             </div>
-            <p className="mt-1 text-xs text-gray-500">{lineInfo && lineInfo.groups.length === 0 ? 'ยังไม่มีกลุ่มที่บอทเข้าไป — เชิญ EA HSE Center เข้ากลุ่มแล้วกดรีเฟรช' : 'เห็นเฉพาะกลุ่มที่บอทอยู่ ณ ตอนนี้'}</p>
+            <p className="mt-1 text-xs text-gray-500">{lineInfo && lineInfo.groups.length === 0 ? 'ยังไม่มีกลุ่มที่บอทเข้าไป — เชิญ EA SHE Center เข้ากลุ่มแล้วกดรีเฟรช' : 'เห็นเฉพาะกลุ่มที่บอทอยู่ ณ ตอนนี้'}</p>
             <div className="mt-3 space-y-2 text-sm">
               <label className="flex items-center gap-2"><input type="checkbox" checked={notifyNew} onChange={e => { setNotifyNew(e.target.checked); setLineDirty(true); }} className="accent-[#4E79A7]" />แจ้งเมื่อมี<strong>คำขอใหม่</strong> (ให้ผู้อนุมัติเห็นทันที)</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={notifyDecision} onChange={e => { setNotifyDecision(e.target.checked); setLineDirty(true); }} className="accent-[#4E79A7]" />แจ้ง<strong>ผลการพิจารณา</strong> (อนุมัติ/ขอข้อมูลเพิ่ม/ไม่อนุมัติ/ยกเลิก)</label>

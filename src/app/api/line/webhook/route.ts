@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       if (groupId && (ev.source?.type === 'group' || ev.source?.type === 'room')) {
         if (ev.type === 'join') {
           const g = await recordGroupJoin(db, groupId, token);
-          if (ev.replyToken) await replyMessages(ev.replyToken, [text(`EA HSE Center เข้ากลุ่ม${g.group_name ? ` "${g.group_name}"` : ''}แล้ว
+          if (ev.replyToken) await replyMessages(ev.replyToken, [text(`EA SHE Center เข้ากลุ่ม${g.group_name ? ` "${g.group_name}"` : ''}แล้ว
 ทีม SHE เลือกกลุ่มนี้ได้ที่ tools.eashe.org/visitor/settings → การแจ้งเตือน LINE
 รหัสกลุ่ม: ${groupId}`)], token);
         } else if (ev.type === 'leave') {
