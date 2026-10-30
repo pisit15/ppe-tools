@@ -156,16 +156,15 @@ export default function VisitorRequestPage() {
 
           <div className="mt-5">
             <div className="flex items-center justify-between mb-2">
-              <label className={labelClass}>รายชื่อผู้มาติดต่อ * <span className="text-gray-500 font-normal">({filledPersons.length} คน — รปภ จะติ๊กมาถึงรายคน)</span></label>
+              <label className={labelClass}>รายชื่อผู้มาติดต่อ * <span className="text-gray-500 font-normal">({filledPersons.length} คน — รปภ.จะตรวจสอบรายชื่อที่ทางเข้า)</span></label>
               <button type="button" onClick={addPerson} className="inline-flex items-center gap-1 text-sm font-medium" style={{ color: VIZ.primary }}><Plus size={16} />เพิ่มแถว</button>
             </div>
             <div className="space-y-2">
               {persons.map((p, i) => (
-                <div key={i} className="grid grid-cols-[2rem_1fr_1fr_2.5rem] gap-2 items-center">
+                <div key={i} className="grid grid-cols-[2rem_1fr_2.5rem] gap-2 items-center">
                   <span className="text-sm text-gray-500 text-right">{i + 1}.</span>
                   <input className={inputClass} placeholder="ชื่อ-นามสกุล" value={p.name} onChange={e => updatePerson(i, { name: e.target.value })} maxLength={120}
                     onPaste={i === 0 ? e => { const t = e.clipboardData.getData('text'); if (t.includes('\n')) { e.preventDefault(); pasteList(t); } } : undefined} />
-                  <input className={inputClass} placeholder="ตำแหน่ง / ทะเบียนรถ / เลขบัตร (ถ้ามี)" value={p.detail} onChange={e => updatePerson(i, { detail: e.target.value })} maxLength={120} />
                   <button type="button" onClick={() => removePerson(i)} aria-label="ลบแถว" className="text-gray-400 hover:text-red-500 flex justify-center"><Trash2 size={18} /></button>
                 </div>
               ))}
