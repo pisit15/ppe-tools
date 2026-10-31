@@ -19,7 +19,7 @@ export default function VisitorQueuePage() {
   const isAdmin = user?.role === 'admin';
   const [companies, setCompanies] = useState<Company[]>([]);
   const [company, setCompany] = useState(isAdmin ? 'all' : (user?.companyId || ''));
-  const [view, setView] = useState<View>('pending');
+  const [view, setView] = useState<View>('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [q, setQ] = useState('');
@@ -83,7 +83,7 @@ export default function VisitorQueuePage() {
   // Browser tab shows how many are waiting, so an open tab works as a lightweight notifier.
   useEffect(() => {
     const n = kpi.pending + kpi.needInfo;
-    document.title = `${view === 'pending' && n ? `(${n}) ` : ''}คิวคัดกรอง-อนุมัติ · Visitor Access`;
+    document.title = `${(view === 'pending' || view === 'all') && n ? `(${n}) ` : ''}คิวคัดกรอง-อนุมัติ · Visitor Access`;
     return () => { document.title = 'EA SHE Tools - tools.eashe.org'; };
   }, [kpi.pending, kpi.needInfo, view]);
 
@@ -94,7 +94,7 @@ export default function VisitorQueuePage() {
         <button type="button" onClick={() => void load()} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />รีเฟรช</button>
       </div>
 
-      {view === 'pending' && (
+      {(view === 'pending' || view === 'all') && (
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           <Kpi label="รออนุมัติ" value={kpi.pending} color={VIZ.secondary} />
           <Kpi label="ขอข้อมูลเพิ่ม (รอผู้แจ้ง)" value={kpi.needInfo} color={VIZ.primary} />
