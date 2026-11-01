@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Crosshair, ExternalLink, ImagePlus, Maximize2, MousePointerClick, Pencil, Search, Tag, Trash2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Check, Crosshair, ExternalLink, ImagePlus, Layers, Maximize2, MousePointerClick, Pencil, Search, Tag, Trash2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { InspAssetView, InspDueState, InspFloorplanView } from '@/lib/inspect/types';
 import { DUE_STATE_COLOR, DUE_STATE_LABEL } from '@/lib/inspect/constants';
 import { fileToPlanImage, pdfPageCount, uploadPlanImage, type PlanImage } from '../../_components/floorplan';
@@ -32,6 +32,7 @@ function FloorplansInner() {
   const [stateFilter, setStateFilter] = useState<Set<InspDueState | 'fail'>>(new Set());
   const [saving, setSaving] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
+  const [layers, setLayers] = useState<Set<string>>(new Set()); // category keys shown; empty = all
   const highlight = params.get('asset');
 
   const load = useCallback(async () => {
@@ -69,8 +70,8 @@ function FloorplansInner() {
   }, [assets, plan, pending]);
   const onPlanIds = useMemo(() => new Set(onPlan.map(a => a.id)), [onPlan]);
   const dotState = (a: InspAssetView): InspDueState | 'fail' => (a.status_info.open_failures > 0 ? 'fail' : a.status_info.due_state);
-  const counts = useMemo(() => { const c: Record<string, number> = {}; for (const a of onPlan) { const k = dotState(a); c[k] = (c[k] || 0) + 1; } return c; }, [onPlan]);
-  const visible = useMemo(() => (stateFilter.size === 0 ? onPlan : onPlan.filter(a => stateFilter.has(dotState(a)))), [onPlan, stateFilter]);
+  const counts = useMemo(() => { const c: Record<string, number> = {}; for (const a of onPlan) { if (layers.size && !layers.has(a.category.key)) continue; const k = dotState(a); c[k] = (c[k] || 0) + 1; } return c; }, [onPlan, layers]);
+  const visible = useMemo(() => onPlan.filter(a => (stateFilter.size === 0 || stateFilter.has(dotState(a))) && (layers.size === 0 || layers.has(a.category.key))), [onPlan, stateFilter, layers]);
 
   function setPos(assetId: string, pos: Pos | null) {
     setPending(prev => { const n = new Map(prev); const a = assets?.find(x => x.id === assetId); const already = a && plan && a.floorplan_id === plan.id && a.pos_x != null; if (pos === null && !already) n.delete(assetId); else n.set(assetId, pos); return n; });
@@ -140,16 +141,16 @@ function FloorplansInner() {
                   </>
                 )}
               </div>
-              <SymbolLegend dots={onPlan} />
+              <LayerBar assets={assets} plan={plan} dots={onPlan} layers={layers} onToggle={k => setLayers(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; })} onAll={() => setLayers(new Set())} />
               <div className="flex flex-col lg:flex-row">
                 <div className="flex-1 min-w-0">
                   <PlanCanvas key={plan.id} plan={plan} dots={visible} placing={placing} selected={selected} highlight={highlight} showLabels={showLabels}
                     onSelect={id => setSelected(id)}
-                    onPlace={pos => { if (!placing) return; if (!selected) { setToast({ type: 'info', msg: 'เลือกอุปกรณ์จากรายการด้านขวาก่อน' }); return; } setPos(selected, pos); const next = nextUnplaced(assets, plan, onPlanIds, selected); setSelected(next); }}
+                    onPlace={pos => { if (!placing) return; if (!selected) { setToast({ type: 'info', msg: 'เลือกอุปกรณ์จากรายการด้านขวาก่อน' }); return; } setPos(selected, pos); const next = nextUnplaced(assets, plan, onPlanIds, selected, layers); setSelected(next); }}
                     onMove={(id, pos) => setPos(id, pos)} />
                 </div>
                 {placing ? (
-                  <PlacePanel assets={assets} plan={plan} onPlanIds={onPlanIds} pending={pending} selected={selected} onSelect={setSelected} onRemove={id => { setPos(id, null); setSelected(null); }} />
+                  <PlacePanel assets={assets} plan={plan} layers={layers} onPlanIds={onPlanIds} pending={pending} selected={selected} onSelect={setSelected} onRemove={id => { setPos(id, null); setSelected(null); }} />
                 ) : selected && onPlanIds.has(selected) ? (
                   <AssetCard asset={onPlan.find(a => a.id === selected)!} onClose={() => setSelected(null)} />
                 ) : null}
@@ -164,9 +165,9 @@ function FloorplansInner() {
   );
 }
 
-function nextUnplaced(assets: InspAssetView[] | null, plan: InspFloorplanView, onPlanIds: Set<string>, after: string): string | null {
+function nextUnplaced(assets: InspAssetView[] | null, plan: InspFloorplanView, onPlanIds: Set<string>, after: string, layers: Set<string>): string | null {
   if (!assets) return null;
-  const list = candidates(assets, plan, true).filter(a => !onPlanIds.has(a.id) && a.id !== after);
+  const list = candidates(assets, plan, true).filter(a => !onPlanIds.has(a.id) && a.id !== after && (layers.size === 0 || layers.has(a.category.key)));
   return list[0]?.id || null;
 }
 function candidates(assets: InspAssetView[], plan: InspFloorplanView, sameFloor: boolean) {
@@ -198,16 +199,31 @@ function Legend({ counts, filter, onToggle }: { counts: Record<string, number>; 
   );
 }
 
-/** What the shapes and badges mean — only the categories / agents present on this plan. */
-function SymbolLegend({ dots }: { dots: Dot[] }) {
-  const cats = useMemo(() => { const m = new Map<string, Dot['category']>(); for (const d of dots) m.set(d.category.key, d.category); return [...m.values()]; }, [dots]);
+/** Layers = equipment categories. Toggle which ones are drawn / listed; also explains the symbols and agent badges. */
+function LayerBar({ assets, plan, dots, layers, onToggle, onAll }: { assets: InspAssetView[]; plan: InspFloorplanView; dots: Dot[]; layers: Set<string>; onToggle: (k: string) => void; onAll: () => void }) {
+  const cats = useMemo(() => {
+    const m = new Map<string, { cat: Dot['category']; placed: number; total: number }>();
+    for (const a of candidates(assets, plan, true)) { const e = m.get(a.category.key) || { cat: a.category, placed: 0, total: 0 }; e.total++; m.set(a.category.key, e); }
+    for (const d of dots) { const e = m.get(d.category.key) || { cat: d.category, placed: 0, total: 0 }; e.placed++; m.set(d.category.key, e); }
+    return [...m.values()].sort((x, y) => y.total - x.total);
+  }, [assets, plan, dots]);
   const agents = useMemo(() => { const set = new Set<string>(); for (const d of dots) if (d.category.key === 'fire_extinguisher') { const b = agentBadge(d.attributes?.agent); if (b) set.add(b); } return AGENT_LEGEND.filter(a => set.has(a.badge)); }, [dots]);
   if (cats.length === 0) return null;
+  const allOn = layers.size === 0;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2 border-b border-gray-100 text-xs text-gray-600">
-      {cats.map(c => <span key={c.key} className="inline-flex items-center gap-1.5"><MarkerGlyph categoryKey={c.key} icon={c.icon} agent={c.key === 'fire_extinguisher' ? 'ผงเคมีแห้ง' : undefined} color={VIZ.neutral} size={22} />{c.name}</span>)}
-      {agents.length > 0 && <span className="inline-flex items-center gap-2 text-gray-500"><span className="text-gray-400">ป้ายชนิดสาร:</span>{agents.map(a => <span key={a.badge}><b className="rounded border border-gray-300 bg-white px-1 py-[1px] text-[10px] text-gray-800">{a.badge}</b> {a.label}</span>)}</span>}
-      <span className="text-gray-400">· สี = สถานะการตรวจ</span>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b border-gray-100 text-xs">
+      <span className="text-gray-400 inline-flex items-center gap-1"><Layers size={13} />Layer</span>
+      <button type="button" onClick={onAll} className={`rounded-full border px-2.5 py-1 font-medium transition ${allOn ? 'bg-[#4E79A7] text-white border-[#4E79A7]' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>ทั้งหมด</button>
+      {cats.map(({ cat, placed, total }) => {
+        const on = allOn || layers.has(cat.key);
+        return (
+          <button key={cat.key} type="button" onClick={() => onToggle(cat.key)} title={`${placed} จุดบนผัง · ${total} รายการชั้นนี้`} className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-medium transition ${on ? 'bg-white text-gray-800' : 'bg-gray-100 text-gray-400 opacity-60'}`} style={{ borderColor: on && !allOn ? cat.color : '#E5E7EB' }}>
+            <MarkerGlyph categoryKey={cat.key} icon={cat.icon} agent={cat.key === 'fire_extinguisher' ? 'ผงเคมีแห้ง' : undefined} color={on ? cat.color : VIZ.muted} size={20} />
+            {cat.name}<span className="text-gray-400 font-normal">{placed}/{total}</span>
+          </button>
+        );
+      })}
+      {agents.length > 0 && <span className="inline-flex items-center gap-2 text-gray-500 ml-auto"><span className="text-gray-400">ป้ายชนิดสาร:</span>{agents.map(a => <span key={a.badge}><b className="rounded border border-gray-300 bg-white px-1 py-[1px] text-[10px] text-gray-800">{a.badge}</b> {a.label}</span>)}<span className="text-gray-400">· สี = สถานะ</span></span>}
     </div>
   );
 }
@@ -321,13 +337,14 @@ function PlanCanvas({ plan, dots, placing, selected, highlight, showLabels, onSe
 }
 
 // ---------------------------------------------------------------- side panels
-function PlacePanel({ assets, plan, onPlanIds, pending, selected, onSelect, onRemove }: { assets: InspAssetView[]; plan: InspFloorplanView; onPlanIds: Set<string>; pending: Pending; selected: string | null; onSelect: (id: string | null) => void; onRemove: (id: string) => void }) {
+function PlacePanel({ assets, plan, layers, onPlanIds, pending, selected, onSelect, onRemove }: { assets: InspAssetView[]; plan: InspFloorplanView; layers: Set<string>; onPlanIds: Set<string>; pending: Pending; selected: string | null; onSelect: (id: string | null) => void; onRemove: (id: string) => void }) {
   const [tab, setTab] = useState<'todo' | 'done'>('todo');
   const [q, setQ] = useState('');
   const [sameFloor, setSameFloor] = useState(true);
-  const base = useMemo(() => candidates(assets, plan, sameFloor), [assets, plan, sameFloor]);
+  const inLayer = useCallback((a: InspAssetView) => layers.size === 0 || layers.has(a.category.key), [layers]);
+  const base = useMemo(() => candidates(assets, plan, sameFloor).filter(inLayer), [assets, plan, sameFloor, inLayer]);
   const todo = useMemo(() => base.filter(a => !onPlanIds.has(a.id)), [base, onPlanIds]);
-  const done = useMemo(() => assets.filter(a => onPlanIds.has(a.id)).sort((x, y) => x.code.localeCompare(y.code, 'th', { numeric: true })), [assets, onPlanIds]);
+  const done = useMemo(() => assets.filter(a => onPlanIds.has(a.id) && inLayer(a)).sort((x, y) => x.code.localeCompare(y.code, 'th', { numeric: true })), [assets, onPlanIds, inLayer]);
   const list = (tab === 'todo' ? todo : done).filter(a => !q || `${a.code} ${a.department} ${a.location} ${a.name}`.toLowerCase().includes(q.toLowerCase()));
   const sel = selected ? assets.find(a => a.id === selected) : null;
   return (
