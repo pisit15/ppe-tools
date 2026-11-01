@@ -164,7 +164,7 @@ export default function BatchPage() {
         <div className={cardClass}><EmptyState icon={<Upload size={40} />} title="เลือกแผนก / พื้นที่ที่เดินตรวจมา" hint="ตารางจะแสดงอุปกรณ์ทั้งหมดในพื้นที่นั้น ค่าเริ่มต้นเป็น ผ่าน ทุกรายการที่ยังไม่ตรวจรอบนี้" /></div>
       ) : list.length === 0 ? <div className={cardClass}><EmptyState title="ไม่มีอุปกรณ์ในพื้นที่นี้" /></div> : (
         <div className={`${cardClass} !p-0 overflow-hidden`}>
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60 sticky top-16 z-10">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
             <div className="text-sm text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
               <span><b className="text-gray-900">{list.length}</b> รายการ</span>
               <span style={{ color: VIZ.positive }}>ผ่าน {counts.pass}</span>
