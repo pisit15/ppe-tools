@@ -7,7 +7,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Printer } from 'lucide-react';
 import type { InspAssetView } from '@/lib/inspect/types';
 import { CategoryIcon } from '../../_components/icons';
-import { Skeleton, VIZ, btnPrimary, btnSecondary, errMsg, getJson, selectClass, useCompany } from '../../_components/ui';
+import { Skeleton, VIZ, btnPrimary, btnSecondary, errMsg, getJson, selectCompact, useCompany } from '../../_components/ui';
 
 type Size = 'small' | 'medium' | 'large';
 const SIZES: Record<Size, { label: string; w: number; h: number; qr: number; cols: number; per: string }> = {
@@ -54,7 +54,7 @@ function Inner() {
       <div className="no-print max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-wrap items-center justify-between gap-3">
         <div><Link href="/inspect/assets" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"><ArrowLeft size={16} />ทะเบียนอุปกรณ์</Link><h1 className="text-xl font-semibold text-gray-900 mt-1">พิมพ์ป้าย QR — {assets?.length ?? '…'} ดวง</h1><p className="text-sm text-gray-500">พิมพ์บนสติกเกอร์กันน้ำ หรือกระดาษแล้วเคลือบ · ตั้งค่าเครื่องพิมพ์เป็น A4 ไม่ย่อขนาด (100%)</p></div>
         <div className="flex items-center gap-2">
-          <select className={`${selectClass} w-auto`} value={size} onChange={e => setSize(e.target.value as Size)} aria-label="ขนาดป้าย">{(Object.keys(SIZES) as Size[]).map(k => <option key={k} value={k}>{SIZES[k].label}</option>)}</select>
+          <select className={selectCompact} value={size} onChange={e => setSize(e.target.value as Size)} aria-label="ขนาดป้าย">{(Object.keys(SIZES) as Size[]).map(k => <option key={k} value={k}>{SIZES[k].label}</option>)}</select>
           <Link href="/inspect/assets" className={btnSecondary}>กลับ</Link>
           <button type="button" className={btnPrimary} style={{ background: VIZ.primary }} onClick={() => window.print()} disabled={!assets || Object.keys(qrs).length < (assets?.length || 0)}><Printer size={16} />พิมพ์</button>
         </div>

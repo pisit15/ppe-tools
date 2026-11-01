@@ -124,6 +124,8 @@ export function OverallBadge({ overall, large = false }: { overall: InspOverall;
 
 export const inputClass = 'w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4E79A7] focus:border-transparent bg-white disabled:bg-gray-50 disabled:text-gray-500';
 export const selectClass = inputClass + ' appearance-none';
+/** Compact select for toolbars (no w-full) */
+export const selectCompact = 'rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#4E79A7] focus:border-transparent';
 export const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 export const cardClass = 'bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6';
 export const btnPrimary = 'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed';

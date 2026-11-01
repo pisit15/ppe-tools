@@ -9,7 +9,7 @@ import type { InspAssetView, InspCategoryRow, InspDueState, InspTemplateRow } fr
 import { DUE_STATE_LABEL } from '@/lib/inspect/constants';
 import { AssetForm, type AssetFormValue } from '../../_components/AssetForm';
 import { CategoryIcon, CategoryTile } from '../../_components/icons';
-import { Drawer, DueBadge, EmptyState, Modal, Skeleton, ToastView, VIZ, bangkokToday, btnGhost, btnPrimary, btnSecondary, cardClass, daysUntil, errMsg, getJson, inputClass, postJson, relativeDays, selectClass, thaiDate, useCompany, useToast } from '../../_components/ui';
+import { Drawer, DueBadge, EmptyState, Modal, Skeleton, ToastView, VIZ, bangkokToday, btnGhost, btnPrimary, btnSecondary, cardClass, daysUntil, errMsg, getJson, inputClass, postJson, relativeDays, selectCompact, thaiDate, useCompany, useToast } from '../../_components/ui';
 
 const PAGE = 30;
 type SortKey = 'code' | 'department' | 'last' | 'due' | 'service';
@@ -122,8 +122,8 @@ function AssetsInner() {
         {/* toolbar */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
           <div className="relative flex-1 min-w-[200px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input className={`${inputClass} pl-9 py-2`} placeholder="ค้นหา รหัส ชื่อ ตำแหน่ง…" value={q} onChange={e => setQ(e.target.value)} /></div>
-          <select className={`${selectClass} w-auto py-2`} value={department} onChange={e => setDepartment(e.target.value)} aria-label="แผนก"><option value="">ทุกแผนก</option>{departments.map(d => <option key={d} value={d}>{d}</option>)}</select>
-          <select className={`${selectClass} w-auto py-2`} value={due} onChange={e => setDue(e.target.value as InspDueState | '')} aria-label="สถานะรอบตรวจ"><option value="">ทุกสถานะ</option>{(['overdue', 'due_soon', 'never', 'ok'] as InspDueState[]).map(s => <option key={s} value={s}>{DUE_STATE_LABEL[s]}</option>)}</select>
+          <select className={selectCompact} value={department} onChange={e => setDepartment(e.target.value)} aria-label="แผนก"><option value="">ทุกแผนก</option>{departments.map(d => <option key={d} value={d}>{d}</option>)}</select>
+          <select className={selectCompact} value={due} onChange={e => setDue(e.target.value as InspDueState | '')} aria-label="สถานะรอบตรวจ"><option value="">ทุกสถานะ</option>{(['overdue', 'due_soon', 'never', 'ok'] as InspDueState[]).map(s => <option key={s} value={s}>{DUE_STATE_LABEL[s]}</option>)}</select>
           <label className="inline-flex items-center gap-1.5 text-sm text-gray-600 px-2"><input type="checkbox" className="accent-[#4E79A7]" checked={serviceDue} onChange={e => setServiceDue(e.target.checked)} />ถึงรอบทดสอบ 90 วัน{counts.service ? ` (${counts.service})` : ''}</label>
           <label className="inline-flex items-center gap-1.5 text-sm text-gray-600 px-2"><input type="checkbox" className="accent-[#4E79A7]" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />รวมที่ไม่ใช้งาน</label>
           {hasFilter && <button type="button" className={btnGhost} onClick={() => { setQ(''); setCategory(''); setDepartment(''); setDue(''); setServiceDue(false); setShowInactive(false); }}><X size={14} />ล้างตัวกรอง</button>}

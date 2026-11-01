@@ -158,7 +158,7 @@ export default function AssetDetailPage() {
           <SectionTitle title="ประวัติการตรวจ" hint="ล่าสุดอยู่บนสุด · รูปจะถูกลบตามระยะเวลาเก็บ แต่ผลตรวจเก็บถาวร" />
           {d.inspections.length === 0 ? <p className="text-sm text-gray-400 py-6 text-center">ยังไม่มีประวัติ — สแกน QR หรือกด “ตรวจตอนนี้”</p> : (
             <ol className="relative border-l border-gray-200 ml-3 space-y-6">
-              {d.inspections.map(insp => <InspectionItem key={insp.id} insp={insp} itemLabel={k => itemLabel(insp, k)} onResolve={resolve} onDelete={deleteInspection} />)}
+              {d.inspections.map(insp => <InspectionItem key={insp.id} insp={insp} itemLabel={k => itemLabel(insp, k)} itemOrder={i => (catalog.templates.find(x => x.id === i.template_id) || template)?.items.map(it => it.key) || []} onResolve={resolve} onDelete={deleteInspection} />)}
             </ol>
           )}
         </div>
@@ -197,13 +197,15 @@ function Tile({ label, value, sub, color }: { label: string; value: string; sub?
   return <div className={`${cardClass} !p-4`} style={{ borderLeft: `4px solid ${color}` }}><p className="text-xs text-gray-500 truncate">{label}</p><p className="text-lg font-semibold text-gray-900 mt-1 truncate">{value}</p>{sub && <p className="text-xs text-gray-500 truncate">{sub}</p>}</div>;
 }
 
-function InspectionItem({ insp, itemLabel, onResolve, onDelete }: { insp: InspInspectionView; itemLabel: (k: string) => string; onResolve: (id: string, note: string) => void; onDelete: (id: string) => void }) {
+function InspectionItem({ insp, itemLabel, itemOrder, onResolve, onDelete }: { insp: InspInspectionView; itemLabel: (k: string) => string; itemOrder: (insp: InspInspectionView) => string[]; onResolve: (id: string, note: string) => void; onDelete: (id: string) => void }) {
   const [open, setOpen] = useState(insp.overall === 'fail' && !insp.resolved_at);
   const [note, setNote] = useState('');
   const fail = insp.overall === 'fail';
   const livePhotos = insp.photos.filter(p => !p.deleted_at);
   const removedPhotos = insp.photos.length - livePhotos.length;
-  const numbers = Object.entries(insp.results).filter(([, v]) => typeof v === 'number');
+  const order = itemOrder(insp);
+  const sorted = Object.entries(insp.results).sort(([a], [b]) => (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b)));
+  const numbers = sorted.filter(([, v]) => typeof v === 'number');
   return (
     <li className="ml-5">
       <span className="absolute -left-[9px] mt-1 h-4 w-4 rounded-full border-2 border-white" style={{ background: fail ? VIZ.accent : VIZ.positive }} />
@@ -220,7 +222,7 @@ function InspectionItem({ insp, itemLabel, onResolve, onDelete }: { insp: InspIn
         <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3 space-y-3">
           {numbers.length > 0 && <p className="text-sm text-gray-700">{numbers.map(([k, v]) => `${itemLabel(k)}: ${v}`).join(' · ')}</p>}
           <div className="flex flex-wrap gap-1.5">
-            {Object.entries(insp.results).filter(([, v]) => v === 'pass' || v === 'fail' || v === 'na').map(([k, v]) => (
+            {sorted.filter(([, v]) => v === 'pass' || v === 'fail' || v === 'na').map(([k, v]) => (
               <span key={k} className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs" style={{ background: v === 'fail' ? `${VIZ.accent}1A` : v === 'na' ? '#F3F4F6' : `${VIZ.positive}14`, color: v === 'fail' ? VIZ.accent : v === 'na' ? '#6B7280' : '#3E7A36' }}>
                 {v === 'fail' ? <XCircle size={11} /> : v === 'na' ? null : <CheckCircle2 size={11} />}{itemLabel(k)}{v === 'na' ? ' (ไม่มี)' : ''}
               </span>
@@ -236,7 +238,7 @@ function InspectionItem({ insp, itemLabel, onResolve, onDelete }: { insp: InspIn
           {fail && !insp.resolved_at && (
             <div className="flex flex-col sm:flex-row gap-2">
               <input className={`${inputClass} py-2`} placeholder="สิ่งที่แก้ไข เช่น ส่งอัดใหม่แล้ว / เปลี่ยนถังใหม่" value={note} onChange={e => setNote(e.target.value)} />
-              <button type="button" className={btnPrimary} style={{ background: VIZ.positive }} onClick={() => onResolve(insp.id, note)}><CheckCircle2 size={16} />ปิดงาน</button>
+              <button type="button" className={`${btnPrimary} whitespace-nowrap`} style={{ background: VIZ.positive }} onClick={() => onResolve(insp.id, note)}><CheckCircle2 size={16} />ปิดงาน</button>
             </div>
           )}
           <div className="flex justify-end"><ConfirmButton label={<><Trash2 size={12} />ลบรายการตรวจนี้</>} confirmLabel="ยืนยันลบ?" onConfirm={() => onDelete(insp.id)} className={`${btnGhost} text-xs`} danger /></div>

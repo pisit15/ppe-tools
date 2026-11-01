@@ -51,10 +51,11 @@ export function MonthlyBars({ data, labelOf }: { data: { period: string; inspect
   const max = Math.max(1, ...data.map(d => d.inspections));
   const bw = (W - padL - 8) / data.length;
   const y = (v: number) => padT + (H - padT - padB) * (1 - v / max);
+  const ticks = [...new Set([0, Math.round(max / 2), max])];
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="จำนวนการตรวจรายเดือน">
-      {[0, 0.5, 1].map(t => <line key={t} x1={padL} x2={W - 4} y1={y(max * t)} y2={y(max * t)} stroke={VIZ.grid} />)}
-      {[0, 0.5, 1].map(t => <text key={t} x={padL - 6} y={y(max * t) + 4} fontSize="10" textAnchor="end" fill={VIZ.lightText}>{Math.round(max * t)}</text>)}
+      {ticks.map(t => <line key={t} x1={padL} x2={W - 4} y1={y(t)} y2={y(t)} stroke={VIZ.grid} />)}
+      {ticks.map(t => <text key={t} x={padL - 6} y={y(t) + 4} fontSize="10" textAnchor="end" fill={VIZ.lightText}>{t}</text>)}
       {data.map((d, i) => {
         const x = padL + i * bw + bw * 0.2;
         const w = bw * 0.6;

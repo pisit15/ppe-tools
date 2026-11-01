@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ChevronLeft, ChevronRight, Download, ListChecks, Search, X } from 'lucide-react';
 import type { InspInspectionView } from '@/lib/inspect/types';
-import { EmptyState, OverallBadge, Skeleton, ToastView, VIZ, btnGhost, btnPrimary, btnSecondary, cardClass, currentPeriod, errMsg, getJson, inputClass, postJson, selectClass, shiftPeriod, thaiDate, thaiPeriod, useCompany, useToast } from '../../_components/ui';
+import { EmptyState, OverallBadge, Skeleton, ToastView, VIZ, btnGhost, btnPrimary, btnSecondary, cardClass, currentPeriod, errMsg, getJson, inputClass, postJson, selectCompact, shiftPeriod, thaiDate, thaiPeriod, useCompany, useToast } from '../../_components/ui';
 
 const PAGE = 30;
 
@@ -82,7 +82,7 @@ function Inner() {
                 <span className="px-2 text-sm font-medium min-w-[100px] text-center">{period ? thaiPeriod(period) : 'ทุกช่วง'}</span>
                 <button type="button" disabled={!period || period >= currentPeriod()} onClick={() => setPeriod(p => shiftPeriod(p, 1))} className="p-2 text-gray-500 hover:bg-gray-50 rounded-r-lg disabled:opacity-30" aria-label="เดือนถัดไป"><ChevronRight size={16} /></button>
               </div>
-              <select className={`${selectClass} w-auto py-2`} value={overall} onChange={e => setOverall(e.target.value as '' | 'pass' | 'fail')} aria-label="ผล"><option value="">ผ่าน + ไม่ผ่าน</option><option value="pass">เฉพาะผ่าน</option><option value="fail">เฉพาะไม่ผ่าน</option></select>
+              <select className={selectCompact} value={overall} onChange={e => setOverall(e.target.value as '' | 'pass' | 'fail')} aria-label="ผล"><option value="">ผ่าน + ไม่ผ่าน</option><option value="pass">เฉพาะผ่าน</option><option value="fail">เฉพาะไม่ผ่าน</option></select>
             </>
           )}
           <div className="relative flex-1 min-w-[180px]"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input className={`${inputClass} pl-9 py-2`} placeholder="ค้นหา รหัส แผนก ผู้ตรวจ…" value={q} onChange={e => setQ(e.target.value)} /></div>
