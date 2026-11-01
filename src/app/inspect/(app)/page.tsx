@@ -63,7 +63,7 @@ export default function InspectDashboardPage() {
               <Ring value={t.inspected} total={t.assets} size={88} stroke={9} sub="ตรวจแล้ว" />
               <div><p className="text-xs text-gray-500">ความครบถ้วนรอบนี้</p><p className="text-2xl font-semibold tabular-nums">{t.inspected}<span className="text-base text-gray-400 font-normal">/{t.assets}</span></p><p className="text-xs text-gray-500">อุปกรณ์ที่ใช้งาน</p></div>
             </div>
-            <Kpi color={VIZ.accent} icon={<AlertTriangle size={20} />} label="เกินกำหนดตรวจ" value={t.overdue} hint={t.due_soon ? `ใกล้ถึงรอบอีก ${t.due_soon}` : t.never ? `ยังไม่เคยตรวจ ${t.never}` : 'ไม่มีค้าง'} href="/inspect/assets?due=overdue" />
+            <Kpi color={VIZ.accent} icon={<AlertTriangle size={20} />} label="เกินกำหนดตรวจ" value={t.overdue} hint={t.due ? `ยังไม่ตรวจรอบนี้อีก ${t.due}` : t.never ? `ยังไม่เคยตรวจ ${t.never}` : 'ไม่มีค้าง'} href="/inspect/assets?due=overdue" />
             <Kpi color={VIZ.secondary} icon={<ShieldAlert size={20} />} label="ไม่ผ่าน รอแก้ไข" value={t.open_failures} hint={t.open_failures ? 'กดเพื่อดูรายการ' : 'ไม่มีรายการค้าง'} href="/inspect/inspections?open=1" />
             <Kpi color={VIZ.primary} icon={<CalendarClock size={20} />} label="ครบรอบทดสอบใน 90 วัน" value={t.service_due_90d} hint={t.service_overdue ? `เลยกำหนดแล้ว ${t.service_overdue}` : 'เช่น hydrostatic test'} href="/inspect/assets?service=due" />
           </div>

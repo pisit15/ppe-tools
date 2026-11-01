@@ -110,10 +110,7 @@ export async function publicAssetInfo(token: string, actorName: string | null): 
   if (!template) throw new AccessError('หมวดนี้ยังไม่มีรายการตรวจ กรุณาติดต่อทีม SHE', 404);
   const status = st as InspAssetStatusRow | null;
   const lastRow = last as (Pick<InspInspectionRow, 'inspected_on' | 'inspector_name' | 'overall' | 'fail_items' | 'period'>) | null;
-  const today = bangkokToday();
-  const inspectedThisPeriod = !!lastRow && (category.inspection_interval_days >= 28
-    ? lastRow.period === periodOf(today)
-    : (Date.parse(today) - Date.parse(lastRow.inspected_on)) / 86400000 < category.inspection_interval_days);
+  const inspectedThisPeriod = !!lastRow && status?.due_state === 'ok'; // the view defines the round (calendar months, or days for short intervals)
   return {
     company: { id: asset.company_id, name },
     mode: settings.inspection_mode,
@@ -137,9 +134,9 @@ export async function lastInspectionInRound(assetId: string, intervalDays: numbe
   if (error) throw error;
   const last = data as { id: string; inspected_on: string; inspector_name: string; overall: 'pass' | 'fail'; period: string } | null;
   if (!last) return { last: null, inRound: false };
-  const today = bangkokToday();
-  const inRound = intervalDays >= 28 ? last.period === periodOf(today) : (Date.parse(today) - Date.parse(last.inspected_on)) / 86400000 < intervalDays;
-  return { last, inRound };
+  const { data: st } = await db().from('insp_asset_status').select('due_state').eq('asset_id', assetId).maybeSingle();
+  void intervalDays; // round length now lives in the view
+  return { last, inRound: (st as { due_state?: string } | null)?.due_state === 'ok' };
 }
 
 /** Resolve the inspector identity for a submission according to the company mode. */
@@ -257,10 +254,10 @@ export async function dashboard(companyId: string, period: string): Promise<Insp
   const inPeriod = (a: InspAssetView) => {
     const last = a.status_info.last_inspected_on;
     if (!last) return false;
-    return a.category.inspection_interval_days >= 28 ? last.slice(0, 7) === period : a.status_info.due_state === 'ok' || a.status_info.due_state === 'due_soon';
+    return a.category.inspection_interval_days >= 28 ? last.slice(0, 7) === period : a.status_info.due_state === 'ok';
   };
   const due90 = addDaysStr(today, 90);
-  const totals = { assets: assets.length, inspected: 0, due_soon: 0, overdue: 0, never: 0, open_failures: 0, service_due_90d: 0, service_overdue: 0 };
+  const totals = { assets: assets.length, inspected: 0, due: 0, overdue: 0, never: 0, open_failures: 0, service_due_90d: 0, service_overdue: 0 };
   const byCat = new Map<string, InspDashboard['by_category'][number]>();
   const byDept = new Map<string, InspDashboard['by_department'][number]>();
   const serviceDue: InspDashboard['service_due'] = [];
@@ -268,7 +265,7 @@ export async function dashboard(companyId: string, period: string): Promise<Insp
     const s = a.status_info;
     const done = inPeriod(a);
     if (done) totals.inspected++;
-    if (s.due_state === 'due_soon') totals.due_soon++;
+    if (s.due_state === 'due') totals.due++;
     if (s.due_state === 'overdue') totals.overdue++;
     if (s.due_state === 'never') totals.never++;
     totals.open_failures += s.open_failures;

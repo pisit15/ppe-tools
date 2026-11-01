@@ -18,15 +18,15 @@ export const INSPECT_LIMITS = {
 } as const;
 
 export const DUE_STATE_LABEL: Record<InspDueState, string> = {
-  ok: 'ตรวจแล้ว',
-  due_soon: 'ใกล้ถึงรอบ',
+  ok: 'ตรวจแล้วรอบนี้',
+  due: 'ยังไม่ตรวจรอบนี้',
   overdue: 'เกินกำหนด',
   never: 'ยังไม่เคยตรวจ',
   inactive: 'ไม่ใช้งาน',
 };
 export const DUE_STATE_COLOR: Record<InspDueState, string> = {
   ok: '#59A14F',
-  due_soon: '#F28E2B',
+  due: '#8A8F99',
   overdue: '#E15759',
   never: '#BAB0AC',
   inactive: '#D4D4D4',

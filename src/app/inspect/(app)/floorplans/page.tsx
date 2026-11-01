@@ -15,10 +15,8 @@ type Pos = { x: number; y: number };
 
 /** Inspected in the current round: same calendar month for monthly+ items, last 7 days for weekly items. */
 function doneThisRound(a: InspAssetView, today: string) {
-  const last = a.status_info.last_inspected_on; if (!last) return false;
-  const days = a.status_info.inspection_interval_days || a.category.inspection_interval_days || 30;
-  if (days <= 7) return Date.parse(today) - Date.parse(last) < 7 * 86400000;
-  return last.slice(0, 7) === today.slice(0, 7);
+  void today; // the status view decides the round (calendar months for monthly+ items)
+  return a.status_info.due_state === 'ok';
 }
 type Pending = Map<string, Pos | null>; // asset_id → new position on the current plan, or null = remove
 
@@ -199,7 +197,7 @@ function candidates(assets: InspAssetView[], plan: InspFloorplanView, sameFloor:
 const LEGEND: { key: InspDueState | 'fail'; label: string; color: string }[] = [
   { key: 'fail', label: 'ไม่ผ่าน รอแก้ไข', color: VIZ.accent },
   { key: 'overdue', label: DUE_STATE_LABEL.overdue, color: DUE_STATE_COLOR.overdue },
-  { key: 'due_soon', label: DUE_STATE_LABEL.due_soon, color: DUE_STATE_COLOR.due_soon },
+  { key: 'due', label: DUE_STATE_LABEL.due, color: DUE_STATE_COLOR.due },
   { key: 'ok', label: DUE_STATE_LABEL.ok, color: DUE_STATE_COLOR.ok },
   { key: 'never', label: DUE_STATE_LABEL.never, color: DUE_STATE_COLOR.never },
 ];

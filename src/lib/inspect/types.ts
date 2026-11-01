@@ -89,7 +89,7 @@ export type InspAssetRow = {
   updated_at: string;
 };
 
-export type InspDueState = 'ok' | 'due_soon' | 'overdue' | 'never' | 'inactive';
+export type InspDueState = 'ok' | 'due' | 'overdue' | 'never' | 'inactive';
 export type InspAssetStatusRow = {
   asset_id: string;
   company_id: string;
@@ -256,7 +256,7 @@ export type InspAssetInput = {
 export type InspDashboard = {
   company_id: string;
   period: string;
-  totals: { assets: number; inspected: number; due_soon: number; overdue: number; never: number; open_failures: number; service_due_90d: number; service_overdue: number };
+  totals: { assets: number; inspected: number; due: number; overdue: number; never: number; open_failures: number; service_due_90d: number; service_overdue: number };
   by_category: { category_id: string; key: string; name: string; color: string; icon: string; assets: number; inspected: number; overdue: number; open_failures: number }[];
   by_department: { department: string; assets: number; inspected: number; overdue: number; open_failures: number }[];
   monthly: { period: string; inspections: number; fails: number }[];
