@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowLeft, ChevronDown, ClipboardList, Eye, EyeOff, LayoutDashboard, ListChecks, LogOut, QrCode, Settings2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ClipboardList, Eye, EyeOff, LayoutDashboard, ListChecks, ListPlus, LogOut, QrCode, Settings2 } from 'lucide-react';
 import { useAuth, type LoginCompanyOption } from '@/components/AuthProvider';
 import { CompanyContext, PAGE_BG, VIZ, btnPrimary, cardClass, getJson, inputClass, labelClass, type CompanyOption } from '../_components/ui';
 
 const NAV = [
   { href: '/inspect', label: 'ภาพรวม', icon: LayoutDashboard },
   { href: '/inspect/assets', label: 'ทะเบียนอุปกรณ์', icon: QrCode },
+  { href: '/inspect/batch', label: 'บันทึกผลหลายรายการ', icon: ListPlus },
   { href: '/inspect/inspections', label: 'ประวัติการตรวจ', icon: ListChecks },
   { href: '/inspect/settings', label: 'ตั้งค่า', icon: Settings2 },
 ];

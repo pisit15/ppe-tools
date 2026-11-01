@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Database, ImageIcon, QrCode, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ChevronLeft, ChevronRight, Database, ImageIcon, ListPlus, QrCode, ShieldAlert } from 'lucide-react';
 import type { InspDashboard } from '@/lib/inspect/types';
 import { CategoryTile } from '../_components/icons';
 import { BarList, MonthlyBars, Ring } from '../_components/charts';
@@ -39,6 +39,7 @@ export default function InspectDashboardPage() {
             <span className="px-3 text-sm font-medium min-w-[110px] text-center">{thaiPeriod(period)}</span>
             <button type="button" disabled={isCurrent} onClick={() => setPeriod(p => shiftPeriod(p, 1))} className="p-2 text-gray-500 hover:bg-gray-50 rounded-r-lg disabled:opacity-30" aria-label="เดือนถัดไป"><ChevronRight size={16} /></button>
           </div>
+          <Link href="/inspect/batch" className={btnSecondary}><ListPlus size={16} />บันทึกผลหลายรายการ</Link>
           <Link href="/inspect/assets" className={btnPrimary} style={{ background: VIZ.primary }}><QrCode size={16} />ทะเบียนอุปกรณ์</Link>
         </div>
       </div>

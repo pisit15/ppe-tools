@@ -43,7 +43,9 @@ export async function POST(request: NextRequest) {
     const [{ templates }, settings] = await Promise.all([loadCategories(asset.company_id, true), companySettings(asset.company_id)]);
     const template = (asset.template_id && templates.find(t => t.id === asset.template_id)) || defaultTemplateFor(templates, asset.category_id, asset.company_id);
     if (!template) throw new AccessError('หมวดนี้ยังไม่มีรายการตรวจ', 400);
-    const row = await createInspection(asset, template, { ...input, asset_id: asset.id }, { inspector_code: input.inspector_code || 'SHE', inspector_name: input.inspector_name || actor.displayName }, 'app', settings);
+    // Batch entry after a walk-round may legitimately have no photos.
+    const effective = body?.batch === true ? { ...settings, require_photo: false } : settings;
+    const row = await createInspection(asset, template, { ...input, asset_id: asset.id }, { inspector_code: input.inspector_code || 'SHE', inspector_name: input.inspector_name || actor.displayName }, 'app', effective);
     return NextResponse.json({ data: row, asset: await getAsset(asset.id) }, { status: 201 });
   } catch (error) { return apiError(error); }
 }
