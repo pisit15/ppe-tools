@@ -288,3 +288,5 @@ export type SdsExtraction = Partial<Pick<ChemSubstance,
 
 // Visitor access module (tables visitor_*): see src/lib/visitor/types.ts
 export type * from './visitor/types';
+// Equipment inspection module (tables insp_*): see src/lib/inspect/types.ts
+export type * from './inspect/types';

@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/inspect/cron/retention", "schedule": "17 20 * * *" }
+  ]
+}

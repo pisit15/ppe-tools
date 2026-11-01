@@ -66,6 +66,15 @@ export const PROJECTS: Project[] = [
     ready: true,
   },
   {
+    id: 'inspect',
+    name: 'Equipment Inspection',
+    description: 'ตรวจอุปกรณ์ความปลอดภัยประจำรอบ — ถังดับเพลิง อ่างล้างตา สายฉีดน้ำ ชุดดับเพลิง ฯลฯ สแกน QR ที่อุปกรณ์ แนบรูป ติดตามรอบทดสอบตามกฎหมาย',
+    icon: 'scan',
+    color: 'from-rose-600 to-red-700',
+    href: '/inspect',
+    ready: true,
+  },
+  {
     id: 'visitor',
     name: 'Visitor Access',
     description: 'ขออนุญาตบุคคลภายนอกเข้าพื้นที่ คัดกรอง-อนุมัติโดยทีม SHE และจอรายชื่อสำหรับป้อม รปภ',
