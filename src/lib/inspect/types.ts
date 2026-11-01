@@ -112,7 +112,7 @@ export type InspAssetView = InspAssetRow & {
 
 export type InspOverall = 'pass' | 'fail';
 export type InspResultValue = 'pass' | 'fail' | 'na' | number | null;
-export type InspInspectionSource = 'qr' | 'app' | 'import';
+export type InspInspectionSource = 'qr' | 'app' | 'import' | 'line';
 export type InspInspectionRow = {
   id: string;
   company_id: string;
@@ -146,6 +146,22 @@ export type InspPhotoRow = {
   created_at: string;
   deleted_at: string | null;
   deleted_reason: string;
+  line_message_id: string | null;
+};
+
+export type InspLineUserRow = {
+  line_user_id: string;
+  company_id: string | null;
+  inspector_code: string;
+  inspector_name: string;
+  linked_via: 'code' | 'account';
+  last_inspection_id: string | null;
+  last_asset_id: string | null;
+  last_at: string | null;
+  inspected_on_override: string | null;
+  override_set_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type InspServiceKind = 'legal_test' | 'refill' | 'maintenance' | 'replace' | 'dispose' | 'other';

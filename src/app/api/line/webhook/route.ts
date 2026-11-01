@@ -8,14 +8,16 @@ import { handleFollow, handlePostback, handleText } from '@/lib/line/bot';
 import { recordGroupJoin, recordGroupLeave, touchGroup } from '@/lib/line/groups';
 import { groupCommandText, groupScope, handleGroupText } from '@/lib/line/groupBot';
 import { handleVisitorPostback } from '@/lib/line/visitorActions';
+import { handleInspectImage, handleInspectText } from '@/lib/inspect/line';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 type LineEvent = {
   type: string;
   replyToken?: string;
   source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
-  message?: { type?: string; text?: string; mention?: { mentionees?: { index: number; length: number; isSelf?: boolean }[] } };
+  message?: { type?: string; id?: string; text?: string; mention?: { mentionees?: { index: number; length: number; isSelf?: boolean }[] } };
   postback?: { data?: string };
 };
 
@@ -91,9 +93,12 @@ export async function POST(request: NextRequest) {
       if (ev.type === 'follow') {
         messages = await handleFollow(db, userId);
       } else if (ev.type === 'message' && ev.message?.type === 'text') {
-        messages = await handleText(db, userId, ev.message.text || '');
+        // Equipment-inspection commands first (รหัส …, ไม่ผ่าน …, วันที่ …); everything else goes to the general bot.
+        messages = (await handleInspectText({ db, lineUserId: userId, accessToken: token }, ev.message.text || '')) ?? (await handleText(db, userId, ev.message.text || ''));
       } else if (ev.type === 'postback') {
         messages = await handlePostback(db, userId, ev.postback?.data || '');
+      } else if (ev.type === 'message' && ev.message?.type === 'image' && ev.message.id) {
+        messages = await handleInspectImage({ db, lineUserId: userId, accessToken: token }, ev.message.id);
       } else if (ev.type === 'message') {
         messages = [text('ตอนนี้รองรับเฉพาะข้อความตัวอักษร พิมพ์ "เมนู" เพื่อดูคำสั่ง')];
       }
