@@ -55,7 +55,13 @@ export default function BatchPage() {
 
   const list = useMemo(() => {
     if (!assets || !department) return [];
-    return assets.filter(a => a.department === department && (!category || a.category_id === category) && (!location || a.location === location)).sort((x, y) => x.code.localeCompare(y.code, 'th', { numeric: true }));
+    const rows = assets.filter(a => a.department === department && (!category || a.category_id === category) && (!location || a.location === location));
+    // Walk order: when most rows are placed on a floor plan, order by plan → row band (top→bottom) → left→right, so the list follows the round.
+    const placed = rows.filter(a => a.floorplan_id && a.pos_x != null && a.pos_y != null).length;
+    const byCode = (x: InspAssetView, y: InspAssetView) => x.code.localeCompare(y.code, 'th', { numeric: true });
+    if (placed < Math.max(2, rows.length / 2)) return rows.sort(byCode);
+    const key = (a: InspAssetView) => (a.floorplan_id && a.pos_x != null && a.pos_y != null ? [a.floorplan_id, Math.round(a.pos_y * 10), a.pos_x] as const : ['~', 99, 0] as const);
+    return rows.sort((x, y) => { const kx = key(x), ky = key(y); return kx[0].localeCompare(ky[0]) || kx[1] - ky[1] || kx[2] - ky[2] || byCode(x, y); });
   }, [assets, department, category, location]);
 
   const period = date.slice(0, 7);

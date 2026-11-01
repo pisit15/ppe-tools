@@ -3,7 +3,7 @@ import { apiError, assertCompany, AccessError } from '@/lib/toolsSession';
 import { db, requireInspectStaff } from '@/lib/inspect/access';
 import { getAsset, listInspections, loadCategories, newToken, signedPhotoUrl } from '@/lib/inspect/server';
 import { UUID, bad, validateAssetInput, validateAttributes } from '@/lib/inspect/validation';
-import type { InspServiceEventRow } from '@/lib/inspect/types';
+import type { InspFloorplanRow, InspServiceEventRow } from '@/lib/inspect/types';
 
 export const dynamic = 'force-dynamic';
 type Ctx = { params: Promise<{ id: string }> };
@@ -21,8 +21,11 @@ export async function GET(request: NextRequest, { params }: Ctx) {
       db().from('insp_service_events').select('*').eq('asset_id', id).order('done_on', { ascending: false }),
     ]);
     if (error) throw error;
-    const reference_photo_url = asset.reference_photo_path ? await signedPhotoUrl(asset.reference_photo_path, 3600, { width: 800, height: 800 }).catch(() => null) : null;
-    return NextResponse.json({ data: { asset, inspections, service_events: (events || []) as InspServiceEventRow[], reference_photo_url } });
+    const [reference_photo_url, floorplan] = await Promise.all([
+      asset.reference_photo_path ? signedPhotoUrl(asset.reference_photo_path, 3600, { width: 800, height: 800 }).catch(() => null) : null,
+      asset.floorplan_id ? db().from('insp_floorplans').select('*').eq('id', asset.floorplan_id).maybeSingle().then(async r => { const p = r.data as InspFloorplanRow | null; return p ? { ...p, image_url: await signedPhotoUrl(p.image_path, 3600).catch(() => '') } : null; }) : null,
+    ]);
+    return NextResponse.json({ data: { asset, inspections, service_events: (events || []) as InspServiceEventRow[], reference_photo_url, floorplan } });
   } catch (error) { return apiError(error); }
 }
 

@@ -78,6 +78,9 @@ export type InspAssetRow = {
   last_service_on: string | null;
   service_interval_months: number | null;
   reference_photo_path: string | null;
+  floorplan_id: string | null;
+  pos_x: number | null;
+  pos_y: number | null;
   qr_token: string;
   status: InspAssetStatus;
   note: string;
@@ -148,6 +151,22 @@ export type InspPhotoRow = {
   deleted_reason: string;
   line_message_id: string | null;
 };
+
+export type InspFloorplanRow = {
+  id: string;
+  company_id: string;
+  name: string;
+  building: string;
+  floor: string;
+  image_path: string;
+  width: number;
+  height: number;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type InspFloorplanView = InspFloorplanRow & { image_url: string; placed: number };
 
 export type InspLineUserRow = {
   line_user_id: string;

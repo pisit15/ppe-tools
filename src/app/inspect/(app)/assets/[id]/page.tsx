@@ -5,15 +5,15 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Camera, CheckCircle2, ClipboardCheck, ExternalLink, FileText, ImageOff, MapPin, Pencil, Printer, RefreshCw, Trash2, Wrench, XCircle } from 'lucide-react';
-import type { InspAssetView, InspCategoryRow, InspInspectionView, InspServiceEventRow, InspServiceKind, InspTemplateRow } from '@/lib/inspect/types';
-import { SERVICE_KIND_LABEL } from '@/lib/inspect/constants';
+import type { InspAssetView, InspCategoryRow, InspFloorplanRow, InspInspectionView, InspServiceEventRow, InspServiceKind, InspTemplateRow } from '@/lib/inspect/types';
+import { DUE_STATE_COLOR, SERVICE_KIND_LABEL } from '@/lib/inspect/constants';
 import { AssetForm, type AssetFormValue } from '../../../_components/AssetForm';
 import { CategoryTile } from '../../../_components/icons';
 import { useQr } from '../../../_components/useQr';
 import { compressImage, uploadPhoto } from '../../../_components/photo';
 import { ConfirmButton, Drawer, DueBadge, Modal, OverallBadge, SectionTitle, Skeleton, ToastView, VIZ, bangkokToday, btnGhost, btnPrimary, btnSecondary, cardClass, daysUntil, errMsg, getJson, inputClass, labelClass, postJson, relativeDays, thaiDate, thaiDateTime, useToast } from '../../../_components/ui';
 
-type Detail = { asset: InspAssetView; inspections: InspInspectionView[]; service_events: InspServiceEventRow[]; reference_photo_url: string | null };
+type Detail = { asset: InspAssetView; inspections: InspInspectionView[]; service_events: InspServiceEventRow[]; reference_photo_url: string | null; floorplan: (InspFloorplanRow & { image_url: string }) | null };
 type Catalog = { categories: InspCategoryRow[]; templates: InspTemplateRow[] };
 
 export default function AssetDetailPage() {
@@ -153,6 +153,8 @@ export default function AssetDetailPage() {
         <Tile label="ประวัติ" value={`${d.inspections.length} ครั้ง`} sub={`ผ่าน ${passCount} · ไม่ผ่าน ${d.inspections.length - passCount}`} color={VIZ.neutral} />
       </div>
 
+      <MiniMap asset={a} plan={d.floorplan} />
+
       <div className="grid lg:grid-cols-3 gap-4">
         <div className={`${cardClass} lg:col-span-2`}>
           <SectionTitle title="ประวัติการตรวจ" hint="ล่าสุดอยู่บนสุด · รูปจะถูกลบตามระยะเวลาเก็บ แต่ผลตรวจเก็บถาวร" />
@@ -189,6 +191,25 @@ export default function AssetDetailPage() {
       </Drawer>
       <ServiceModal open={serviceOpen} onClose={() => setServiceOpen(false)} asset={a} serviceLabel={cat?.service_label || ''} onSaved={() => { setServiceOpen(false); void load(); }} setToast={setToast} />
       <ToastView toast={toast} />
+    </div>
+  );
+}
+
+function MiniMap({ asset: a, plan }: { asset: InspAssetView; plan: (InspFloorplanRow & { image_url: string }) | null }) {
+  const placed = plan && a.pos_x != null && a.pos_y != null;
+  const Z = 300; // show a third of the plan around the dot
+  const pos = (f: number) => `${((f * Z - 50) / (Z - 100)) * 100}%`;
+  return (
+    <div className={`${cardClass} !p-0 overflow-hidden`}>
+      <div className="flex items-center justify-between px-5 py-3">
+        <div><p className="text-sm font-semibold text-gray-900">ตำแหน่งบนแผนผัง</p><p className="text-xs text-gray-500">{placed ? `${plan!.name}${plan!.floor ? ` · ชั้น ${plan!.floor}` : ''}` : 'ยังไม่ได้วางตำแหน่ง'}</p></div>
+        <Link href={placed ? `/inspect/floorplans?plan=${plan!.id}&asset=${a.id}` : '/inspect/floorplans'} className={`${btnGhost} text-xs`}><MapPin size={14} />{placed ? 'เปิดแผนผัง' : 'วางตำแหน่ง'}</Link>
+      </div>
+      {placed && (
+        <Link href={`/inspect/floorplans?plan=${plan!.id}&asset=${a.id}`} className="block relative w-full bg-gray-100" style={{ aspectRatio: `${plan!.width} / ${Math.max(plan!.height, plan!.width / 3)}`, maxHeight: 260, backgroundImage: `url(${plan!.image_url})`, backgroundSize: `${Z}% auto`, backgroundPosition: `${pos(a.pos_x!)} ${pos(a.pos_y!)}`, backgroundRepeat: 'no-repeat' }}>
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full border-2 border-white" style={{ background: a.status_info.open_failures > 0 ? VIZ.accent : DUE_STATE_COLOR[a.status_info.due_state], boxShadow: '0 0 0 5px rgba(78,121,167,.35), 0 2px 6px rgba(0,0,0,.35)' }} />
+        </Link>
+      )}
     </div>
   );
 }

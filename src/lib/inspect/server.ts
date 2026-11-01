@@ -5,7 +5,7 @@ import { db } from './access';
 import { bangkokToday, evaluateResults, periodOf, validateAttributes } from './validation';
 import type {
   CreateInspectionInput, InspAssetRow, InspAssetStatusRow, InspAssetView, InspCategoryRow, InspCompanySettingsRow, InspDashboard,
-  InspInspectionRow, InspInspectionSource, InspInspectionView, InspPhotoRow, InspPublicAssetInfo, InspTemplateRow, InspectionMode,
+  InspFloorplanRow, InspFloorplanView, InspInspectionRow, InspInspectionSource, InspInspectionView, InspPhotoRow, InspPublicAssetInfo, InspTemplateRow, InspectionMode,
 } from './types';
 
 export const newToken = (bytes = 24) => randomBytes(bytes).toString('base64url');
@@ -347,3 +347,44 @@ export async function runRetention(batch = 300): Promise<{ scanned: number; dele
 }
 
 export { validateAttributes };
+
+// ---------------------------------------------------------------- floor plans
+const FLOORPLAN_RE = /^[a-z0-9_-]+\/floorplans\/[A-Za-z0-9_-]{8,64}\.(jpg|webp|png)$/i;
+
+export async function listFloorplans(companyId: string): Promise<InspFloorplanView[]> {
+  const client = db();
+  const [{ data, error }, { data: placed, error: pErr }] = await Promise.all([
+    client.from('insp_floorplans').select('*').eq('company_id', companyId).order('sort_order').order('name'),
+    client.from('insp_assets').select('floorplan_id').eq('company_id', companyId).not('floorplan_id', 'is', null),
+  ]);
+  if (error) throw error;
+  if (pErr) throw pErr;
+  const counts = new Map<string, number>();
+  for (const r of (placed || []) as { floorplan_id: string }[]) counts.set(r.floorplan_id, (counts.get(r.floorplan_id) || 0) + 1);
+  const rows = (data || []) as InspFloorplanRow[];
+  const urls = await Promise.all(rows.map(r => signedPhotoUrl(r.image_path, 3600).catch(() => '')));
+  return rows.map((r, i) => ({ ...r, image_url: urls[i], placed: counts.get(r.id) || 0 }));
+}
+
+export async function signFloorplanUpload(companyId: string, ext: 'jpg' | 'webp' | 'png') {
+  const path = `${companyId}/floorplans/${newToken(12)}.${ext}`;
+  const { data, error } = await db().storage.from(INSPECT_BUCKET).createSignedUploadUrl(path);
+  if (error) throw error;
+  return { path, signedUrl: data.signedUrl, token: data.token };
+}
+
+/** Verify the uploaded plan image exists in the bucket (and is reasonable) before referencing it. */
+export async function verifyFloorplanImage(companyId: string, path: string) {
+  if (!FLOORPLAN_RE.test(path) || !path.startsWith(`${companyId}/floorplans/`)) throw new AccessError('ไฟล์แผนผังไม่ถูกต้อง', 400);
+  const client = db();
+  const folder = path.slice(0, path.lastIndexOf('/'));
+  const file = path.slice(path.lastIndexOf('/') + 1);
+  const { data: objs, error } = await client.storage.from(INSPECT_BUCKET).list(folder, { search: file, limit: 5 });
+  if (error) throw error;
+  if (!(objs || []).some(o => o.name === file)) throw new AccessError('ยังอัปโหลดแผนผังไม่สำเร็จ กรุณาลองใหม่', 400);
+}
+
+export async function removeStorageObject(path: string) {
+  const { error } = await db().storage.from(INSPECT_BUCKET).remove([path]);
+  if (error) console.error('remove object failed', path, error.message);
+}
