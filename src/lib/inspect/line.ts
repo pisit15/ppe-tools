@@ -129,7 +129,7 @@ export async function handleInspectText(ctx: Ctx, raw: string): Promise<LineMess
 // ---------------------------------------------------------------- image
 
 export async function handleInspectImage(ctx: Ctx, messageId: string): Promise<LineMessage[]> {
-  const { db, lineUserId, accessToken } = ctx;
+  const { db, accessToken } = ctx;
   // Idempotent: LINE may redeliver the same event.
   const { data: dup } = await db.from('insp_photos').select('asset_id').eq('line_message_id', messageId).maybeSingle();
   if (dup) return [text('รูปนี้บันทึกไปแล้ว')];
