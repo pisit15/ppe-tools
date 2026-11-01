@@ -131,6 +131,17 @@ export async function publicAssetInfo(token: string, actorName: string | null): 
   };
 }
 
+/** Latest inspection of an asset and whether it falls inside the current round (calendar month for monthly+, interval days otherwise). */
+export async function lastInspectionInRound(assetId: string, intervalDays: number): Promise<{ last: Pick<InspInspectionRow, 'id' | 'inspected_on' | 'inspector_name' | 'overall' | 'period'> | null; inRound: boolean }> {
+  const { data, error } = await db().from('insp_inspections').select('id, inspected_on, inspector_name, overall, period').eq('asset_id', assetId).order('inspected_on', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error;
+  const last = data as { id: string; inspected_on: string; inspector_name: string; overall: 'pass' | 'fail'; period: string } | null;
+  if (!last) return { last: null, inRound: false };
+  const today = bangkokToday();
+  const inRound = intervalDays >= 28 ? last.period === periodOf(today) : (Date.parse(today) - Date.parse(last.inspected_on)) / 86400000 < intervalDays;
+  return { last, inRound };
+}
+
 /** Resolve the inspector identity for a submission according to the company mode. */
 export async function resolveInspector(companyId: string, mode: InspectionMode, actorName: string | null, code: string, name: string): Promise<{ inspector_code: string; inspector_name: string }> {
   if (actorName) return { inspector_code: code || 'SHE', inspector_name: actorName };

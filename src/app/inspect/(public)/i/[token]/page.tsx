@@ -29,6 +29,7 @@ export default function PublicInspectPage() {
   const [done, setDone] = useState<Done | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [repeatOk, setRepeatOk] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -57,7 +58,8 @@ export default function PublicInspectPage() {
   const missing = useMemo(() => (info?.template.items || []).filter(it => it.required && (results[it.key] === null || results[it.key] === undefined)), [info, results]);
   const photoRequired = !!info && info.settings.require_photo && info.settings.max_photos_pass > 0;
   const readyPhotos = photos.filter(p => p.path && !p.uploading);
-  const canSubmit = !!info && !busy && !sheRequired && missing.length === 0 && (!needsCode || inspectorCode.trim().length >= 3) && (!photoRequired || readyPhotos.length > 0) && !photos.some(p => p.uploading);
+  const repeatWarn = !!info && info.inspected_this_period && info.last_inspection?.overall === 'pass';
+  const canSubmit = !!info && !busy && !sheRequired && missing.length === 0 && (!needsCode || inspectorCode.trim().length >= 3) && (!photoRequired || readyPhotos.length > 0) && !photos.some(p => p.uploading) && (!repeatWarn || repeatOk);
 
   const setResult = (key: string, v: InspResultValue) => setResults(prev => ({ ...prev, [key]: v }));
 
@@ -87,7 +89,7 @@ export default function PublicInspectPage() {
     if (!info || !canSubmit) return;
     setBusy(true); setSubmitError('');
     try {
-      const { data } = await postJson<{ data: Done }>('/api/inspect/public/inspections', { token, inspector_code: inspectorCode.trim(), results, note: note.trim(), photo_paths: readyPhotos.map(p => p.path) });
+      const { data } = await postJson<{ data: Done }>('/api/inspect/public/inspections', { token, inspector_code: inspectorCode.trim(), results, note: note.trim(), photo_paths: readyPhotos.map(p => p.path), confirm_repeat: repeatOk });
       if (needsCode) try { window.localStorage.setItem(CODE_KEY, JSON.stringify({ code: inspectorCode.trim(), at: Date.now() })); } catch { /* ignore */ }
       setDone(data);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -142,7 +144,12 @@ export default function PublicInspectPage() {
             <DueBadge state={info.status.due_state} />
             {info.status.last_inspected_on ? <span className="text-gray-500">ตรวจล่าสุด {thaiDate(info.status.last_inspected_on)} โดย {info.last_inspection?.inspector_name}</span> : <span className="text-gray-500">ยังไม่มีประวัติการตรวจ</span>}
           </div>
-          {info.inspected_this_period && <div className="mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm" style={{ background: `${VIZ.primary}10`, color: VIZ.primary }}><Info size={16} className="mt-0.5 shrink-0" /><span>อุปกรณ์นี้ตรวจในรอบนี้แล้ว — บันทึกซ้ำได้ถ้าต้องการตรวจเพิ่ม</span></div>}
+          {repeatWarn ? (
+            <div className="mt-3 rounded-xl px-3 py-2.5 text-sm" style={{ background: `${VIZ.secondary}14`, color: '#9A5B00' }}>
+              <div className="flex items-start gap-2"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span><b>ตรวจผ่านแล้วในรอบนี้</b> — {thaiDate(info.last_inspection!.inspected_on)} โดย {info.last_inspection!.inspector_name} ปกติไม่ต้องตรวจซ้ำ</span></div>
+              <label className="mt-2 flex items-center gap-2 text-gray-800"><input type="checkbox" checked={repeatOk} onChange={e => setRepeatOk(e.target.checked)} />ต้องการบันทึกซ้ำ (ตรวจเพิ่ม / แก้ไขผลเดิม)</label>
+            </div>
+          ) : info.inspected_this_period && <div className="mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm" style={{ background: `${VIZ.primary}10`, color: VIZ.primary }}><Info size={16} className="mt-0.5 shrink-0" /><span>รอบนี้เคยตรวจแล้วแต่ไม่ผ่าน — บันทึกผลตรวจซ้ำหลังแก้ไขได้เลย</span></div>}
           {svcDays !== null && svcDays <= 90 && <div className="mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm" style={{ background: svcDays < 0 ? `${VIZ.accent}12` : `${VIZ.secondary}14`, color: svcDays < 0 ? VIZ.accent : '#9A5B00' }}><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span><b>{c.service_label || 'ทดสอบตามรอบ'}</b> {svcDays < 0 ? `เลยกำหนดมาแล้ว ${-svcDays} วัน` : `ครบกำหนด ${thaiDate(info.status.next_service_due_on)} (${relativeDays(info.status.next_service_due_on)})`} — แจ้งทีม SHE</span></div>}
           {info.status.open_failures > 0 && <div className="mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm" style={{ background: `${VIZ.secondary}14`, color: '#9A5B00' }}><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span>มีรายการไม่ผ่านที่ยังไม่ปิดงาน {info.status.open_failures} รายการ{info.last_inspection?.overall === 'fail' ? `: ${info.last_inspection.fail_items.map(k => info.template.items.find(i => i.key === k)?.label || k).join(', ')}` : ''}</span></div>}
           {attrs.length > 0 && (

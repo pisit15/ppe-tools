@@ -7,14 +7,15 @@ import jsQR from 'jsqr';
 import { getLinkedAccount } from '@/lib/line/accounts';
 import { text, type LineMessage } from '@/lib/line/flex';
 import { INSPECT_BUCKET } from './constants';
-import { companySettings, defaultTemplateFor, loadCategories, newToken } from './server';
+import { companySettings, defaultTemplateFor, lastInspectionInRound, loadCategories, newToken } from './server';
 import { bangkokToday, periodOf } from './validation';
 import type { InspAssetRow, InspAssetStatusRow, InspInspectionRow, InspLineUserRow, InspResultValue, InspTemplateRow } from './types';
 
 const CONTEXT_MS = 10 * 60 * 1000;      // follow-up photo / "ไม่ผ่าน" text applies to the last record within 10 min
 const OVERRIDE_MS = 12 * 60 * 60 * 1000; // "วันที่ 31/10" stays in force for 12 h
 const MAX_PHOTOS = 3;
-const HELP = 'วิธีบันทึกผลตรวจทาง LINE\n1) ถ่ายรูปอุปกรณ์ให้เห็น QR ชัด (ห่างไม่เกิน ~70 ซม.) แล้วส่งมาที่นี่ทีละรูป\n2) ระบบตอบกลับว่าบันทึกถังไหนแล้ว\n3) ถ้าไม่ผ่าน พิมพ์ต่อว่า "ไม่ผ่าน <สิ่งที่พบ>" ภายใน 10 นาที\n4) ถ้าตรวจวันก่อนหน้า พิมพ์ "วันที่ 31/10" ก่อนส่งรูป\nรูปที่ 2–3 ของถังเดิมส่งต่อได้เลย (ภายใน 10 นาที)';
+const PENDING_MS = 30 * 60 * 1000;  // held photo (already passed this round) waits for "ตรวจซ้ำ" up to 30 min
+const HELP = 'วิธีบันทึกผลตรวจทาง LINE\n1) ถ่ายรูปอุปกรณ์ให้เห็น QR ชัด (ห่างไม่เกิน ~70 ซม.) แล้วส่งมาที่นี่ทีละรูป\n2) ระบบตอบกลับว่าบันทึกถังไหนแล้ว\n3) ถ้าไม่ผ่าน พิมพ์ต่อว่า "ไม่ผ่าน <สิ่งที่พบ>" ภายใน 10 นาที\n4) ถ้าตรวจวันก่อนหน้า พิมพ์ "วันที่ 31/10" ก่อนส่งรูป\n5) ถังที่ตรวจผ่านแล้วในรอบนี้ ระบบจะถามก่อน — พิมพ์ "ตรวจซ้ำ" เพื่อยืนยัน\nรูปที่ 2–3 ของถังเดิมส่งต่อได้เลย (ภายใน 10 นาที)';
 
 type Ctx = { db: SupabaseClient; lineUserId: string; accessToken: string };
 
@@ -108,6 +109,16 @@ export async function handleInspectText(ctx: Ctx, raw: string): Promise<LineMess
     return [text(`บันทึก ${a?.code || ''} เป็น "ไม่ผ่าน"${note ? `\n${note}` : ''}\nทีม SHE จะระบุข้อที่ไม่ผ่านและปิดงานเมื่อแก้ไขแล้ว`)];
   }
 
+  if (/^(ตรวจซ้ำ|ยืนยัน|repeat|yes)$/i.test(t)) {
+    const cur = await lineUser(db, lineUserId);
+    if (!cur?.pending_asset_id || !cur.pending_message_id || !cur.pending_at || Date.now() - Date.parse(cur.pending_at) > PENDING_MS) return [text('ไม่มีรูปที่รอยืนยันอยู่ (เกิน 30 นาที หรือยังไม่ได้ส่งรูป) — ส่งรูปถังใหม่อีกครั้ง')];
+    const { data: assetRow } = await db.from('insp_assets').select('*').eq('id', cur.pending_asset_id).maybeSingle();
+    if (!assetRow) return [text('ไม่พบอุปกรณ์ที่รอยืนยัน')];
+    const buf = await fetchContent(cur.pending_message_id, ctx.accessToken);
+    await db.from('insp_line_users').update({ pending_asset_id: null, pending_message_id: null, pending_at: null }).eq('line_user_id', lineUserId);
+    if (!buf) return [text('ดึงรูปเดิมจาก LINE ไม่ได้แล้ว กรุณาส่งรูปใหม่ แล้วพิมพ์ "ตรวจซ้ำ" อีกครั้ง')];
+    return recordPass(ctx, assetRow as InspAssetRow, buf, cur.pending_message_id, true);
+  }
   if (/^(ตรวจ|ตรวจอุปกรณ์|วิธีตรวจ|inspect)$/i.test(t)) {
     const cur = await lineUser(db, lineUserId);
     return [text(`${cur?.inspector_name ? `ผู้ตรวจ: ${cur.inspector_name} (${cur.company_id?.toUpperCase()})\n\n` : ''}${HELP}`)];
@@ -134,6 +145,12 @@ export async function handleInspectImage(ctx: Ctx, messageId: string): Promise<L
   if (!asset) return [text('QR นี้ไม่อยู่ในทะเบียน (อาจถูกพิมพ์ใหม่แล้ว) — แจ้งทีม SHE')];
   if (asset.status !== 'active') return [text(`${asset.code} ถูกปิดใช้งานแล้ว (${asset.status === 'disposed' ? 'ปลดระวาง' : 'พักใช้งาน'})`)];
 
+  return recordPass(ctx, asset, buf, messageId, false);
+}
+
+/** Record a pass for the asset (or hold the photo when it already passed this round and the sender has not confirmed). */
+async function recordPass(ctx: Ctx, asset: InspAssetRow, buf: Buffer, messageId: string, confirmed: boolean): Promise<LineMessage[]> {
+  const { db, lineUserId } = ctx;
   const who = await resolveIdentity(ctx, asset.company_id);
   if (!who.ok) return who.messages;
 
@@ -146,9 +163,20 @@ export async function handleInspectImage(ctx: Ctx, messageId: string): Promise<L
     return [text(`เพิ่มรูปที่ ${n} ให้ ${asset.code} แล้ว`)];
   }
 
-  const [{ templates }, statusRes] = await Promise.all([loadCategories(asset.company_id, true), db.from('insp_asset_status').select('*').eq('asset_id', asset.id).maybeSingle()]);
+  const [{ categories, templates }, statusRes] = await Promise.all([loadCategories(asset.company_id, true), db.from('insp_asset_status').select('*').eq('asset_id', asset.id).maybeSingle()]);
+  const category = categories.find(c => c.id === asset.category_id);
   const template: InspTemplateRow | null = (asset.template_id && templates.find(t => t.id === asset.template_id)) || defaultTemplateFor(templates, asset.category_id, asset.company_id);
   if (!template) return [text('หมวดของอุปกรณ์นี้ยังไม่มีรายการตรวจ — แจ้งทีม SHE')];
+
+  // Already passed this round → hold the photo and ask (a previous FAIL may be re-inspected without asking)
+  if (!confirmed) {
+    const { last, inRound } = await lastInspectionInRound(asset.id, category?.inspection_interval_days || 30);
+    if (inRound && last?.overall === 'pass') {
+      await db.from('insp_line_users').update({ pending_asset_id: asset.id, pending_message_id: messageId, pending_at: new Date().toISOString() }).eq('line_user_id', lineUserId);
+      return [text(`${asset.code} ตรวจผ่านแล้วในรอบนี้ (${thai(last.inspected_on)} โดย ${last.inspector_name}) — ปกติไม่ต้องตรวจซ้ำ\nถ้าต้องการบันทึกอีกครั้ง พิมพ์ "ตรวจซ้ำ" ภายใน 30 นาที`)];
+    }
+  }
+
   const results: Record<string, InspResultValue> = {};
   for (const it of template.items) results[it.key] = it.kind === 'number' ? null : 'pass';
 
@@ -157,16 +185,16 @@ export async function handleInspectImage(ctx: Ctx, messageId: string): Promise<L
   const { data: created, error } = await db.from('insp_inspections').insert([{
     company_id: asset.company_id, asset_id: asset.id, template_id: template.id, template_version: template.version,
     inspected_on, period: periodOf(inspected_on), inspector_code: who.code, inspector_name: who.name,
-    results, overall: 'pass', fail_items: [], note: '', source: 'line',
+    results, overall: 'pass', fail_items: [], note: confirmed ? 'ตรวจซ้ำ (ยืนยันทาง LINE)' : '', source: 'line',
   }]).select('*').single();
   if (error || !created) { console.error('line inspection insert failed', error?.message); return [text('บันทึกไม่สำเร็จ กรุณาลองใหม่')]; }
   const row = created as InspInspectionRow;
   await addPhoto(db, asset, row.id, buf, messageId);
-  await db.from('insp_line_users').update({ last_inspection_id: row.id, last_asset_id: asset.id, last_at: new Date().toISOString() }).eq('line_user_id', lineUserId);
+  await db.from('insp_line_users').update({ last_inspection_id: row.id, last_asset_id: asset.id, last_at: new Date().toISOString(), pending_asset_id: null, pending_message_id: null, pending_at: null }).eq('line_user_id', lineUserId);
 
   const st = statusRes.data as InspAssetStatusRow | null;
   const where = [asset.department, asset.floor && `ชั้น ${asset.floor}`, asset.location].filter(Boolean).join(' · ');
-  const lines = [`✅ ${asset.code}${where ? ` · ${where}` : ''}`, `บันทึกแล้ว — ผ่าน · ${thai(inspected_on)} · ${who.name}`];
+  const lines = [`✅ ${asset.code}${where ? ` · ${where}` : ''}`, `บันทึกแล้ว — ผ่าน · ${thai(inspected_on)} · ${who.name}${confirmed ? ' (ตรวจซ้ำ)' : ''}`];
   if (st?.next_service_due_on && st.next_service_due_on < bangkokToday()) lines.push(`⚠️ เลยกำหนดทดสอบตามรอบ (${thai(st.next_service_due_on)}) — แจ้ง SHE`);
   if (st && Number(st.open_failures) > 0) lines.push(`⚠️ มีรายการไม่ผ่านค้างแก้ไข ${st.open_failures} รายการ`);
   lines.push('ถ้าไม่ผ่าน พิมพ์: ไม่ผ่าน <สิ่งที่พบ>');

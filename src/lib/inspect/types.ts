@@ -179,6 +179,9 @@ export type InspLineUserRow = {
   last_at: string | null;
   inspected_on_override: string | null;
   override_set_at: string | null;
+  pending_asset_id: string | null;
+  pending_message_id: string | null;
+  pending_at: string | null;
   created_at: string;
   updated_at: string;
 };
