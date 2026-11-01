@@ -2,14 +2,14 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Copy, GripVertical, Lock, Plus, Save, Trash2, UserPlus, Users } from 'lucide-react';
-import type { InspAttributeDef, InspCategoryRow, InspCompanySettingsRow, InspInspectorRow, InspItemDef, InspItemKind, InspTemplateRow, InspectionMode } from '@/lib/inspect/types';
+import { ChevronDown, ChevronUp, Copy, GripVertical, Lock, MessageCircle, Plus, Save, Trash2, UserPlus, Users } from 'lucide-react';
+import type { InspAttributeDef, InspCategoryRow, InspCompanySettingsRow, InspInspectorRow, InspItemDef, InspItemKind, InspLineUserRow, InspTemplateRow, InspectionMode } from '@/lib/inspect/types';
 import { CATEGORY_ICONS, ITEM_KIND_LABEL, MODE_LABEL } from '@/lib/inspect/constants';
 import { CategoryIcon, CategoryTile } from '../../_components/icons';
 import { ConfirmButton, Modal, SectionTitle, Skeleton, ToastView, VIZ, btnGhost, btnPrimary, btnSecondary, cardClass, errMsg, getJson, inputClass, labelClass, postJson, selectClass, useCompany, useToast } from '../../_components/ui';
 
 type Catalog = { categories: InspCategoryRow[]; templates: InspTemplateRow[] };
-type Tab = 'general' | 'inspectors' | 'checklists';
+type Tab = 'general' | 'inspectors' | 'line' | 'checklists';
 
 export default function SettingsPage() {
   const { company, companyName, isAdmin } = useCompany();
@@ -18,21 +18,23 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<InspCompanySettingsRow | null>(null);
   const [inspectors, setInspectors] = useState<InspInspectorRow[] | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [lineUsers, setLineUsers] = useState<InspLineUserRow[] | null>(null);
 
   const load = useCallback(async () => {
-    setSettings(null); setInspectors(null); setCatalog(null);
+    setSettings(null); setInspectors(null); setCatalog(null); setLineUsers(null);
     try {
-      const [s, i, c] = await Promise.all([
+      const [s, i, c, l] = await Promise.all([
         getJson<{ data: InspCompanySettingsRow }>(`/api/inspect/settings?company=${encodeURIComponent(company)}`),
         getJson<{ data: InspInspectorRow[] }>(`/api/inspect/inspectors?company=${encodeURIComponent(company)}`),
         getJson<{ data: Catalog }>(`/api/inspect/categories?company=${encodeURIComponent(company)}&all=1`),
+        getJson<{ data: InspLineUserRow[] }>(`/api/inspect/line-users?company=${encodeURIComponent(company)}`),
       ]);
-      setSettings(s.data); setInspectors(i.data); setCatalog(c.data);
+      setSettings(s.data); setInspectors(i.data); setCatalog(c.data); setLineUsers(l.data);
     } catch (e) { setToast({ type: 'error', msg: errMsg(e, 'โหลดตั้งค่าไม่สำเร็จ') }); }
   }, [company, setToast]);
   useEffect(() => { const t = setTimeout(() => { void load(); }, 0); return () => clearTimeout(t); }, [load]);
 
-  const TABS: { id: Tab; label: string }[] = [{ id: 'general', label: 'โหมดผู้ตรวจ & รูปภาพ' }, { id: 'inspectors', label: `ทะเบียนผู้ตรวจ${inspectors ? ` (${inspectors.filter(i => i.is_active).length})` : ''}` }, { id: 'checklists', label: 'หมวด & รายการตรวจ' }];
+  const TABS: { id: Tab; label: string }[] = [{ id: 'general', label: 'โหมดผู้ตรวจ & รูปภาพ' }, { id: 'inspectors', label: `ทะเบียนผู้ตรวจ${inspectors ? ` (${inspectors.filter(i => i.is_active).length})` : ''}` }, { id: 'line', label: `ผู้ใช้ LINE${lineUsers ? ` (${lineUsers.length})` : ''}` }, { id: 'checklists', label: 'หมวด & รายการตรวจ' }];
 
   return (
     <div className="space-y-5">
@@ -42,6 +44,7 @@ export default function SettingsPage() {
       </div>
 
       {tab === 'general' && (settings ? <GeneralTab company={company} settings={settings} onSaved={s => { setSettings(s); setToast({ type: 'success', msg: 'บันทึกแล้ว' }); }} onError={m => setToast({ type: 'error', msg: m })} /> : <Skeleton className="h-64" />)}
+      {tab === 'line' && (lineUsers ? <LineUsersTab rows={lineUsers} reload={load} setToast={setToast} /> : <Skeleton className="h-64" />)}
       {tab === 'inspectors' && (inspectors ? <InspectorsTab company={company} rows={inspectors} mode={settings?.inspection_mode || 'she'} reload={load} setToast={setToast} /> : <Skeleton className="h-64" />)}
       {tab === 'checklists' && (catalog ? <ChecklistsTab company={company} catalog={catalog} isAdmin={isAdmin} reload={load} setToast={setToast} /> : <Skeleton className="h-64" />)}
       <ToastView toast={toast} />
@@ -144,6 +147,47 @@ function InspectorsTab({ company, rows, mode, reload, setToast }: { company: str
                   <td className="px-4 py-2.5 font-mono font-medium text-gray-900">{r.code}</td><td className="px-4 py-2.5 text-gray-800">{r.name}</td><td className="px-4 py-2.5 text-gray-600">{r.department || '—'}</td>
                   <td className="px-4 py-2.5"><button type="button" onClick={() => toggle(r)} className="text-xs rounded-full px-2.5 py-0.5 font-medium" style={{ background: r.is_active ? `${VIZ.positive}1A` : '#F3F4F6', color: r.is_active ? VIZ.positive : '#6B7280' }}>{r.is_active ? 'ใช้งาน' : 'ปิด'}</button></td>
                   <td className="px-4 py-2.5 text-right"><ConfirmButton label={<Trash2 size={14} />} confirmLabel="ลบ?" onConfirm={() => remove(r)} className={`${btnGhost} text-xs`} danger /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- LINE users
+function LineUsersTab({ rows, reload, setToast }: { rows: InspLineUserRow[]; reload: () => Promise<void>; setToast: (t: { type: 'success' | 'error' | 'info'; msg: string }) => void }) {
+  async function unlink(r: InspLineUserRow) { try { await getJson(`/api/inspect/line-users?id=${encodeURIComponent(r.line_user_id)}`, { method: 'DELETE' }); setToast({ type: 'success', msg: 'ยกเลิกการผูกแล้ว' }); await reload(); } catch (e) { setToast({ type: 'error', msg: errMsg(e) }); } }
+  const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  return (
+    <div className="space-y-4">
+      <div className={cardClass}>
+        <SectionTitle title="บันทึกผลตรวจทาง LINE" hint="ผู้ตรวจส่งรูปอุปกรณ์ที่เห็น QR ไปที่ LINE OA “EA SHE Center” (แชท 1:1) ระบบอ่าน QR แล้วบันทึกเป็น “ผ่าน” พร้อมรูปทันที" />
+        <div className="grid sm:grid-cols-2 gap-3 text-sm text-gray-700">
+          <div className="rounded-lg p-3" style={{ background: VIZ.bg }}>
+            <p className="font-medium text-gray-900 mb-1 flex items-center gap-1.5"><MessageCircle size={14} />ครั้งแรก</p>
+            <p>ทีม SHE ที่เชื่อมบัญชี LINE ไว้แล้วใช้ได้เลย · พนักงานแผนก พิมพ์ <code className="font-mono bg-white px-1 rounded">รหัส 0058</code> (รหัสจากทะเบียนผู้ตรวจ) ครั้งเดียว</p>
+          </div>
+          <div className="rounded-lg p-3" style={{ background: VIZ.bg }}>
+            <p className="font-medium text-gray-900 mb-1">คำสั่งหลังส่งรูป</p>
+            <p><code className="font-mono bg-white px-1 rounded">ไม่ผ่าน เกจต่ำ</code> ภายใน 10 นาที = ไม่ผ่าน · <code className="font-mono bg-white px-1 rounded">วันที่ 31/10</code> ก่อนส่งรูป = ตรวจย้อนหลัง · รูปซ้ำถังเดิมใน 10 นาที = รูปเพิ่ม (สูงสุด 3)</p>
+          </div>
+        </div>
+      </div>
+      <div className={`${cardClass} !p-0 overflow-hidden`}>
+        {rows.length === 0 ? <p className="text-sm text-gray-400 text-center py-10">ยังไม่มีผู้ใช้ LINE ที่ลงทะเบียนกับบริษัทนี้</p> : (
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-100"><th className="px-4 py-3">ผู้ตรวจ</th><th className="px-4 py-3">รหัส</th><th className="px-4 py-3">ผูกผ่าน</th><th className="px-4 py-3">ใช้ล่าสุด</th><th className="px-4 py-3" /></tr></thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.map(r => (
+                <tr key={r.line_user_id}>
+                  <td className="px-4 py-2.5 text-gray-900 font-medium">{r.inspector_name || <span className="text-gray-400">ยังไม่ลงทะเบียน</span>}</td>
+                  <td className="px-4 py-2.5 font-mono text-gray-700">{r.inspector_code || '—'}</td>
+                  <td className="px-4 py-2.5"><span className="text-xs rounded-full px-2.5 py-0.5 font-medium" style={{ background: r.linked_via === 'account' ? `${VIZ.primary}1A` : `${VIZ.secondary}1A`, color: r.linked_via === 'account' ? VIZ.primary : VIZ.secondary }}>{r.linked_via === 'account' ? 'บัญชี SHE' : 'รหัสผู้ตรวจ'}</span></td>
+                  <td className="px-4 py-2.5 text-gray-600">{fmt(r.last_at)}</td>
+                  <td className="px-4 py-2.5 text-right"><ConfirmButton label={<Trash2 size={14} />} confirmLabel="ยกเลิกผูก?" onConfirm={() => unlink(r)} className={`${btnGhost} text-xs`} danger /></td>
                 </tr>
               ))}
             </tbody>
