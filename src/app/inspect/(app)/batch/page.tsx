@@ -8,6 +8,7 @@ import { useAuth } from '@/components/AuthProvider';
 import type { InspAssetView, InspCategoryRow, InspItemDef, InspResultValue, InspTemplateRow } from '@/lib/inspect/types';
 import { CategoryIcon, CategoryTile } from '../../_components/icons';
 import { compressImage, uploadPhoto, type Compressed } from '../../_components/photo';
+import { decodeInspectToken } from '../../_components/qrDecode';
 import { DueBadge, EmptyState, Skeleton, ToastView, VIZ, bangkokToday, btnGhost, btnPrimary, btnSecondary, cardClass, errMsg, getJson, inputClass, labelClass, postJson, relativeDays, selectCompact, thaiDate, useCompany, useToast } from '../../_components/ui';
 
 type Catalog = { categories: InspCategoryRow[]; templates: InspTemplateRow[] };
@@ -32,6 +33,7 @@ export default function BatchPage() {
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [scanning, setScanning] = useState<{ done: number; total: number } | null>(null);
   const dropRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -85,18 +87,39 @@ export default function BatchPage() {
     }
   }
 
-  /** Global drop: match each file name to an asset code (longest code contained in the file name wins). */
+  /**
+   * Global drop. For each file, in order:
+   *   1. asset code inside the file name (e.g. F1-COA-07.jpg)
+   *   2. QR label visible in the photo (decoded in the browser)
+   *   3. same asset as the previous photo (a 2nd/3rd shot of the same tank taken right after the QR shot)
+   */
   async function dropMany(files: FileList | null) {
     if (!files) return;
+    const arr = Array.from(files).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     const codes = [...list].sort((x, y) => y.code.length - x.code.length);
+    const byToken = new Map(list.map(a => [a.qr_token, a]));
     const norm = (s: string) => s.toLowerCase().replace(/[\s_]+/g, '-');
-    let matched = 0; const unmatched: string[] = [];
-    for (const f of Array.from(files)) {
+    let byName = 0, byQr = 0, byFollow = 0; const unmatched: string[] = [];
+    let last: InspAssetView | null = null;
+    setScanning({ done: 0, total: arr.length });
+    for (const f of arr) {
       const name = norm(f.name);
-      const hit = codes.find(a => name.includes(norm(a.code)));
-      if (hit) { await addPhotos(hit.id, [f]); matched++; } else unmatched.push(f.name);
+      let hit = codes.find(a => name.includes(norm(a.code))) || null;
+      if (hit) byName++;
+      else {
+        const token = await decodeInspectToken(f).catch(() => null);
+        const viaQr = token ? byToken.get(token) : undefined;
+        if (viaQr) { hit = viaQr; byQr++; }
+        else if (token) { unmatched.push(`${f.name} (QR ของถังนอกพื้นที่นี้)`); }
+        else if (last && (rows[last.id]?.photos.length || 0) < MAX_PHOTOS) { hit = last; byFollow++; }
+        else unmatched.push(f.name);
+      }
+      if (hit) { await addPhotos(hit.id, [f]); last = hit; }
+      setScanning(p => (p ? { ...p, done: p.done + 1 } : p));
     }
-    setToast({ type: matched ? 'success' : 'error', msg: `จับคู่รูปได้ ${matched} ไฟล์${unmatched.length ? ` · ไม่พบรหัสในชื่อไฟล์ ${unmatched.length} ไฟล์ (${unmatched.slice(0, 3).join(', ')}${unmatched.length > 3 ? '…' : ''})` : ''}` });
+    setScanning(null);
+    const parts = [byName && `ชื่อไฟล์ ${byName}`, byQr && `อ่าน QR ${byQr}`, byFollow && `ต่อจากรูปก่อนหน้า ${byFollow}`].filter(Boolean).join(' · ');
+    setToast({ type: byName + byQr + byFollow ? 'success' : 'error', msg: `จับคู่ได้ ${byName + byQr + byFollow}/${arr.length} ไฟล์${parts ? ` (${parts})` : ''}${unmatched.length ? ` · ไม่พบ ${unmatched.length}: ${unmatched.slice(0, 3).join(', ')}${unmatched.length > 3 ? '…' : ''}` : ''}` });
   }
 
   function buildResults(a: InspAssetView, r: RowState): Record<string, InspResultValue> {
@@ -157,7 +180,8 @@ export default function BatchPage() {
           <div><label className={labelClass} htmlFor="b-date">วันที่ตรวจจริง *</label><input id="b-date" type="date" className={inputClass} value={date} max={bangkokToday()} onChange={e => setDate(e.target.value)} /></div>
           <div><label className={labelClass} htmlFor="b-insp">ผู้ตรวจ</label><input id="b-insp" className={inputClass} value={inspector} onChange={e => setInspector(e.target.value)} placeholder="ชื่อผู้เดินตรวจ" maxLength={120} /><input className={`${inputClass} mt-1 py-1.5 text-xs`} value={inspectorCode} onChange={e => setInspectorCode(e.target.value.toUpperCase())} placeholder="รหัสผู้ตรวจ (ไม่บังคับ)" maxLength={40} /></div>
         </div>
-        <p className="text-xs text-gray-400 mt-3">ลากรูปหลายไฟล์มาวางที่หน้านี้ได้เลย — ระบบจับคู่กับถังจากรหัสในชื่อไฟล์ (เช่น <code className="bg-gray-100 px-1 rounded">F1-COA-01.jpg</code>) หรือกดแนบทีละแถว · รูปถูกย่อก่อนส่ง · บันทึกโดยไม่มีรูปได้</p>
+        <p className="text-xs text-gray-400 mt-3">ลากรูปทั้งชุดมาวางที่หน้านี้ได้เลย — ระบบจับคู่กับถังจาก <b>รหัสในชื่อไฟล์</b> (เช่น <code className="bg-gray-100 px-1 rounded">F1-COA-01.jpg</code>) หรือ <b>อ่าน QR ที่ติดถังในรูป</b> (ถ่ายให้ QR ใหญ่อย่างน้อย 1/8 ของเฟรม) · รูปที่อ่านไม่ได้จะนับเป็นรูปต่อของถังก่อนหน้า · รูปถูกย่อก่อนส่ง · บันทึกโดยไม่มีรูปได้</p>
+        {scanning && <p className="text-xs mt-2 inline-flex items-center gap-1.5" style={{ color: VIZ.primary }}><Loader2 size={12} className="animate-spin" />กำลังอ่านรูป {scanning.done}/{scanning.total}…</p>}
       </div>
 
       {assets === null ? <Skeleton className="h-64" /> : !department ? (
