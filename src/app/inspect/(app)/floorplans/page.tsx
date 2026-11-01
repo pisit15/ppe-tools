@@ -4,14 +4,22 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Crosshair, ExternalLink, ImagePlus, Layers, Maximize2, MousePointerClick, Pencil, Search, Tag, Trash2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Check, CheckCircle2, Crosshair, ExternalLink, ImagePlus, Layers, Maximize2, MousePointerClick, Pencil, Search, Tag, Trash2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { InspAssetView, InspDueState, InspFloorplanView } from '@/lib/inspect/types';
 import { DUE_STATE_COLOR, DUE_STATE_LABEL } from '@/lib/inspect/constants';
 import { fileToPlanImage, pdfPageCount, uploadPlanImage, type PlanImage } from '../../_components/floorplan';
 import { AGENT_LEGEND, MarkerGlyph, agentBadge } from '../../_components/markers';
-import { ConfirmButton, DueBadge, EmptyState, Modal, Skeleton, ToastView, VIZ, btnGhost, btnPrimary, btnSecondary, cardClass, errMsg, getJson, inputClass, labelClass, postJson, thaiDate, useCompany, useToast } from '../../_components/ui';
+import { ConfirmButton, DueBadge, EmptyState, Modal, Skeleton, ToastView, VIZ, bangkokToday, btnGhost, btnPrimary, btnSecondary, cardClass, errMsg, getJson, inputClass, labelClass, postJson, thaiDate, useCompany, useToast } from '../../_components/ui';
 
 type Pos = { x: number; y: number };
+
+/** Inspected in the current round: same calendar month for monthly+ items, last 7 days for weekly items. */
+function doneThisRound(a: InspAssetView, today: string) {
+  const last = a.status_info.last_inspected_on; if (!last) return false;
+  const days = a.status_info.inspection_interval_days || a.category.inspection_interval_days || 30;
+  if (days <= 7) return Date.parse(today) - Date.parse(last) < 7 * 86400000;
+  return last.slice(0, 7) === today.slice(0, 7);
+}
 type Pending = Map<string, Pos | null>; // asset_id → new position on the current plan, or null = remove
 
 export default function FloorplansPage() {
@@ -33,6 +41,8 @@ function FloorplansInner() {
   const [saving, setSaving] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
   const [layers, setLayers] = useState<Set<string>>(new Set()); // category keys shown; empty = all
+  const [onlyTodo, setOnlyTodo] = useState(false); // hide assets already inspected this round
+  const [today] = useState(bangkokToday);
   const highlight = params.get('asset');
 
   const load = useCallback(async () => {
@@ -71,7 +81,8 @@ function FloorplansInner() {
   const onPlanIds = useMemo(() => new Set(onPlan.map(a => a.id)), [onPlan]);
   const dotState = (a: InspAssetView): InspDueState | 'fail' => (a.status_info.open_failures > 0 ? 'fail' : a.status_info.due_state);
   const counts = useMemo(() => { const c: Record<string, number> = {}; for (const a of onPlan) { if (layers.size && !layers.has(a.category.key)) continue; const k = dotState(a); c[k] = (c[k] || 0) + 1; } return c; }, [onPlan, layers]);
-  const visible = useMemo(() => onPlan.filter(a => (stateFilter.size === 0 || stateFilter.has(dotState(a))) && (layers.size === 0 || layers.has(a.category.key))), [onPlan, stateFilter, layers]);
+  const visible = useMemo(() => onPlan.filter(a => (stateFilter.size === 0 || stateFilter.has(dotState(a))) && (layers.size === 0 || layers.has(a.category.key)) && (!onlyTodo || !doneThisRound(a, today))), [onPlan, stateFilter, layers, onlyTodo, today]);
+  const roundDone = useMemo(() => { const inLayer = onPlan.filter(a => layers.size === 0 || layers.has(a.category.key)); return { done: inLayer.filter(a => doneThisRound(a, today)).length, total: inLayer.length }; }, [onPlan, layers, today]);
 
   function setPos(assetId: string, pos: Pos | null) {
     setPending(prev => { const n = new Map(prev); const a = assets?.find(x => x.id === assetId); const already = a && plan && a.floorplan_id === plan.id && a.pos_x != null; if (pos === null && !already) n.delete(assetId); else n.set(assetId, pos); return n; });
@@ -124,6 +135,11 @@ function FloorplansInner() {
             <div className={`${cardClass} !p-0 overflow-hidden`}>
               <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
                 <Legend counts={counts} filter={stateFilter} onToggle={k => setStateFilter(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; })} />
+                {roundDone.total > 0 && (
+                  <button type="button" onClick={() => setOnlyTodo(v => !v)} title="กดเพื่อแสดงเฉพาะที่ยังไม่ตรวจรอบนี้" className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${onlyTodo ? 'text-white' : 'bg-white'}`} style={{ borderColor: VIZ.primary, color: onlyTodo ? '#fff' : VIZ.primary, background: onlyTodo ? VIZ.primary : undefined }}>
+                    <CheckCircle2 size={13} />รอบนี้ตรวจแล้ว {roundDone.done}/{roundDone.total}{onlyTodo ? ' · แสดงเฉพาะที่ยังไม่ตรวจ' : ''}
+                  </button>
+                )}
                 <button type="button" className={`${btnGhost} text-xs ${showLabels ? 'text-[#4E79A7]' : ''}`} onClick={() => setShowLabels(v => !v)} title="แสดง/ซ่อนรหัสใต้สัญลักษณ์"><Tag size={13} />รหัส</button>
                 <div className="flex-1" />
                 {!placing ? (
@@ -144,7 +160,7 @@ function FloorplansInner() {
               <LayerBar assets={assets} plan={plan} dots={onPlan} layers={layers} onToggle={k => setLayers(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; })} onAll={() => setLayers(new Set())} />
               <div className="flex flex-col lg:flex-row">
                 <div className="flex-1 min-w-0">
-                  <PlanCanvas key={plan.id} plan={plan} dots={visible} placing={placing} selected={selected} highlight={highlight} showLabels={showLabels}
+                  <PlanCanvas key={plan.id} plan={plan} dots={visible} placing={placing} selected={selected} highlight={highlight} showLabels={showLabels} today={today}
                     onSelect={id => setSelected(id)}
                     onPlace={pos => { if (!placing) return; if (!selected) { setToast({ type: 'info', msg: 'เลือกอุปกรณ์จากรายการด้านขวาก่อน' }); return; } setPos(selected, pos); const next = nextUnplaced(assets, plan, onPlanIds, selected, layers); setSelected(next); }}
                     onMove={(id, pos) => setPos(id, pos)} />
@@ -230,7 +246,7 @@ function LayerBar({ assets, plan, dots, layers, onToggle, onAll }: { assets: Ins
 
 // ---------------------------------------------------------------- pan / zoom canvas
 type Dot = InspAssetView & Pos;
-function PlanCanvas({ plan, dots, placing, selected, highlight, showLabels, onSelect, onPlace, onMove }: { plan: InspFloorplanView; dots: Dot[]; placing: boolean; selected: string | null; highlight: string | null; showLabels: boolean; onSelect: (id: string | null) => void; onPlace: (pos: Pos) => void; onMove: (id: string, pos: Pos) => void }) {
+function PlanCanvas({ plan, dots, placing, selected, highlight, showLabels, today, onSelect, onPlace, onMove }: { plan: InspFloorplanView; dots: Dot[]; placing: boolean; selected: string | null; highlight: string | null; showLabels: boolean; today: string; onSelect: (id: string | null) => void; onPlace: (pos: Pos) => void; onMove: (id: string, pos: Pos) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ s: 0, tx: 0, ty: 0 });
   const [loaded, setLoaded] = useState(false);
@@ -314,11 +330,12 @@ function PlanCanvas({ plan, dots, placing, selected, highlight, showLabels, onSe
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={plan.image_url} alt={plan.name} width={W} height={H} draggable={false} onLoad={() => setLoaded(true)} className="block bg-white shadow-md" style={{ width: W, height: H }} />
           {dots.map(d => {
-            const c = dotColor(d); const sel = d.id === selected; const hl = d.id === highlight; const pend = placing && sel;
+            const c = dotColor(d); const sel = d.id === selected; const hl = d.id === highlight; const pend = placing && sel; const done = doneThisRound(d, today);
             return (
               <div key={d.id} data-dot={d.id} className="group absolute flex flex-col items-center" style={{ left: d.x * W, top: d.y * H, transform: `translate(-50%, -62%) scale(${1 / view.s})`, transformOrigin: '50% 62%', zIndex: sel || hl ? 5 : 1 }}>
-                <div className={`${placing ? 'cursor-move' : 'cursor-pointer'} ${hl ? 'animate-pulse' : ''}`} style={{ outline: pend ? `2px dashed ${VIZ.primary}` : undefined, outlineOffset: 3, borderRadius: 6 }}>
+                <div className={`relative ${placing ? 'cursor-move' : 'cursor-pointer'} ${hl ? 'animate-pulse' : ''}`} style={{ outline: pend ? `2px dashed ${VIZ.primary}` : undefined, outlineOffset: 3, borderRadius: 6 }}>
                   <MarkerGlyph categoryKey={d.category.key} icon={d.category.icon} agent={d.attributes?.agent} color={c} size={sel || hl ? 36 : 30} selected={sel || hl} />
+                  {done && <span title="ตรวจแล้วรอบนี้" className="absolute -left-1.5 -top-1 flex items-center justify-center rounded-full bg-white" style={{ width: 14, height: 14, boxShadow: '0 1px 2px rgba(0,0,0,.4)' }}><CheckCircle2 size={14} color={VIZ.positive} strokeWidth={2.5} /></span>}
                 </div>
                 <div className={`mt-0.5 whitespace-nowrap rounded-md px-1.5 py-[1px] text-[11px] font-semibold leading-tight pointer-events-none shadow-sm ${showLabels || sel || hl ? '' : 'opacity-0 group-hover:opacity-100'}`} style={{ background: `color-mix(in srgb, ${c} 28%, white)`, color: '#1F2937', border: `1px solid ${c}66` }}>{d.code}</div>
               </div>
