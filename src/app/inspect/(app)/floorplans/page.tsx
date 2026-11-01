@@ -4,10 +4,11 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Crosshair, ExternalLink, ImagePlus, Maximize2, MousePointerClick, Pencil, Search, Trash2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Check, Crosshair, ExternalLink, ImagePlus, Maximize2, MousePointerClick, Pencil, Search, Tag, Trash2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import type { InspAssetView, InspDueState, InspFloorplanView } from '@/lib/inspect/types';
 import { DUE_STATE_COLOR, DUE_STATE_LABEL } from '@/lib/inspect/constants';
 import { fileToPlanImage, pdfPageCount, uploadPlanImage, type PlanImage } from '../../_components/floorplan';
+import { AGENT_LEGEND, MarkerGlyph, agentBadge } from '../../_components/markers';
 import { ConfirmButton, DueBadge, EmptyState, Modal, Skeleton, ToastView, VIZ, btnGhost, btnPrimary, btnSecondary, cardClass, errMsg, getJson, inputClass, labelClass, postJson, thaiDate, useCompany, useToast } from '../../_components/ui';
 
 type Pos = { x: number; y: number };
@@ -30,6 +31,7 @@ function FloorplansInner() {
   const [selected, setSelected] = useState<string | null>(null); // asset id selected in place mode (to drop) or focused in view mode
   const [stateFilter, setStateFilter] = useState<Set<InspDueState | 'fail'>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
   const highlight = params.get('asset');
 
   const load = useCallback(async () => {
@@ -121,6 +123,7 @@ function FloorplansInner() {
             <div className={`${cardClass} !p-0 overflow-hidden`}>
               <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
                 <Legend counts={counts} filter={stateFilter} onToggle={k => setStateFilter(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; })} />
+                <button type="button" className={`${btnGhost} text-xs ${showLabels ? 'text-[#4E79A7]' : ''}`} onClick={() => setShowLabels(v => !v)} title="แสดง/ซ่อนรหัสใต้สัญลักษณ์"><Tag size={13} />รหัส</button>
                 <div className="flex-1" />
                 {!placing ? (
                   <>
@@ -137,9 +140,10 @@ function FloorplansInner() {
                   </>
                 )}
               </div>
+              <SymbolLegend dots={onPlan} />
               <div className="flex flex-col lg:flex-row">
                 <div className="flex-1 min-w-0">
-                  <PlanCanvas key={plan.id} plan={plan} dots={visible} placing={placing} selected={selected} highlight={highlight}
+                  <PlanCanvas key={plan.id} plan={plan} dots={visible} placing={placing} selected={selected} highlight={highlight} showLabels={showLabels}
                     onSelect={id => setSelected(id)}
                     onPlace={pos => { if (!placing) return; if (!selected) { setToast({ type: 'info', msg: 'เลือกอุปกรณ์จากรายการด้านขวาก่อน' }); return; } setPos(selected, pos); const next = nextUnplaced(assets, plan, onPlanIds, selected); setSelected(next); }}
                     onMove={(id, pos) => setPos(id, pos)} />
@@ -194,9 +198,23 @@ function Legend({ counts, filter, onToggle }: { counts: Record<string, number>; 
   );
 }
 
+/** What the shapes and badges mean — only the categories / agents present on this plan. */
+function SymbolLegend({ dots }: { dots: Dot[] }) {
+  const cats = useMemo(() => { const m = new Map<string, Dot['category']>(); for (const d of dots) m.set(d.category.key, d.category); return [...m.values()]; }, [dots]);
+  const agents = useMemo(() => { const set = new Set<string>(); for (const d of dots) if (d.category.key === 'fire_extinguisher') { const b = agentBadge(d.attributes?.agent); if (b) set.add(b); } return AGENT_LEGEND.filter(a => set.has(a.badge)); }, [dots]);
+  if (cats.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2 border-b border-gray-100 text-xs text-gray-600">
+      {cats.map(c => <span key={c.key} className="inline-flex items-center gap-1.5"><MarkerGlyph categoryKey={c.key} icon={c.icon} agent={c.key === 'fire_extinguisher' ? 'ผงเคมีแห้ง' : undefined} color={VIZ.neutral} size={22} />{c.name}</span>)}
+      {agents.length > 0 && <span className="inline-flex items-center gap-2 text-gray-500"><span className="text-gray-400">ป้ายชนิดสาร:</span>{agents.map(a => <span key={a.badge}><b className="rounded border border-gray-300 bg-white px-1 py-[1px] text-[10px] text-gray-800">{a.badge}</b> {a.label}</span>)}</span>}
+      <span className="text-gray-400">· สี = สถานะการตรวจ</span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- pan / zoom canvas
 type Dot = InspAssetView & Pos;
-function PlanCanvas({ plan, dots, placing, selected, highlight, onSelect, onPlace, onMove }: { plan: InspFloorplanView; dots: Dot[]; placing: boolean; selected: string | null; highlight: string | null; onSelect: (id: string | null) => void; onPlace: (pos: Pos) => void; onMove: (id: string, pos: Pos) => void }) {
+function PlanCanvas({ plan, dots, placing, selected, highlight, showLabels, onSelect, onPlace, onMove }: { plan: InspFloorplanView; dots: Dot[]; placing: boolean; selected: string | null; highlight: string | null; showLabels: boolean; onSelect: (id: string | null) => void; onPlace: (pos: Pos) => void; onMove: (id: string, pos: Pos) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ s: 0, tx: 0, ty: 0 });
   const [loaded, setLoaded] = useState(false);
@@ -271,7 +289,6 @@ function PlanCanvas({ plan, dots, placing, selected, highlight, onSelect, onPlac
       else onSelect(null);
     }
   }
-  const labelAll = view.s * W > 2200;
   return (
     <div className="relative">
       <div ref={box} className={`relative h-[62vh] min-h-[380px] overflow-hidden bg-[#F4F6F9] select-none ${placing ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`} style={{ touchAction: 'none' }}
@@ -283,9 +300,11 @@ function PlanCanvas({ plan, dots, placing, selected, highlight, onSelect, onPlac
           {dots.map(d => {
             const c = dotColor(d); const sel = d.id === selected; const hl = d.id === highlight; const pend = placing && sel;
             return (
-              <div key={d.id} data-dot={d.id} className="group absolute" style={{ left: d.x * W, top: d.y * H, transform: `translate(-50%, -50%) scale(${1 / view.s})`, transformOrigin: 'center', zIndex: sel || hl ? 5 : 1 }}>
-                <div className={`rounded-full border-2 border-white shadow-md transition ${placing ? 'cursor-move' : 'cursor-pointer'} ${hl ? 'animate-pulse' : ''}`} style={{ width: sel || hl ? 22 : 16, height: sel || hl ? 22 : 16, background: c, boxShadow: sel || hl ? `0 0 0 4px ${c}55, 0 2px 6px rgba(0,0,0,.3)` : '0 1px 4px rgba(0,0,0,.35)', outline: pend ? `2px dashed ${VIZ.primary}` : undefined, outlineOffset: 3 }} />
-                <div className={`absolute left-1/2 -translate-x-1/2 top-full mt-1 whitespace-nowrap rounded-md bg-gray-900/85 text-white text-[11px] px-1.5 py-0.5 pointer-events-none ${labelAll || sel || hl ? '' : 'opacity-0 group-hover:opacity-100'}`}>{d.code}</div>
+              <div key={d.id} data-dot={d.id} className="group absolute flex flex-col items-center" style={{ left: d.x * W, top: d.y * H, transform: `translate(-50%, -62%) scale(${1 / view.s})`, transformOrigin: '50% 62%', zIndex: sel || hl ? 5 : 1 }}>
+                <div className={`${placing ? 'cursor-move' : 'cursor-pointer'} ${hl ? 'animate-pulse' : ''}`} style={{ outline: pend ? `2px dashed ${VIZ.primary}` : undefined, outlineOffset: 3, borderRadius: 6 }}>
+                  <MarkerGlyph categoryKey={d.category.key} icon={d.category.icon} agent={d.attributes?.agent} color={c} size={sel || hl ? 36 : 30} selected={sel || hl} />
+                </div>
+                <div className={`mt-0.5 whitespace-nowrap rounded-md px-1.5 py-[1px] text-[11px] font-semibold leading-tight pointer-events-none shadow-sm ${showLabels || sel || hl ? '' : 'opacity-0 group-hover:opacity-100'}`} style={{ background: `color-mix(in srgb, ${c} 28%, white)`, color: '#1F2937', border: `1px solid ${c}66` }}>{d.code}</div>
               </div>
             );
           })}
