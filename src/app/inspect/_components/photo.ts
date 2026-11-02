@@ -20,8 +20,8 @@ export async function compressImage(file: File, maxPx: number = INSPECT_LIMITS.p
   const useWebp = !!webp && webp.type === 'image/webp';
   let blob = useWebp ? webp : await toBlob(canvas, 'image/jpeg', quality);
   if (!blob) throw new Error('ย่อรูปไม่สำเร็จ');
-  // Second pass if still too big (very detailed photos)
-  if (blob.size > INSPECT_LIMITS.maxPhotoBytes) {
+  // Second pass if still too big (very detailed photos, or JPEG fallback)
+  if (blob.size > (useWebp ? INSPECT_LIMITS.maxPhotoBytes : 180 * 1024)) {
     const smaller = await toBlob(canvas, useWebp ? 'image/webp' : 'image/jpeg', 0.6);
     if (smaller && smaller.size < blob.size) blob = smaller;
   }

@@ -92,6 +92,10 @@ export default function AssetDetailPage() {
       setToast({ type: 'success', msg: 'แนบรูปแล้ว' }); await load();
     } catch (e) { setToast({ type: 'error', msg: errMsg(e) }); }
   }
+  async function deletePhoto(photoId: string) {
+    try { await getJson(`/api/inspect/photos/${photoId}`, { method: 'DELETE' }); setToast({ type: 'success', msg: 'ลบรูปแล้ว' }); await load(); }
+    catch (e) { setToast({ type: 'error', msg: errMsg(e) }); }
+  }
   async function deleteInspection(inspId: string) {
     try { await getJson(`/api/inspect/inspections/${inspId}`, { method: 'DELETE' }); setToast({ type: 'success', msg: 'ลบรายการตรวจแล้ว' }); await load(); }
     catch (e) { setToast({ type: 'error', msg: errMsg(e) }); }
@@ -169,7 +173,7 @@ export default function AssetDetailPage() {
           <SectionTitle title="ประวัติการตรวจ" hint="ล่าสุดอยู่บนสุด · รูปจะถูกลบตามระยะเวลาเก็บ แต่ผลตรวจเก็บถาวร" />
           {d.inspections.length === 0 ? <p className="text-sm text-gray-400 py-6 text-center">ยังไม่มีประวัติ — สแกน QR หรือกด “ตรวจตอนนี้”</p> : (
             <ol className="relative border-l border-gray-200 ml-3 space-y-6">
-              {d.inspections.map(insp => <InspectionItem key={insp.id} insp={insp} itemLabel={k => itemLabel(insp, k)} itemOrder={i => (catalog.templates.find(x => x.id === i.template_id) || template)?.items.map(it => it.key) || []} onResolve={resolve} onDelete={deleteInspection} onAttach={attachPhoto} />)}
+              {d.inspections.map(insp => <InspectionItem key={insp.id} insp={insp} itemLabel={k => itemLabel(insp, k)} itemOrder={i => (catalog.templates.find(x => x.id === i.template_id) || template)?.items.map(it => it.key) || []} onResolve={resolve} onDelete={deleteInspection} onAttach={attachPhoto} onDeletePhoto={deletePhoto} />)}
             </ol>
           )}
         </div>
@@ -227,7 +231,7 @@ function Tile({ label, value, sub, color }: { label: string; value: string; sub?
   return <div className={`${cardClass} !p-4`} style={{ borderLeft: `4px solid ${color}` }}><p className="text-xs text-gray-500 truncate">{label}</p><p className="text-lg font-semibold text-gray-900 mt-1 truncate">{value}</p>{sub && <p className="text-xs text-gray-500 truncate">{sub}</p>}</div>;
 }
 
-function InspectionItem({ insp, itemLabel, itemOrder, onResolve, onDelete, onAttach }: { insp: InspInspectionView; itemLabel: (k: string) => string; itemOrder: (insp: InspInspectionView) => string[]; onResolve: (id: string, note: string) => void; onDelete: (id: string) => void; onAttach: (id: string, file: File) => Promise<void> }) {
+function InspectionItem({ insp, itemLabel, itemOrder, onResolve, onDelete, onAttach, onDeletePhoto }: { insp: InspInspectionView; itemLabel: (k: string) => string; itemOrder: (insp: InspInspectionView) => string[]; onResolve: (id: string, note: string) => void; onDelete: (id: string) => void; onAttach: (id: string, file: File) => Promise<void>; onDeletePhoto: (photoId: string) => Promise<void> }) {
   const [open, setOpen] = useState(insp.overall === 'fail' && !insp.resolved_at);
   const [note, setNote] = useState('');
   const fail = insp.overall === 'fail';
@@ -260,7 +264,7 @@ function InspectionItem({ insp, itemLabel, itemOrder, onResolve, onDelete, onAtt
           </div>
           {(livePhotos.length > 0 || removedPhotos > 0) && (
             <div className="flex flex-wrap gap-2">
-              {livePhotos.map(p => <Thumb key={p.id} path={p.storage_path} />)}
+              {livePhotos.map(p => <Thumb key={p.id} path={p.storage_path} onDelete={() => onDeletePhoto(p.id)} />)}
               {removedPhotos > 0 && <span className="inline-flex items-center gap-1 text-xs text-gray-400 self-center"><ImageOff size={13} />ลบตามระยะเวลาเก็บแล้ว {removedPhotos} รูป</span>}
             </div>
           )}
@@ -281,17 +285,27 @@ function InspectionItem({ insp, itemLabel, itemOrder, onResolve, onDelete, onAtt
   );
 }
 
-function Thumb({ path }: { path: string }) {
+function Thumb({ path, onDelete }: { path: string; onDelete?: () => void }) {
   const [url, setUrl] = useState('');
   const [full, setFull] = useState('');
+  const [armed, setArmed] = useState(false);
+  useEffect(() => { if (!armed) return; const t = setTimeout(() => setArmed(false), 4000); return () => clearTimeout(t); }, [armed]);
   useEffect(() => { getJson<{ url: string }>(`/api/inspect/photos/url?path=${encodeURIComponent(path)}&thumb=1`).then(r => setUrl(r.url)).catch(() => setUrl('')); }, [path]);
   async function openFull() { try { const r = await getJson<{ url: string }>(`/api/inspect/photos/url?path=${encodeURIComponent(path)}`); setFull(r.url); } catch { /* ignore */ } }
   return (
     <>
-      <button type="button" onClick={openFull} className="h-20 w-20 rounded-lg overflow-hidden bg-gray-100 border border-gray-100">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : <span className="block h-full w-full animate-pulse" />}
-      </button>
+      <span className="relative inline-block group">
+        <button type="button" onClick={openFull} className="h-20 w-20 rounded-lg overflow-hidden bg-gray-100 border border-gray-100 block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : <span className="block h-full w-full animate-pulse" />}
+        </button>
+        {onDelete && (
+          <button type="button" title={armed ? 'กดอีกครั้งเพื่อลบรูป' : 'ลบรูป'} onClick={() => { if (armed) { setArmed(false); onDelete(); } else setArmed(true); }}
+            className={`absolute -top-1.5 -right-1.5 rounded-full text-white text-[10px] leading-none shadow transition ${armed ? 'px-1.5 py-1 opacity-100' : 'h-5 w-5 opacity-0 group-hover:opacity-100'}`} style={{ background: armed ? VIZ.accent : '#374151' }}>
+            {armed ? 'ลบ?' : '×'}
+          </button>
+        )}
+      </span>
       {full && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setFull('')} role="dialog">
           {/* eslint-disable-next-line @next/next/no-img-element */}
