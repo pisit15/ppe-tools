@@ -83,6 +83,15 @@ export default function AssetDetailPage() {
     try { await postJson(`/api/inspect/inspections/${inspId}`, { action: 'resolve', resolved_note: note }, 'PATCH'); setToast({ type: 'success', msg: 'ปิดงานแล้ว' }); await load(); }
     catch (e) { setToast({ type: 'error', msg: errMsg(e) }); }
   }
+  async function attachPhoto(inspId: string, file: File) {
+    if (!d) return;
+    try {
+      const c = await compressImage(file, 1280, 0.78);
+      const path = await uploadPhoto(c, { url: '/api/inspect/photos/sign', body: { asset_id: d.asset.id } }, { url: '/api/inspect/photos/confirm', body: { asset_id: d.asset.id } });
+      await postJson(`/api/inspect/inspections/${inspId}`, { action: 'attach_photo', path }, 'PATCH');
+      setToast({ type: 'success', msg: 'แนบรูปแล้ว' }); await load();
+    } catch (e) { setToast({ type: 'error', msg: errMsg(e) }); }
+  }
   async function deleteInspection(inspId: string) {
     try { await getJson(`/api/inspect/inspections/${inspId}`, { method: 'DELETE' }); setToast({ type: 'success', msg: 'ลบรายการตรวจแล้ว' }); await load(); }
     catch (e) { setToast({ type: 'error', msg: errMsg(e) }); }
@@ -160,7 +169,7 @@ export default function AssetDetailPage() {
           <SectionTitle title="ประวัติการตรวจ" hint="ล่าสุดอยู่บนสุด · รูปจะถูกลบตามระยะเวลาเก็บ แต่ผลตรวจเก็บถาวร" />
           {d.inspections.length === 0 ? <p className="text-sm text-gray-400 py-6 text-center">ยังไม่มีประวัติ — สแกน QR หรือกด “ตรวจตอนนี้”</p> : (
             <ol className="relative border-l border-gray-200 ml-3 space-y-6">
-              {d.inspections.map(insp => <InspectionItem key={insp.id} insp={insp} itemLabel={k => itemLabel(insp, k)} itemOrder={i => (catalog.templates.find(x => x.id === i.template_id) || template)?.items.map(it => it.key) || []} onResolve={resolve} onDelete={deleteInspection} />)}
+              {d.inspections.map(insp => <InspectionItem key={insp.id} insp={insp} itemLabel={k => itemLabel(insp, k)} itemOrder={i => (catalog.templates.find(x => x.id === i.template_id) || template)?.items.map(it => it.key) || []} onResolve={resolve} onDelete={deleteInspection} onAttach={attachPhoto} />)}
             </ol>
           )}
         </div>
@@ -218,7 +227,7 @@ function Tile({ label, value, sub, color }: { label: string; value: string; sub?
   return <div className={`${cardClass} !p-4`} style={{ borderLeft: `4px solid ${color}` }}><p className="text-xs text-gray-500 truncate">{label}</p><p className="text-lg font-semibold text-gray-900 mt-1 truncate">{value}</p>{sub && <p className="text-xs text-gray-500 truncate">{sub}</p>}</div>;
 }
 
-function InspectionItem({ insp, itemLabel, itemOrder, onResolve, onDelete }: { insp: InspInspectionView; itemLabel: (k: string) => string; itemOrder: (insp: InspInspectionView) => string[]; onResolve: (id: string, note: string) => void; onDelete: (id: string) => void }) {
+function InspectionItem({ insp, itemLabel, itemOrder, onResolve, onDelete, onAttach }: { insp: InspInspectionView; itemLabel: (k: string) => string; itemOrder: (insp: InspInspectionView) => string[]; onResolve: (id: string, note: string) => void; onDelete: (id: string) => void; onAttach: (id: string, file: File) => Promise<void> }) {
   const [open, setOpen] = useState(insp.overall === 'fail' && !insp.resolved_at);
   const [note, setNote] = useState('');
   const fail = insp.overall === 'fail';
@@ -262,7 +271,10 @@ function InspectionItem({ insp, itemLabel, itemOrder, onResolve, onDelete }: { i
               <button type="button" className={`${btnPrimary} whitespace-nowrap`} style={{ background: VIZ.positive }} onClick={() => onResolve(insp.id, note)}><CheckCircle2 size={16} />ปิดงาน</button>
             </div>
           )}
-          <div className="flex justify-end"><ConfirmButton label={<><Trash2 size={12} />ลบรายการตรวจนี้</>} confirmLabel="ยืนยันลบ?" onConfirm={() => onDelete(insp.id)} className={`${btnGhost} text-xs`} danger /></div>
+          <div className="flex justify-between items-center">
+            {livePhotos.length < 3 ? <label className={`${btnGhost} text-xs cursor-pointer`}><Camera size={12} />แนบรูป<input type="file" accept="image/*" className="sr-only" onChange={e => { const f = e.target.files?.[0]; if (f) void onAttach(insp.id, f); e.target.value = ''; }} /></label> : <span />}
+            <ConfirmButton label={<><Trash2 size={12} />ลบรายการตรวจนี้</>} confirmLabel="ยืนยันลบ?" onConfirm={() => onDelete(insp.id)} className={`${btnGhost} text-xs`} danger />
+          </div>
         </div>
       )}
     </li>
