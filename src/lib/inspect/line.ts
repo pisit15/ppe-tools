@@ -137,8 +137,8 @@ export async function handleInspectImage(ctx: Ctx, messageId: string): Promise<L
   const buf = await fetchContent(messageId, accessToken);
   if (!buf) return [text('ดึงรูปจาก LINE ไม่สำเร็จ กรุณาส่งใหม่')];
 
-  const token = await decodeToken(buf);
-  if (!token) return [text('อ่าน QR ในรูปไม่ได้ — ถ่ายใกล้ขึ้น (≤ 70 ซม.) ให้ QR อยู่กลางภาพ ไม่ย้อนแสง แล้วส่งใหม่\nถ้าเป็นรูปเพิ่มของถังเดิม ให้ส่งภายใน 10 นาทีหลังรูปที่อ่านได้')].concat(await attachFollowUp(ctx, messageId, buf));
+  const { token, debug } = await decodeToken(buf);
+  if (!token) return [text(`อ่าน QR ในรูปไม่ได้ — ถ่ายใกล้ขึ้น (≤ 70 ซม.) ให้ QR อยู่กลางภาพ ไม่ย้อนแสง แล้วส่งใหม่\nถ้าเป็นรูปเพิ่มของถังเดิม ให้ส่งภายใน 10 นาทีหลังรูปที่อ่านได้\n(ระบบ: ${debug})`)].concat(await attachFollowUp(ctx, messageId, buf));
 
   const { data: assetRow } = await db.from('insp_assets').select('*').eq('qr_token', token).maybeSingle();
   const asset = assetRow as InspAssetRow | null;
@@ -237,9 +237,12 @@ async function fetchContent(messageId: string, accessToken: string): Promise<Buf
 }
 
 /** Decode the inspect QR from a photo: full frame at 1600 px, then centre crop ×2, then 2400 px. */
-async function decodeToken(buf: Buffer): Promise<string | null> {
-  const base = sharp(buf).rotate();
-  const meta = await base.metadata();
+async function decodeToken(buf: Buffer): Promise<{ token: string | null; debug: string }> {
+  const notes: string[] = [`${Math.round(buf.length / 1024)} KB`];
+  let base: ReturnType<typeof sharp>;
+  let meta: { width?: number; height?: number; format?: string };
+  try { base = sharp(buf).rotate(); meta = await base.metadata(); notes.push(`${meta.format} ${meta.width}×${meta.height}`); }
+  catch (e) { return { token: null, debug: `sharp: ${e instanceof Error ? e.message : String(e)}` }; }
   const longest = Math.max(meta.width || 0, meta.height || 0) || 1600;
   const attempts: (() => Promise<{ data: Buffer; info: { width: number; height: number } }>)[] = [
     () => base.clone().resize({ width: Math.min(1600, longest), height: Math.min(1600, longest), fit: 'inside' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
@@ -255,10 +258,11 @@ async function decodeToken(buf: Buffer): Promise<string | null> {
       const { data, info } = await run();
       const hit = jsQR(new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), info.width, info.height, { inversionAttempts: 'attemptBoth' });
       const m = hit?.data.match(/\/inspect\/i\/([A-Za-z0-9_-]{20,64})/);
-      if (m) return m[1];
-    } catch (e) { console.error('qr decode attempt failed', e instanceof Error ? e.message : e); }
+      if (m) return { token: m[1], debug: notes.join(', ') };
+      notes.push(hit ? `พบ QR แต่ไม่ใช่ของระบบ: ${hit.data.slice(0, 40)}` : 'ไม่พบ QR');
+    } catch (e) { const msg = e instanceof Error ? e.message : String(e); console.error('qr decode attempt failed', msg); notes.push(`err: ${msg.slice(0, 80)}`); }
   }
-  return null;
+  return { token: null, debug: notes.join(', ') };
 }
 
 const TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
