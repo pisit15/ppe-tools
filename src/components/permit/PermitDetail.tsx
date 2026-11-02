@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   displayStatus,
   requiredRoles,
@@ -54,6 +54,10 @@ export default function PermitDetail({
     [qr, setQr] = useState("");
   const [inspectionFormCode, setInspectionFormCode] = useState("");
   const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, string>>({});
+  const actionHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (action) actionHeading.current?.focus();
+  }, [action]);
   const inspectionForms = p.data.forms.filter(f =>
     f.template.config.layoutVersion === "amt-2026-11-v2" &&
     f.template.config.fields.some(field => field.kind === "check"),
@@ -119,6 +123,19 @@ export default function PermitDetail({
     (owner || actor.admin || assigned.length)
   )
     available.push("cancel");
+  const stages = ["สร้างคำขอ", "พิจารณาอนุมัติ", "พร้อมเปิดงาน", "ปฏิบัติงาน", "ตรวจรับปิดงาน", "เสร็จสิ้น"];
+  const stageIndex = { draft: 0, submitted: 1, approved: 2, active: 3, suspended: 3, closing: 4, closed: 5, cancelled: -1 }[p.status];
+  const nextStep = expired
+    ? "พ้นช่วงเวลาที่อนุญาตแล้ว ต้องขออนุมัติฉบับใหม่ก่อนทำงานต่อ"
+    : p.status === "draft" ? "ผู้ขออนุญาตตรวจทานข้อมูลและลงนามส่งคำขอ"
+    : p.status === "submitted" ? `รอ${nextApproval ? ROLE_LABELS[nextApproval] : "ผู้ลงนาม"}พิจารณาตามลำดับ`
+    : p.status === "approved" ? "เจ้าของพื้นที่ยืนยันความพร้อมหน้างานก่อนเปิดงาน"
+    : p.status === "active" ? "ติดตามความพร้อมระหว่างทำงาน และขอปิดงานเมื่อเสร็จสิ้น"
+    : p.status === "suspended" ? "เจ้าของพื้นที่ตรวจความพร้อมก่อนยืนยันกลับเข้าทำงาน"
+    : p.status === "closing" ? `รอ${nextClose ? ROLE_LABELS[nextClose] : "ผู้ลงนาม"}ตรวจรับปิดงานตามลำดับ`
+    : p.status === "closed" ? "ตรวจรับและปิดงานเรียบร้อยแล้ว"
+    : "ใบอนุญาตฉบับนี้ถูกยกเลิกแล้ว";
+  const primaryAction = ["submit", "approve", "start", "resume", "close", "request_close", "inspect"].find(value => available.includes(value));
   async function perform(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -161,11 +178,12 @@ export default function PermitDetail({
     }
   }
   return (
-    <div className="wp-stack">
-      <div className="wp-page-title wp-no-print">
+    <div className="wp-stack wpd-record">
+      <div className="wp-page-title wp-no-print wpd-title">
         <div>
           <span className="wp-eyebrow">PERMIT RECORD · V{p.version}</span>
           <h2>{p.data.title}</h2>
+          <p>{company.toUpperCase()} · ปรับปรุงล่าสุด {dateTime(p.updated_at)}</p>
         </div>
         <div className="wp-inline">
           <button className="wp-secondary" onClick={onBack}>
@@ -175,201 +193,25 @@ export default function PermitDetail({
             พิมพ์สรุปข้อมูล
           </button>
           {supportsOriginalPdf(p) && (
-            <a className="wp-primary" href={`/api/permit/permits/${p.id}/pdf?company_id=${encodeURIComponent(company)}`} target="_blank" rel="noopener noreferrer">
+            <a className="wp-secondary" href={`/api/permit/permits/${p.id}/pdf?company_id=${encodeURIComponent(company)}`} target="_blank" rel="noopener noreferrer">
               พิมพ์ตามแม่แบบ / PDF
             </a>
           )}
         </div>
       </div>
-      <article className="wp-panel wp-document">
-        <header className="wp-document-head">
-          <div>
-            <span className="wp-eyebrow">
-              {company.toUpperCase()} · WORK PERMIT
-            </span>
-            <h2>{p.data.title}</h2>
-            <p className="wp-muted">เลขอ้างอิง {p.id}</p>
-            <span className={`wp-status ${displayStatus(p)}`}>
-              {STATUS_LABELS[displayStatus(p)]}
-            </span>
-          </div>
-          {qr && (
-            <div className="wp-qr">
-              <img src={qr} alt="QR ตรวจสอบสถานะล่าสุดของใบอนุญาต" />
-              <small>
-                สแกนตรวจสถานะล่าสุด
-                <br />
-                ต้องเข้าสู่ระบบ
-              </small>
-            </div>
-          )}
-        </header>
-        {p.status === "draft" && (
-          <p className="wp-notice">ฉบับร่าง — ยังไม่ใช่การอนุญาตให้เริ่มงาน</p>
-        )}
-        {expired && (
-          <p className="wp-error">
-            พ้นช่วงเวลาที่ได้รับอนุญาตแล้ว ต้องขออนุมัติฉบับใหม่ก่อนทำงานต่อ
-          </p>
-        )}
-        <dl className="wp-details">
-          <div>
-            <dt>พื้นที่</dt>
-            <dd>{p.data.location}</dd>
-          </div>
-          <div>
-            <dt>บริษัท / หน่วยงานผู้ปฏิบัติงาน</dt>
-            <dd>{p.data.contractorName}</dd>
-          </div>
-          <div>
-            <dt>เริ่มงาน (เวลาไทย)</dt>
-            <dd>{dateTime(p.data.startsAt)}</dd>
-          </div>
-          <div>
-            <dt>สิ้นสุด (เวลาไทย)</dt>
-            <dd>{dateTime(p.data.endsAt)}</dd>
-          </div>
-          <div>
-            <dt>ติดต่อ</dt>
-            <dd>{p.data.phone}</dd>
-          </div>
-          <div>
-            <dt>งานโครงการ</dt>
-            <dd>{p.data.project ? "ใช่" : "ไม่ใช่"}</dd>
-          </div>
-        </dl>
-        {(
-          [
-            ["detail", "รายละเอียดงาน"],
-            ["workers", "ผู้ปฏิบัติงาน"],
-            ["fireImpact", "ผลกระทบระบบดับเพลิง"],
-          ] as const
-        ).map(([k, label]) => (
-          <section key={k}>
-            <h4>{label}</h4>
-            <p className="wp-pre">{p.data[k]}</p>
-          </section>
-        ))}
-        {p.data.sourcePermitId && (
-          <p>อ้างอิงฉบับก่อนหน้า: {p.data.sourcePermitId}</p>
-        )}
-        {p.data.forms.map((f) => (
-          <section key={f.template.id} className="wp-form-section">
-            <div className="wp-section-heading">
-              <h3>
-                {f.template.code} · {f.template.name}
-              </h3>
-              <span>
-                Rev.{f.template.revision} / V{f.template.version}
-              </span>
-            </div>
-            <p className="wp-muted">แบบฟอร์มดิจิทัลตามแม่แบบที่บริษัทเปิดใช้</p>
-            {f.template.config.fields.map((field) => (
-              <div className="wp-answer" key={field.id}>
-                <strong>{field.label}</strong>
-                <p className="wp-pre">
-                  {field.kind === "choice"
-                    ? field.options?.find(o => o.value === f.answers[field.id])?.label || "ยังไม่ระบุ"
-                    : f.answers[field.id] === "yes"
-                    ? "ผ่าน / จัดให้มี"
-                    : f.answers[field.id] === "no"
-                      ? "ไม่ผ่าน"
-                      : f.answers[field.id]?.startsWith("na:")
-                        ? `ไม่เกี่ยวข้อง: ${f.answers[field.id].slice(3)}`
-                        : f.answers[field.id] || "ยังไม่ระบุ"}
-                </p>
-              </div>
-            ))}
-          </section>
-        ))}
-        <section>
-          <h3>ลายเซ็นและการยืนยัน</h3>
-          {!p.data.signatures.length && (
-            <p className="wp-muted">ยังไม่มีผู้ลงนาม</p>
-          )}
-          <div className="wp-signatures">
-            {p.data.signatures.map((s, i) => (
-              <div key={i} className="wp-signature">
-                <strong>
-                  {s.stage.startsWith("superseded:")
-                    ? "ยกเลิกผลการลงนามเดิม"
-                    : s.stage === "approve"
-                      ? "อนุมัติ"
-                      : s.stage === "close"
-                        ? "ปิดงาน"
-                        : s.stage === "start"
-                          ? "เปิดงาน"
-                          : s.stage === "resume" || s.stage.startsWith("resume:")
-                            ? "ยืนยันกลับเข้าทำงาน"
-                            : "ยื่นคำขอ"}{" "}
-                  · {ROLE_LABELS[s.role as PermitRole] || "ผู้ขออนุญาต"}
-                </strong>
-                <img src={s.image} alt={`ลายเซ็น ${s.name}`} />
-                <b>{s.name}</b>
-                <small>{dateTime(s.at)}</small>
-                <small className="wp-hash">SHA-256 {s.hash}</small>
-              </div>
-            ))}
-          </div>
-        </section>
-        {(p.data.inspections?.length ?? 0) > 0 && (
-          <section className="wp-form-section">
-            <h3>ผลตรวจระหว่างปฏิบัติงาน</h3>
-            {[...(p.data.inspections || [])].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).map(inspection => {
-              const form = p.data.forms.find(f => f.template.code === inspection.formCode);
-              const failed = Object.values(inspection.answers).some(a => a === "no");
-              return (
-                <section key={inspection.id} className="wp-panel">
-                  <div className="wp-section-heading">
-                    <h4>{inspection.formCode} · {inspection.name}</h4>
-                    <span className={`wp-status ${failed ? "suspended" : "active"}`}>
-                      {failed ? "พบข้อไม่ผ่าน — พักงาน" : "ไม่พบข้อไม่ผ่านในรายการ"}
-                    </span>
-                  </div>
-                  <p className="wp-muted">{dateTime(inspection.at)}</p>
-                  {Object.entries(inspection.answers).map(([id, answer]) => (
-                    <div className="wp-answer" key={id}>
-                      <strong>{form?.template.config.fields.find(f => f.id === id)?.label || id}</strong>
-                      <p>{answer === "yes" ? "ผ่าน" : answer === "no" ? "ไม่ผ่าน" : answer.startsWith("na:") ? `ไม่เกี่ยวข้อง: ${answer.slice(3)}` : answer}</p>
-                    </div>
-                  ))}
-                  <p className="wp-pre">{inspection.note}</p>
-                </section>
-              );
-            })}
-          </section>
-        )}
-        <section>
-          <h3>เอกสารแนบ ({p.data.attachments.length})</h3>
-          {p.data.attachments.map((a) => (
-            <p key={a.id}>
-              <a href={a.data} download={a.name}>
-                {a.name}
-              </a>
-            </p>
-          ))}
-        </section>
-        <section>
-          <h3>ประวัติการดำเนินการ</h3>
-          <ol className="wp-timeline">
-            {p.data.events.map((e) => (
-              <li key={e.id}>
-                <b>{actionLabels[e.action] || e.action}</b>
-                <span>
-                  {e.name} · {dateTime(e.at)}
-                </span>
-                {e.note && <p className="wp-pre">{e.note}</p>}
-              </li>
-            ))}
-          </ol>
-        </section>
-        <footer className="wp-print-note">
-          เอกสารแสดงข้อมูล ณ เวลาที่พิมพ์ · ตรวจสอบสถานะล่าสุดผ่าน QR ก่อนใช้งาน
-        </footer>
-      </article>
-      <section className="wp-panel wp-no-print">
-        <h3>ดำเนินการกับใบอนุญาต</h3>
-        <div className="wp-actions">
+      <section className={`wpd-workflow wp-no-print${expired || p.status === "suspended" ? " is-paused" : ""}`} aria-label="ความคืบหน้าของใบอนุญาต">
+        <div className="wpd-workflow-heading">
+          <div><span className="wpd-kicker">ขั้นตอนปัจจุบัน</span><h3>{nextStep}</h3></div>
+          <span className={`wp-status ${displayStatus(p)}`}>{STATUS_LABELS[displayStatus(p)]}</span>
+        </div>
+        <dl className="wpd-work-context"><div><dt>พื้นที่ปฏิบัติงาน</dt><dd>{p.data.location || "ยังไม่ระบุ"}</dd></div><div><dt>เริ่มงาน · เวลาไทย</dt><dd>{dateTime(p.data.startsAt)}</dd></div><div><dt>สิ้นสุด · เวลาไทย</dt><dd>{dateTime(p.data.endsAt)}</dd></div></dl>
+        <ol className="wpd-steps">
+          {stages.map((label, index) => <li key={label} className={index < stageIndex ? "is-complete" : index === stageIndex ? "is-current" : ""} aria-current={index === stageIndex ? "step" : undefined}><span aria-hidden="true">{index < stageIndex ? "✓" : index + 1}</span><b>{index === stageIndex && expired ? "พ้นช่วงเวลาอนุญาต" : index === stageIndex && p.status === "suspended" ? "พักงาน" : label}</b></li>)}
+        </ol>
+      </section>
+      <section className="wp-panel wp-no-print wpd-action-panel" aria-labelledby="permit-actions-title">
+        <div className="wpd-action-heading"><div><span className="wpd-kicker">ขั้นตอนของคุณ</span><h3 id="permit-actions-title">ดำเนินการกับใบอนุญาต</h3></div><span className="wpd-action-hint">{available.length ? "เลือกดำเนินการ แล้วตรวจทานก่อนยืนยัน" : "ติดตามสถานะและตรวจสอบเอกสารได้ด้านล่าง"}</span></div>
+        <div className="wp-actions wpd-action-buttons">
           {owner && p.status === "draft" && (
             <button className="wp-secondary" onClick={onEdit}>
               แก้ไขร่าง
@@ -390,8 +232,10 @@ export default function PermitDetail({
           {available.map((v) => (
             <button
               key={v}
+              disabled={busy}
+              aria-pressed={action === v}
               className={
-                v === "suspend" || v === "cancel" ? "wp-danger" : "wp-primary"
+                v === "suspend" || v === "cancel" ? "wp-danger" : v === primaryAction && !action ? "wp-primary" : "wp-secondary"
               }
               onClick={() => {
                 setAction(v);
@@ -410,8 +254,8 @@ export default function PermitDetail({
           <p className="wp-muted">ไม่มีรายการที่ต้องดำเนินการสำหรับบัญชีนี้</p>
         )}
         {action && (
-          <form onSubmit={perform} className="wp-action-form">
-            <h3>{actionLabels[action]}</h3>
+          <form onSubmit={perform} className="wp-action-form wpd-action-form">
+            <h3 ref={actionHeading} tabIndex={-1}>{actionLabels[action]}</h3>
             {action === "inspect" && inspectionForm && (
               <fieldset className="wp-panel">
                 <legend>รายการตรวจระหว่างปฏิบัติงาน</legend>
@@ -520,6 +364,199 @@ export default function PermitDetail({
           </p>
         )}
       </section>
+      <nav className="wpd-record-nav wp-no-print" aria-label="ส่วนต่าง ๆ ของใบอนุญาต">
+        <a href="#permit-overview">ข้อมูลคำขอ</a><a href="#permit-forms">แบบฟอร์ม ({p.data.forms.length})</a><a href="#permit-signatures">ลายเซ็น ({p.data.signatures.length})</a><a href="#permit-history">ประวัติการดำเนินการ</a>
+      </nav>
+      <article className="wp-panel wp-document wpd-document" id="permit-overview">
+        <header className="wp-document-head">
+          <div>
+            <span className="wp-eyebrow">
+              {company.toUpperCase()} · WORK PERMIT
+            </span>
+            <h2>{p.data.title}</h2>
+            <p className="wp-muted">เลขอ้างอิง {p.id}</p>
+            <span className={`wp-status ${displayStatus(p)}`}>
+              {STATUS_LABELS[displayStatus(p)]}
+            </span>
+          </div>
+          {qr && (
+            <div className="wp-qr">
+              <img src={qr} width={160} height={160} decoding="async" alt="QR ตรวจสอบสถานะล่าสุดของใบอนุญาต" />
+              <small>
+                สแกนตรวจสถานะล่าสุด
+                <br />
+                ต้องเข้าสู่ระบบ
+              </small>
+            </div>
+          )}
+        </header>
+        {p.status === "draft" && (
+          <p className="wp-notice">ฉบับร่าง — ยังไม่ใช่การอนุญาตให้เริ่มงาน</p>
+        )}
+        {expired && (
+          <p className="wp-error">
+            พ้นช่วงเวลาที่ได้รับอนุญาตแล้ว ต้องขออนุมัติฉบับใหม่ก่อนทำงานต่อ
+          </p>
+        )}
+        <dl className="wp-details">
+          <div>
+            <dt>พื้นที่</dt>
+            <dd>{p.data.location}</dd>
+          </div>
+          <div>
+            <dt>บริษัท / หน่วยงานผู้ปฏิบัติงาน</dt>
+            <dd>{p.data.contractorName}</dd>
+          </div>
+          <div>
+            <dt>เริ่มงาน (เวลาไทย)</dt>
+            <dd>{dateTime(p.data.startsAt)}</dd>
+          </div>
+          <div>
+            <dt>สิ้นสุด (เวลาไทย)</dt>
+            <dd>{dateTime(p.data.endsAt)}</dd>
+          </div>
+          <div>
+            <dt>ติดต่อ</dt>
+            <dd>{p.data.phone}</dd>
+          </div>
+          <div>
+            <dt>งานโครงการ</dt>
+            <dd>{p.data.project ? "ใช่" : "ไม่ใช่"}</dd>
+          </div>
+        </dl>
+        {(
+          [
+            ["detail", "รายละเอียดงาน"],
+            ["workers", "ผู้ปฏิบัติงาน"],
+            ["fireImpact", "ผลกระทบระบบดับเพลิง"],
+          ] as const
+        ).map(([k, label]) => (
+          <section key={k}>
+            <h4>{label}</h4>
+            <p className="wp-pre">{p.data[k]}</p>
+          </section>
+        ))}
+        {p.data.sourcePermitId && (
+          <p>อ้างอิงฉบับก่อนหน้า: {p.data.sourcePermitId}</p>
+        )}
+        <div id="permit-forms" className="wpd-document-section">
+        {p.data.forms.map((f) => (
+          <section key={f.template.id} className="wp-form-section">
+            <div className="wp-section-heading">
+              <h3>
+                {f.template.code} · {f.template.name}
+              </h3>
+              <span>
+                Rev.{f.template.revision} / V{f.template.version}
+              </span>
+            </div>
+            <p className="wp-muted">แบบฟอร์มดิจิทัลตามแม่แบบที่บริษัทเปิดใช้</p>
+            {f.template.config.fields.map((field) => (
+              <div className="wp-answer" key={field.id}>
+                <strong>{field.label}</strong>
+                <p className="wp-pre">
+                  {field.kind === "choice"
+                    ? field.options?.find(o => o.value === f.answers[field.id])?.label || "ยังไม่ระบุ"
+                    : f.answers[field.id] === "yes"
+                    ? "ผ่าน / จัดให้มี"
+                    : f.answers[field.id] === "no"
+                      ? "ไม่ผ่าน"
+                      : f.answers[field.id]?.startsWith("na:")
+                        ? `ไม่เกี่ยวข้อง: ${f.answers[field.id].slice(3)}`
+                        : f.answers[field.id] || "ยังไม่ระบุ"}
+                </p>
+              </div>
+            ))}
+          </section>
+        ))}
+        </div>
+        <section id="permit-signatures" className="wpd-document-section">
+          <div className="wpd-section-title"><h3>ลายเซ็นและการยืนยัน</h3><span>{p.data.signatures.length} รายการ</span></div>
+          {!p.data.signatures.length && (
+            <p className="wp-muted">ยังไม่มีผู้ลงนาม</p>
+          )}
+          <div className="wp-signatures">
+            {p.data.signatures.map((s, i) => (
+              <div key={i} className="wp-signature">
+                <strong>
+                  {s.stage.startsWith("superseded:")
+                    ? "ยกเลิกผลการลงนามเดิม"
+                    : s.stage === "approve"
+                      ? "อนุมัติ"
+                      : s.stage === "close"
+                        ? "ปิดงาน"
+                        : s.stage === "start"
+                          ? "เปิดงาน"
+                          : s.stage === "resume" || s.stage.startsWith("resume:")
+                            ? "ยืนยันกลับเข้าทำงาน"
+                            : "ยื่นคำขอ"}{" "}
+                  · {ROLE_LABELS[s.role as PermitRole] || "ผู้ขออนุญาต"}
+                </strong>
+                <img src={s.image} decoding="async" alt={`ลายเซ็น ${s.name}`} />
+                <b>{s.name}</b>
+                <small>{dateTime(s.at)}</small>
+                <small className="wp-hash">SHA-256 {s.hash}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+        {(p.data.inspections?.length ?? 0) > 0 && (
+          <section className="wp-form-section">
+            <h3>ผลตรวจระหว่างปฏิบัติงาน</h3>
+            {[...(p.data.inspections || [])].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).map(inspection => {
+              const form = p.data.forms.find(f => f.template.code === inspection.formCode);
+              const failed = Object.values(inspection.answers).some(a => a === "no");
+              return (
+                <section key={inspection.id} className="wp-panel">
+                  <div className="wp-section-heading">
+                    <h4>{inspection.formCode} · {inspection.name}</h4>
+                    <span className={`wp-status ${failed ? "suspended" : "active"}`}>
+                      {failed ? "พบข้อไม่ผ่าน — พักงาน" : "ไม่พบข้อไม่ผ่านในรายการ"}
+                    </span>
+                  </div>
+                  <p className="wp-muted">{dateTime(inspection.at)}</p>
+                  {Object.entries(inspection.answers).map(([id, answer]) => (
+                    <div className="wp-answer" key={id}>
+                      <strong>{form?.template.config.fields.find(f => f.id === id)?.label || id}</strong>
+                      <p>{answer === "yes" ? "ผ่าน" : answer === "no" ? "ไม่ผ่าน" : answer.startsWith("na:") ? `ไม่เกี่ยวข้อง: ${answer.slice(3)}` : answer}</p>
+                    </div>
+                  ))}
+                  <p className="wp-pre">{inspection.note}</p>
+                </section>
+              );
+            })}
+          </section>
+        )}
+        <section className="wpd-document-section">
+          <div className="wpd-section-title"><h3>เอกสารแนบ</h3><span>{p.data.attachments.length} ไฟล์</span></div>
+          {!p.data.attachments.length && <p className="wpd-empty-inline">ไม่มีเอกสารแนบในคำขอนี้</p>}
+          {p.data.attachments.map((a) => (
+            <p key={a.id}>
+              <a href={a.data} download={a.name}>
+                {a.name}
+              </a>
+            </p>
+          ))}
+        </section>
+        <section id="permit-history" className="wpd-document-section">
+          <div className="wpd-section-title"><h3>ประวัติการดำเนินการ</h3><span>{p.data.events.length} รายการ</span></div>
+          <ol className="wp-timeline">
+            {p.data.events.map((e) => (
+              <li key={e.id}>
+                <b>{actionLabels[e.action] || e.action}</b>
+                <span>
+                  {e.name} · {dateTime(e.at)}
+                </span>
+                {e.note && <p className="wp-pre">{e.note}</p>}
+              </li>
+            ))}
+          </ol>
+        </section>
+        <footer className="wp-print-note">
+          เอกสารแสดงข้อมูล ณ เวลาที่พิมพ์ · ตรวจสอบสถานะล่าสุดผ่าน QR ก่อนใช้งาน
+        </footer>
+      </article>
+
     </div>
   );
 }

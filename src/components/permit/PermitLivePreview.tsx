@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { PDFDocumentProxy, PDFDocumentLoadingTask, RenderTask } from "pdfjs-dist";
 import type { PermitData } from "@/lib/permit/types";
 
@@ -22,7 +23,7 @@ function printableData(data: PermitData) {
   };
 }
 
-export default function PermitLivePreview({ data, company, activeFormCode }: { data: PermitData; company: string; activeFormCode?: string }) {
+export default function PermitLivePreview({ data, company, activeFormCode, launcherHost }: { data: PermitData; company: string; activeFormCode?: string; launcherHost?: HTMLElement | null }) {
   const requestBody = useMemo(() => JSON.stringify({ data: printableData(data) }), [data]);
   const requestKey = `${company}:${requestBody}`;
   const enabled = company === "amt" && data.forms.length > 0;
@@ -51,6 +52,12 @@ export default function PermitLivePreview({ data, company, activeFormCode }: { d
   const currentWarnings = response?.key === requestKey ? response.warnings : [];
   const originalPageLabels = data.forms.flatMap(f => Array.from({ length: f.template.source_code === "005" ? 2 : 1 }, (_, n) => `${f.template.code}${f.template.source_code === "005" ? ` (${n + 1})` : ""}`));
   const formKey=data.forms.map(f=>f.template.id).join(',');
+  let activeFormPage: number | undefined;
+  let sourcePage = 1;
+  for (const form of data.forms) {
+    if (form.template.code === activeFormCode) activeFormPage = sourcePage;
+    sourcePage += form.template.source_code === "005" ? 2 : 1;
+  }
   const status = !data.forms.length ? "เลือกประเภทงานเพื่อดูแม่แบบจริง" : company !== "amt" ? "แม่แบบบริษัทนี้ยังไม่มีตัวอย่างตามต้นฉบับ" : error ? "ยังสร้างตัวอย่างล่าสุดไม่สำเร็จ" : current ? "ตัวอย่างตรงกับข้อมูลล่าสุด" : "กำลังอัปเดตตัวอย่าง — กรุณารอสักครู่";
 
   useEffect(() => {
@@ -79,10 +86,8 @@ export default function PermitLivePreview({ data, company, activeFormCode }: { d
 
   useEffect(()=>{setPageNumber(1);},[formKey]);
   useEffect(()=>{
-    if(!activeFormCode)return;
-    let page=1;
-    for(const form of data.forms){if(form.template.code===activeFormCode){setPageNumber(page);return;}page+=form.template.source_code==='005'?2:1;}
-  },[activeFormCode,formKey]);
+    if (activeFormPage) setPageNumber(activeFormPage);
+  },[activeFormCode,formKey,activeFormPage]);
 
   useEffect(() => {
     if (!response) return;
@@ -98,7 +103,7 @@ export default function PermitLivePreview({ data, company, activeFormCode }: { d
         document = await task.promise;
         if (cancelled) { await document.destroy(); return; }
         setLoaded({ key: response.key, token:response.token, document });
-      } catch (e) {
+      } catch {
         if (!cancelled) setFailure({ key: response.key, message: "เปิดตัวอย่าง PDF ไม่สำเร็จ กรุณาลองใหม่" });
       }
     })();
@@ -143,7 +148,7 @@ export default function PermitLivePreview({ data, company, activeFormCode }: { d
         canvas.getContext("2d")?.drawImage(buffer, 0, 0);
         setPainted({ key: loaded.key, token:loaded.token, page: pageNumber, zoom, width: viewportWidth, cssWidth: viewport.width / pixelRatio, cssHeight: viewport.height / pixelRatio });
         setFailure(previous=>previous?.key===loaded.key?null:previous);
-      } catch (e) {
+      } catch {
         if (!cancelled && generation === renderGeneration.current)
           setFailure({ key: loaded.key, message: "แสดงหน้าตัวอย่างไม่สำเร็จ กรุณาลองใหม่" });
       }
@@ -174,13 +179,17 @@ export default function PermitLivePreview({ data, company, activeFormCode }: { d
     const element = document.getElementById(`${form?.template.id}-${warning.fieldId}`) || document.getElementById(`wp-field-${warning.fieldId}`) || data.forms.map(f=>document.getElementById(`${f.template.id}-${warning.fieldId}`)).find(Boolean);
     setPageNumber(Math.min(Math.max(1, warning.page), pageCount || 1));
     if (element) {
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        if (parent instanceof HTMLDetailsElement) parent.open = true;
+      }
       setExpanded(false);
-      requestAnimationFrame(() => { element.focus({ preventScroll: true }); element.scrollIntoView({ block: "center", behavior: "smooth" }); });
+      requestAnimationFrame(() => { element.focus({ preventScroll: true }); element.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); });
     }
   }
 
+  const launcher = <button type="button" className="wp-preview-mobile-launch wp-primary" onClick={() => setExpanded(true)} aria-haspopup="dialog">ดูตัวอย่างแม่แบบจริง</button>;
   return <>
-    <button type="button" className="wp-preview-mobile-launch wp-primary" onClick={() => setExpanded(true)} aria-haspopup="dialog">ดูตัวอย่างแม่แบบจริง</button>
+    {launcherHost ? createPortal(launcher, launcherHost) : launcher}
     {expanded && <div className="wp-preview-backdrop" aria-hidden="true" onClick={() => setExpanded(false)} />}
     <aside ref={asideRef} className={`wp-live-preview wp-no-print${expanded ? " is-expanded" : ""}`} role={expanded ? "dialog" : "complementary"} aria-modal={expanded ? true : undefined} aria-label="ตัวอย่างแม่แบบจริง" data-testid="permit-live-preview" data-preview-state={current ? "current" : error ? "error" : enabled ? "updating" : "empty"}>
       <div className="wp-preview-heading"><div><h3>ตัวอย่างแม่แบบจริง</h3><p>อัปเดตเมื่อหยุดพิมพ์ครู่หนึ่ง</p></div>
