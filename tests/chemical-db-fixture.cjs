@@ -74,6 +74,14 @@ async function startFixture(port=4311, options={}) {
         return json(200,[]);
       }
       if(!url.pathname.startsWith('/rest/v1/')) return json(404,{message:'Not found'});
+      if(options.setup && url.pathname==='/rest/v1/rpc/wp_search_permits' && req.method==='POST') {
+        let raw='';for await(const chunk of req)raw+=chunk;const b=JSON.parse(raw);
+        return json(200,(await db.query('select wp_search_permits($1,$2,$3,$4,$5,$6,$7,$8) as result',[b.p_company,b.p_actor,b.p_own,b.p_query,b.p_status,b.p_queue,b.p_offset,b.p_limit])).rows[0].result);
+      }
+      if(options.setup && url.pathname==='/rest/v1/rpc/wp_set_template_active' && req.method==='POST') {
+        let raw='';for await(const chunk of req)raw+=chunk;const b=JSON.parse(raw);
+        return json(200,(await db.query('select wp_set_template_active($1,$2,$3,$4) as result',[b.p_company,b.p_id,b.p_active,b.p_reviewer])).rows[0].result);
+      }
       if(options.setup && url.pathname==='/rest/v1/rpc/wp_login_attempt' && req.method==='POST') {
         let raw='';for await(const chunk of req)raw+=chunk;
         return json(200,(await db.query('select wp_login_attempt($1) as allowed',[JSON.parse(raw).p_key])).rows[0].allowed);

@@ -52,6 +52,7 @@ async function setup(db) {
     ),
   );
   await db.exec(fs.readFileSync(path.join(__dirname, '../supabase/migrations/20261015090322_permit_requester_types.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname, '../supabase/migrations/20261102063005_permit_amt_v2.sql'), 'utf8'));
   const bcrypt = require("bcryptjs");
   const hash = await bcrypt.hash("local-test-only", 4);
   for (const [username, id] of [

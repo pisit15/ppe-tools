@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   ClipboardCheck,
@@ -25,7 +25,8 @@ import { dateTime, permitApi, type DirectoryEntry } from "./api";
 import PermitEditor from "./PermitEditor";
 import PermitDetail from "./PermitDetail";
 import PermitSettings from "./PermitSettings";
-type Tab = "dashboard" | "templates" | "people";
+import PermitLocationSettings from "./PermitLocationSettings";
+type Tab = "dashboard" | "templates" | "people" | "locations";
 export default function PermitApp() {
   const sp = useSearchParams();
   const auth = useAuth();
@@ -45,6 +46,11 @@ export default function PermitApp() {
     [error, setError] = useState(""),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all");
+  const [searchDraft,setSearchDraft]=useState(""),[page,setPage]=useState(1),[queue,setQueue]=useState("all"),[total,setTotal]=useState(0),[summary,setSummary]=useState<Record<string,number>>({});
+  const requestId=useRef(0);
+  const authEpoch=useRef(0);
+  const loadedCompany=useRef("");
+  useEffect(()=>{const timer=setTimeout(()=>{setSearch(searchDraft);setPage(1);},350);return()=>clearTimeout(timer);},[searchDraft]);
   const [mode, setMode] = useState<"staff" | "contractor">("staff"),
     [username, setUsername] = useState(""),
     [password, setPassword] = useState(""),
@@ -54,29 +60,34 @@ export default function PermitApp() {
     >([]),
     [loginCompany, setLoginCompany] = useState("");
   const load = useCallback(async () => {
+    const id=++requestId.current;
     const [p, t, d, a] = await Promise.all([
-      permitApi<{ data: Permit[] }>("permits", company),
+      permitApi<{ data: Permit[];total:number;summary:Record<string,number> }>(`permits?page=${page}&q=${encodeURIComponent(search)}&status=${filter}&queue=${queue}`, company),
       permitApi<{ data: PermitTemplate[] }>("templates", company),
       permitApi<{ data: DirectoryEntry[] }>("directory", company),
       permitApi<{ actor: PermitActor }>("session", company),
     ]);
+    if(id!==requestId.current)return;
     setPermits(p.data);
+    setTotal(p.total);setSummary(p.summary);
     setTemplates(t.data);
     setDirectory(d.data);
     setActor(a.actor);
-  }, [company]);
+  }, [company,page,search,filter,queue]);
   useEffect(() => {
     let live = true;
-    setLoading(true);
+    const epoch=authEpoch.current;
+    if(loadedCompany.current!==company)setLoading(true);
     permitApi<{ actor: PermitActor }>("session", company)
       .then(async (r) => {
-        if (!live) return;
+        if (!live||epoch!==authEpoch.current) return;
         setActor(r.actor);
         if (!r.actor.admin && company !== r.actor.companyId) {
           setCompany(r.actor.companyId);
           return;
         }
         await load();
+        loadedCompany.current=company;
         if (r.actor.admin) {
           const c = await permitApi<{ data: typeof companies }>(
             "companies",
@@ -91,7 +102,7 @@ export default function PermitApp() {
         }
       })
       .catch((e) => {
-        if (live) {
+        if (live&&epoch===authEpoch.current) {
           setActor(null);
           if (!e.message.includes("เข้าสู่ระบบ")) setError(e.message);
         }
@@ -103,6 +114,12 @@ export default function PermitApp() {
       live = false;
     };
   }, [company, load, sp]);
+  useEffect(()=>{
+    if(!actor||editing||selected||tab!=="dashboard")return;
+    const refresh=()=>{if(document.visibilityState==='visible')void load().catch(e=>setError(e.message));};
+    const timer=setInterval(refresh,60000);document.addEventListener('visibilitychange',refresh);
+    return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',refresh);};
+  },[Boolean(actor),editing,selected,tab,load]);
   async function login(e: React.FormEvent) {
     e.preventDefault();
     setLoginBusy(true);
@@ -147,6 +164,7 @@ export default function PermitApp() {
     void load().catch((e) => setError(e.message));
   }
   async function logout() {
+    ++authEpoch.current;++requestId.current;loadedCompany.current="";
     try {
       await permitApi("session", company, "DELETE");
       if (!actor?.contractor) await auth.logout();
@@ -262,13 +280,8 @@ export default function PermitApp() {
         </div>
       </div>
     );
-  const visible = permits.filter(
-    (p) =>
-      (filter === "all" || displayStatus(p) === filter) &&
-      `${p.data.title} ${p.data.location} ${p.data.contractorName} ${p.id}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
+  const visible = permits;
+  const canManage=actor.admin||actor.manager;
   return (
     <div className="wp-shell">
       <aside className="wp-sidebar wp-no-print">
@@ -292,10 +305,11 @@ export default function PermitApp() {
               label: "ภาพรวมและใบอนุญาต",
               icon: LayoutDashboard,
             },
-            ...(actor.admin
+            ...(canManage
               ? [
                   { id: "templates", label: "แม่แบบเอกสาร", icon: FileText },
                   { id: "people", label: "ผู้ใช้และผู้ลงนาม", icon: Users },
+                  { id: "locations", label: "พื้นที่และผู้รับผิดชอบ", icon: ShieldCheck },
                 ]
               : []),
           ].map((n) => (
@@ -417,7 +431,9 @@ export default function PermitApp() {
                 setEditing(true);
               }}
             />
-          ) : tab !== "dashboard" && actor.admin ? (
+          ) : tab === "locations" && canManage ? (
+            <PermitLocationSettings key={company} company={company} directory={directory}/>
+          ) : (tab === "templates" || tab === "people") && canManage ? (
             <PermitSettings
               key={company + tab}
               company={company}
@@ -425,6 +441,7 @@ export default function PermitApp() {
               templates={templates}
               directory={directory}
               onRefresh={load}
+              globalAdmin={actor.admin}
             />
           ) : (
             <>
@@ -454,6 +471,13 @@ export default function PermitApp() {
                   <span>REQUEST · REVIEW · WORK · CLOSE</span>
                 </div>
               </section>
+              {(!directory.some(m=>m.role==='area_owner')||!directory.some(m=>m.role==='safety'))&&(
+                <div className="wp-notice" role="status">บริษัทนี้ยังไม่ได้กำหนดเจ้าของพื้นที่หรือผู้ตรวจความปลอดภัยครบ บันทึกร่างได้และต้องตั้งค่าผู้ลงนามก่อนส่งคำขอ {canManage&&<button className="wp-link" onClick={()=>setTab('people')}>ตั้งค่าผู้ลงนาม</button>}</div>
+              )}
+              {summary.due>0&&<div className="wp-notice" role="status">มีใบอนุญาตใกล้หมดอายุภายใน 2 ชั่วโมง {summary.due} ใบ <button className="wp-link" onClick={()=>{setQueue('due');setPage(1);}}>ดูรายการ</button></div>}
+              <div className="wp-inline" aria-label="คิวงาน">
+                {[["all","ทั้งหมด"],["mine",`รอฉันดำเนินการ (${summary.mine||0})`],["today","งานวันนี้"],["due","ใกล้หมดอายุ"],["closing",`รอปิดงาน (${summary.closing||0})`]].map(([key,label])=><button key={key} className={queue===key?'wp-primary':'wp-secondary'} onClick={()=>{setQueue(key);setPage(1);}}>{label}</button>)}
+              </div>
               <div className="wp-stats">
                 {[
                   { label: "รออนุมัติ", status: "submitted", icon: FileText },
@@ -473,13 +497,7 @@ export default function PermitApp() {
                     <s.icon size={22} />
                     <strong>
                       {
-                        permits.filter((p) =>
-                          s.status === "attention"
-                            ? ["suspended", "expired"].includes(
-                                displayStatus(p),
-                              )
-                            : displayStatus(p) === s.status,
-                        ).length
+                        summary[s.status]||0
                       }
                     </strong>
                     <span>{s.label}</span>
@@ -491,7 +509,7 @@ export default function PermitApp() {
                   <div>
                     <h2>รายการใบอนุญาต</h2>
                     <p className="wp-muted">
-                      100 รายการล่าสุด · สถานะตามช่วงเวลาปัจจุบัน
+                      พบ {total} รายการ · ค้นได้จากประวัติทั้งหมด
                     </p>
                   </div>
                   <button
@@ -509,14 +527,14 @@ export default function PermitApp() {
                     <input
                       aria-label="ค้นหาใบอนุญาต"
                       placeholder="ค้นหาชื่องาน พื้นที่ แผนก หรือบริษัทผู้รับเหมา"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
+                      value={searchDraft}
+                      onChange={(e) => setSearchDraft(e.target.value)}
                     />
                   </label>
                   <select
                     aria-label="กรองสถานะ"
                     value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
+                    onChange={(e) => {setFilter(e.target.value);setPage(1);}}
                   >
                     <option value="all">ทุกสถานะ</option>
                     {Object.entries(STATUS_LABELS).map(([k, v]) => (
@@ -593,6 +611,11 @@ export default function PermitApp() {
                     </table>
                   </div>
                 )}
+                <div className="wp-inline" style={{justifyContent:'space-between',marginTop:16}}>
+                  <button className="wp-secondary" disabled={page<=1} onClick={()=>setPage(p=>p-1)}>หน้าก่อน</button>
+                  <span>หน้า {page} / {Math.max(1,Math.ceil(total/25))}</span>
+                  <button className="wp-secondary" disabled={page*25>=total} onClick={()=>setPage(p=>p+1)}>หน้าถัดไป</button>
+                </div>
               </section>
               <p className="wp-footnote">
                 การอนุมัติเอกสารและการตรวจหน้างานเป็นคนละขั้นตอน ·

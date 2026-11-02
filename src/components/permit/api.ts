@@ -4,8 +4,10 @@ export async function permitApi<T = Record<string, unknown>>(
   method = "GET",
   body?: unknown,
 ): Promise<T> {
+  const [pathname, query] = resource.split("?",2);
+  const params=new URLSearchParams(query);params.set("company_id",company);
   const r = await fetch(
-    `/api/permit/${resource}?company_id=${encodeURIComponent(company)}`,
+    `/api/permit/${pathname}?${params.toString()}`,
     {
       method,
       cache: "no-store",

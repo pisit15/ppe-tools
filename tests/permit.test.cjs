@@ -138,7 +138,7 @@ test("workflow requires separate ordered signers and explicitly opens and closes
   p = act(p, owner, "close");
   p = act(p, safety, "close");
   assert.equal(p.status, "closed");
-  assert.equal(p.data.signatures.length, 7);
+  assert.equal(p.data.signatures.length, 8);
   assert.throws(() => act(p, owner, "start"));
 });
 test("future work, expired work and missing consent cannot be approved/opened", () => {

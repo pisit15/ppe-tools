@@ -1,7 +1,7 @@
 WORK PERMIT — implementation and rollout notes
 
 Entry: /permit (existing EA SHE Tools application)
-Branch: codex/work-permit
+Branch: codex/amt-permit-v2
 
 IMPLEMENTED
 - Dedicated contractor accounts and cookie; existing staff use Tools login.
@@ -16,7 +16,12 @@ IMPLEMENTED
 - Returned requests retain the prior signed snapshot in the audit event and mark old signatures superseded.
 - Optimistic concurrency on every permit update; append-only audit and immutable final documents.
 - Small PDF/PNG/JPG attachments, authenticated source PDF viewing, printable digital document and authenticated QR verification.
-- Responsive Thai UI, company selector, status filtering and search over latest 100 records.
+- Responsive Thai UI, company selector, server-side history search/pagination and company/owner scoped queue totals. Dashboard refreshes every minute while visible.
+- Company-scoped permit_admin can manage requesters, signers, templates and standard locations only within their company; only global admin grants/revokes permit_admin. Existing allowed_modules restrictions are enforced.
+- AMT detailed version 2 packages for General and Height, original PDF SHA-256 and immutable checked layout. Explicit hazard applicability, controls, equipment/PPE choices and exact paper inspection rows; no preselected safety results.
+- Guided work selection adds General to specialist work; standard locations select responsible signers; common entries are shared across v2 forms; worker count is explicit.
+- Structured Height inspections automatically suspend work on a failed item; site owner must sign before resuming. Recorded inspection answers print in a dedicated annex.
+- Template activation is transactional, one active version per company/code with reviewer/time. Existing document snapshots stay unchanged.
 
 ROLLOUT (not automatically applied to production)
 1. Review and apply supabase/migrations/20261015063802_work_permit.sql.
@@ -42,14 +47,14 @@ CURRENT LIMITS / NEXT IMPLEMENTATION
 - On-site checks and gas readings use text entries, not structured hourly measurement tables.
 - Overtime/extension is a new linked request, not a separate same-document overtime approval workflow.
 - Attachments are limited to 8 files, 350 KB each, stored in private permit JSON. Move to private object storage before increasing size.
-- Dashboard shows latest 100 requests. Server-side history pagination and aggregate reporting are pending.
-- No automated reminder delivery or area/time conflict detection yet.
+- Dashboard includes actionable personal, today, expiring and closing queues across all history. External LINE/email delivery and area/time conflict detection are pending.
 - Contractors do not share each other's permits even when they have the same contractor company name.
-- Production migration, deployment, and company acceptance of templates are not part of local test evidence.
+- New v2 template packages are imported inactive for company review; no personnel are assigned automatically. Global admin must name the AMT manager; manager assigns actual signers/locations. Hot Work revision and Confined Space specifics require AMT document owner confirmation.
 
 VALIDATION
 node --test tests/permit.test.cjs
 node --test tests/permit-pdf.test.cjs
+node --test tests/amt-forms.test.cjs tests/permit-amt-v2.test.cjs
 node node_modules/typescript/bin/tsc --noEmit --incremental false
 node node_modules/@playwright/test/cli.js test --config playwright.permit.config.cjs
 node tests/chemical-build.cjs

@@ -22,8 +22,7 @@ const { startFixture } = require("./chemical-db-fixture.cjs");
     process.execPath,
     [
       path.join(root, "node_modules/next/dist/bin/next"),
-      "dev",
-      "--webpack",
+      ...(process.env.PERMIT_TEST_PRODUCTION === "1" ? ["start"] : ["dev", "--webpack"]),
       "--hostname",
       "127.0.0.1",
       "--port",

@@ -1,0 +1,106 @@
+const {test, expect} = require('@playwright/test');
+const fs = require('node:fs');
+const signature = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jmV8AAAAASUVORK5CYII=';
+const ownerKey = 'company_users:aaaaaaaa-1111-4111-8111-111111111111';
+const safetyKey = 'company_users:bbbbbbbb-1111-4111-8111-111111111111';
+test.use({actionTimeout:15000});
+async function login(request,username) {
+  const r=await request.post('/api/auth/login',{data:{username,password:'local-test-only'}});
+  expect(r.status(),await r.text()).toBe(200);
+}
+async function api(request,resource,method='get',data,company='amt') {
+  const r=await request[method]('/api/permit/'+resource+(resource.includes('?')?'&':'?')+'company_id='+company,data ? {data} : undefined);
+  return {r,body:await r.json()};
+}
+test('AMT v2 guided requester, scoped manager, location and signed lifecycle',async({page,browser})=>{
+  await page.request.post('http://127.0.0.1:4321/__test/reset');
+  await login(page.request,'audit-admin');
+  let result=await api(page.request,'templates','post',{action:'import_v2'});
+  expect(result.r.status(),JSON.stringify(result.body)).toBe(200);
+  const templates=(await api(page.request,'templates')).body.data.filter(t=>t.config.layoutVersion==='amt-2026-11-v2');
+  expect(templates).toHaveLength(2);
+  expect(templates.every(t=>t.active===false)).toBe(true);
+  for(const t of templates) expect((await api(page.request,'templates','patch',{id:t.id,active:true,confirm:true})).r.status()).toBe(200);
+  const staff=(await api(page.request,'members')).body.data;
+  const managerKey=staff.find(s=>s.name==='audit-amt').key;
+  expect((await api(page.request,'members','post',{actor_key:managerKey,role:'permit_admin'})).r.status()).toBe(201);
+  const manager=await browser.newContext({baseURL:'http://127.0.0.1:4320'});
+  await login(manager.request,'audit-amt');
+  expect((await api(manager.request,'session')).body.actor.manager).toBe(true);
+  expect((await api(manager.request,'templates','get',null,'aab')).r.status()).toBe(403);
+  expect((await api(manager.request,'members','post',{actor_key:ownerKey,role:'permit_admin'})).r.status()).toBe(403);
+  const managerPage=await manager.newPage();
+  await managerPage.goto('/permit?company_id=amt');
+  await expect(managerPage.getByRole('button',{name:'ผู้ใช้และผู้ลงนาม',exact:true})).toBeVisible();
+  const location=await api(manager.request,'locations','post',{name:'อาคารผลิต 1',department:'FMT',area_owner:ownerKey,safety:safetyKey});
+  expect(location.r.status(),JSON.stringify(location.body)).toBe(201);
+  const account={username:'fmt-v2-test',password:'local-test-only',display_name:'พนักงาน FMT ทดสอบ',requester_type:'employee',department:'FMT',contractor_name:'',starts_at:new Date(Date.now()-60000).toISOString(),expires_at:new Date(Date.now()+86400000).toISOString()};
+  expect((await api(manager.request,'contractors','post',account)).r.status()).toBe(201);
+  const ctx=await browser.newContext({baseURL:'http://127.0.0.1:4320'});
+  const worker=await ctx.newPage();
+  await worker.goto('/permit');
+  await worker.getByRole('button',{name:'ผู้ขออนุญาตทำงาน',exact:true}).click();
+  await worker.getByLabel('ชื่อผู้ใช้',{exact:true}).fill(account.username);
+  await worker.getByLabel('รหัสผ่าน',{exact:true}).fill(account.password);
+  await worker.getByRole('button',{name:'เข้าสู่ Work Permit',exact:true}).click();
+  await worker.getByRole('button',{name:'สร้างคำขอใหม่',exact:true}).click();
+  await worker.getByRole('button',{name:'งานบนที่สูง',exact:true}).click();
+  await worker.getByLabel('พื้นที่มาตรฐาน',{exact:true}).selectOption(location.body.data.id);
+  await expect(worker.getByLabel('เจ้าของพื้นที่',{exact:true})).toHaveValue(ownerKey);
+  await expect(worker.getByLabel('เจ้าหน้าที่ความปลอดภัย',{exact:true})).toHaveValue(safetyKey);
+  await worker.getByLabel('ชื่องาน',{exact:true}).fill('FMT ตรวจซ่อมหลังคา — ข้อมูลทดสอบ');
+  await worker.getByLabel('เบอร์ติดต่อ',{exact:true}).fill('0000000000');
+  await worker.getByLabel('จำนวนผู้ปฏิบัติงาน',{exact:true}).fill('2');
+  await worker.getByLabel('รายละเอียด / ขอบเขตงาน',{exact:true}).fill('ตรวจซ่อมหลังคาและกั้นพื้นที่ด้านล่าง');
+  await worker.getByLabel('รายชื่อผู้ปฏิบัติงานและหน้าที่',{exact:true}).fill('พนักงานทดสอบ 1 / ผู้ปฏิบัติงาน\nพนักงานทดสอบ 2 / ผู้ควบคุม');
+  await worker.getByLabel('ผลกระทบต่อระบบดับเพลิงและการประสานงาน (หากไม่มีให้ระบุ)',{exact:true}).fill('ไม่มี');
+  const general=templates.find(t=>t.code==='AHS-003');
+  const hazard=general.config.fields.find(f=>f.id.startsWith('hazard_'));
+  const control=general.config.fields.find(f=>f.id.startsWith('control_'+hazard.id.slice(7)+'_'));
+  const hazardInput=worker.locator(`[id="${general.id}-${hazard.id}"]`);
+  await hazardInput.selectOption('yes');
+  await expect(worker.locator(`[id="${general.id}-${control.id}"]`)).toBeVisible();
+  await hazardInput.selectOption('no');
+  await expect(worker.locator(`[id="${general.id}-${control.id}"]`)).toHaveCount(0);
+  for(const t of templates) for(const f of t.config.fields) {
+    const input=worker.locator(`[id="${t.id}-${f.id}"]`);
+    if(!await input.count())continue;
+    if(f.kind==='choice')await input.selectOption(t.code==='AHS-004'&&['equipment_ladder','ppe_harness'].includes(f.id)?'yes':'no');
+    else if(f.kind==='check')await input.selectOption('yes');
+    else await input.fill('ข้อมูลทดสอบครบถ้วน');
+  }
+  await expect(worker.locator(`[id="${templates.find(t=>t.code==='AHS-004').id}-equipment"]`)).toHaveCount(0);
+  fs.mkdirSync('output/permit',{recursive:true});
+  await worker.screenshot({path:'output/permit/amt-v2-request.png',fullPage:true});
+  await worker.getByRole('button',{name:'บันทึกร่างคำขอ',exact:true}).click();
+  await expect(worker.getByRole('button',{name:'ลงนามส่งคำขอ',exact:true})).toBeVisible();
+  let permit=(await api(worker.request,'permits')).body.data[0];
+  expect(permit.data.forms).toHaveLength(2);
+  expect(permit.data.forms.every(f=>f.template.config.layoutVersion==='amt-2026-11-v2')).toBe(true);
+  expect(permit.data.workerCount).toBe(2);
+  expect(permit.data.locationId).toBe(location.body.data.id);
+  expect(permit.data.forms.every(f=>f.answers.equipment==='ข้อมูลทดสอบครบถ้วน')).toBe(true);
+  expect((await worker.request.get('/api/ppe/products?company_id=amt')).status()).toBe(401);
+  expect((await api(worker.request,'members')).r.status()).toBe(403);
+  expect((await api(worker.request,'locations','post',{name:'unauthorized'})).r.status()).toBe(403);
+  const owner=await browser.newContext({baseURL:'http://127.0.0.1:4320'}),safety=await browser.newContext({baseURL:'http://127.0.0.1:4320'});
+  await login(owner.request,'permit-owner');await login(safety.request,'permit-safety');
+  async function act(request,action,extra={}) {
+    const r=await api(request,'permits/'+permit.id,'post',{version:permit.version,action,signature,confirm:true,note:'ตรวจยืนยันสำหรับการทดสอบ',...extra});
+    expect(r.r.status(),JSON.stringify(r.body)).toBe(200);permit=r.body.data;
+  }
+  await act(worker.request,'submit');await act(owner.request,'approve');await act(safety.request,'approve');await act(owner.request,'start');
+  const height=templates.find(t=>t.code==='AHS-004');
+  const checks=height.config.fields.filter(f=>f.kind==='check');
+  const answers=Object.fromEntries(checks.map((f,i)=>[f.id,i===0?'no':'yes']));
+  await act(safety.request,'inspect',{unsafe:false,inspection:{formCode:'AHS-004',answers}});
+  expect(permit.status).toBe('suspended');
+  expect(permit.data.inspections).toHaveLength(1);
+  expect((await api(owner.request,'permits/'+permit.id,'post',{version:permit.version,action:'resume',confirm:false,note:'แก้ไขแล้ว'})).r.status()).toBe(400);
+  await act(owner.request,'resume');expect(permit.status).toBe('active');
+  await act(worker.request,'request_close');await act(owner.request,'close');await act(safety.request,'close');expect(permit.status).toBe('closed');
+  const pdf=await worker.request.get(`/api/permit/permits/${permit.id}/pdf?company_id=amt`);
+  expect(pdf.status()).toBe(200);expect((await pdf.body()).subarray(0,5).toString()).toBe('%PDF-');
+  const found=await api(worker.request,'permits?page=1&q=FMT');expect(found.r.status()).toBe(200);expect(found.body.total).toBe(1);
+  await ctx.close();await manager.close();await owner.close();await safety.close();
+});

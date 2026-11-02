@@ -5,6 +5,7 @@ import {
   assertCompany,
   assertSameOrigin,
   requireToolsActor,
+  assertModule,
 } from "@/lib/toolsSession";
 import { getSupabaseServer } from "@/lib/supabase";
 import type { PermitActor, PermitRole } from "./types";
@@ -97,6 +98,7 @@ export async function permitActor(request: NextRequest): Promise<PermitActor> {
     };
   }
   const a = await requireToolsActor(request);
+  assertModule(a, "permit", "Work Permit");
   const key = `${a.accountTable}:${a.id}`;
   const { data, error } = await getSupabaseServer()
     .from("wp_members")
@@ -113,8 +115,9 @@ export async function permitActor(request: NextRequest): Promise<PermitActor> {
     name: a.displayName,
     companyId: a.companyId,
     admin: a.isAdmin,
+    manager: (data || []).some(x => x.role === "permit_admin") && (a.isAdmin || a.companyId === (request.nextUrl.searchParams.get("company_id") || a.companyId)),
     contractor: false,
-    roles: (data || []).map((x) => x.role as PermitRole),
+    roles: (data || []).filter(x => x.role !== "permit_admin").map((x) => x.role as PermitRole),
   };
 }
 export function permitCompany(a: PermitActor, value: unknown) {
@@ -128,7 +131,7 @@ export function permitCompany(a: PermitActor, value: unknown) {
   return value;
 }
 export function permitAdmin(a: PermitActor) {
-  if (!a.admin || a.contractor)
+  if ((!a.admin && !a.manager) || a.contractor)
     throw new AccessError("เฉพาะผู้ดูแลระบบเท่านั้น", 403);
 }
 export function canReadPermit(

@@ -215,7 +215,7 @@ test("full permit workflow, authorization, signatures, template versions and PDF
   await action(owner.request, "close");
   await action(safety.request, "close");
   expect(permit.status).toBe("closed");
-  expect(permit.data.signatures.length).toBe(7);
+  expect(permit.data.signatures.length).toBe(8);
   const before = permit.data.forms[0].template;
   const v2 = await api(page.request, "templates", "post", {
     ...general,
@@ -232,7 +232,7 @@ test("full permit workflow, authorization, signatures, template versions and PDF
   await expect(worker.locator(".wp-document .wp-status")).toHaveText(
     "ปิดงานแล้ว",
   );
-  await expect(worker.locator(".wp-signature")).toHaveCount(7);
+  await expect(worker.locator(".wp-signature")).toHaveCount(8);
   const pdfLink = worker.getByRole('link', {name:'พิมพ์ตามแม่แบบ / PDF',exact:true});
   await expect(pdfLink).toBeVisible();
   const pdfResponse = await worker.request.get(await pdfLink.getAttribute('href'));

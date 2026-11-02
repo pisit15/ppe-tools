@@ -140,6 +140,7 @@ export function transition(
       )
         deny("เจ้าของพื้นที่ต้องตรวจยืนยันก่อนกลับเข้าทำงาน");
       note = `ตรวจยืนยันกลับเข้าทำงาน: ${note}`;
+      sign(`resume:${p.version}`, "area_owner");
       next.status = "active";
       break;
     case "inspect":
@@ -149,8 +150,24 @@ export function transition(
         !note
       )
         deny("ผู้ตรวจต้องบันทึกผลตรวจ");
-      if (b.unsafe === true) next.status = "suspended";
-      note = `${b.unsafe === true ? "ไม่ปลอดภัย — พักงาน" : "บันทึกตรวจ"}: ${note}`;
+      {
+        let unsafe=b.unsafe===true;
+        const structured=d.forms.filter(f=>f.template.config.layoutVersion==='amt-2026-11-v2'&&f.template.config.fields.some(x=>x.kind==='check'));
+        if(structured.length) {
+          const raw=b.inspection as {formCode?:string;answers?:Record<string,string>}|undefined;
+          const form=structured.find(f=>f.template.code===raw?.formCode);
+          if(!form||!raw?.answers)throw new AccessError("กรอกผลตรวจตามรายการของแบบฟอร์ม",400);
+          const answers:Record<string,string>={};
+          for(const field of form.template.config.fields.filter(f=>f.kind==='check')) {
+            const value=text(raw.answers[field.id],field.label,1000);
+            if(!['yes','no'].includes(value)&&!(value.startsWith('na:')&&value.slice(3).trim().length>=3))throw new AccessError(`ตรวจสอบ ${field.label}`,400);
+            answers[field.id]=value;if(value==='no')unsafe=true;
+          }
+          d.inspections=[...(d.inspections||[]),{id:crypto.randomUUID(),at:new Date().toISOString(),actor:a.key,name:a.name,formCode:form.template.code,answers,note}];
+        }
+        if(unsafe)next.status='suspended';
+        note=`${unsafe ? "ไม่ปลอดภัย — พักงาน" : "บันทึกตรวจ"}: ${note}`;
+      }
       break;
     case "request_close":
       if (!owner || !["active", "suspended"].includes(p.status) || !note)

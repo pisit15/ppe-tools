@@ -29,6 +29,7 @@ import {
 } from "@/lib/permit/validation";
 import { event, transition } from "@/lib/permit/workflow";
 import { PERMIT_SEEDS } from "@/lib/permit/catalog";
+import { AMT_V2_SEEDS } from "@/lib/permit/amt-forms";
 import {
   requiredRoles,
   type Permit,
@@ -66,6 +67,7 @@ async function handle(req: NextRequest, context: Context) {
       directory: ["GET"],
       members: ["GET", "POST", "DELETE"],
       contractors: ["GET", "POST", "PATCH"],
+      locations: ["GET", "POST", "PATCH"],
       templates: ["GET", "POST", "PATCH"],
       sources: ["GET"],
       permits: ["GET", "POST", "PUT"],
@@ -130,7 +132,7 @@ async function handle(req: NextRequest, context: Context) {
     const actor = await permitActor(req);
     if (resource === "session") return response({ actor });
     if (resource === "companies" && method === "GET") {
-      permitAdmin(actor);
+      if (!actor.admin) throw new AccessError("เฉพาะผู้ดูแลส่วนกลาง", 403);
       const { data, error } = await db
         .from("company_settings")
         .select("company_id,company_name")
@@ -194,9 +196,10 @@ async function handle(req: NextRequest, context: Context) {
         !uuid.test(id)
       )
         throw new AccessError("บัญชีไม่ถูกต้อง", 400);
-      const role = text(b.role, "บทบาท", 40) as PermitRole;
-      if (!["area_owner", "safety", "project_manager"].includes(role))
+      const role = text(b.role, "บทบาท", 40);
+      if (!["area_owner", "safety", "project_manager", "permit_admin"].includes(role))
         throw new AccessError("บทบาทไม่ถูกต้อง", 400);
+      if (role === "permit_admin" && !actor.admin) throw new AccessError("ผู้ดูแลส่วนกลางเป็นผู้มอบหมายสิทธิ์ดูแลบริษัท", 403);
       if (method === "DELETE") {
         const r = await db
           .from("wp_members")
@@ -219,6 +222,7 @@ async function handle(req: NextRequest, context: Context) {
         (table !== "admin_accounts" && r.data.company_id !== company)
       )
         throw new AccessError("บัญชีไม่อยู่ในบริษัทนี้", 400);
+      if(table!=="admin_accounts"&&Array.isArray(r.data.allowed_modules)&&r.data.allowed_modules.length&&!r.data.allowed_modules.includes("permit"))throw new AccessError("บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้ Work Permit",400);
       const result = await db
         .from("wp_members")
         .insert({
@@ -233,6 +237,26 @@ async function handle(req: NextRequest, context: Context) {
         throw result.error;
       }
       return response({ ok: true }, 201);
+    }
+    if (resource === "locations") {
+      if (method === "GET") {
+        let q = db.from("wp_locations").select("*").eq("company_id",company).order("name");
+        if (!actor.admin && !actor.manager) q=q.eq("active",true);
+        const r=await q;if(r.error)throw r.error;return response({data:r.data});
+      }
+      permitAdmin(actor);
+      const b=await jsonBody(req,6000);
+      if(method==="PATCH") {
+        if(!uuid.test(String(b.id)) || typeof b.active!=="boolean")throw new AccessError("ข้อมูลพื้นที่ไม่ถูกต้อง",400);
+        const r=await db.from("wp_locations").update({active:b.active}).eq("id",b.id).eq("company_id",company).select("*").maybeSingle();
+        if(r.error)throw r.error;if(!r.data)throw new AccessError("ไม่พบพื้นที่",404);return response({data:r.data});
+      }
+      const area_owner=text(b.area_owner,"เจ้าของพื้นที่",150),safety=text(b.safety,"ผู้ตรวจความปลอดภัย",150);
+      if(area_owner===safety)throw new AccessError("ผู้ลงนามต้องเป็นคนละบัญชี",400);
+      const members=await db.from("wp_members").select("*").eq("company_id",company);if(members.error)throw members.error;
+      for(const [role,key] of [["area_owner",area_owner],["safety",safety]])if(!members.data?.some(m=>m.actor_key===key&&m.role===role))throw new AccessError("กำหนดสิทธิ์ผู้ลงนามก่อนผูกพื้นที่",400);
+      const r=await db.from("wp_locations").insert({company_id:company,name:text(b.name,"ชื่อพื้นที่",200),department:text(b.department||"","แผนก",200,false),area_owner,safety}).select("*").single();
+      if(r.error){if(r.error.code==="23505")throw new AccessError("พื้นที่ชื่อนี้มีอยู่แล้ว",409);throw r.error;}return response({data:r.data},201);
     }
     if (resource === "contractors") {
       permitAdmin(actor);
@@ -318,19 +342,19 @@ async function handle(req: NextRequest, context: Context) {
           .order("version", { ascending: false });
         if (error) throw error;
         return response({
-          data: actor.admin ? data : (data || []).filter((t) => t.active),
+          data: actor.admin || actor.manager ? data : (data || []).filter((t) => t.active),
         });
       }
       permitAdmin(actor);
       const b = await jsonBody(req, 120000);
-      if (b.action === "import") {
+      if (b.action === "import" || b.action === "import_v2") {
         if (company !== "amt")
           throw new AccessError(
             "ต้นฉบับ AMITA นำเข้าได้ในบริษัท AMT จากนั้นคัดลอกไปปรับใช้กับบริษัทอื่น",
             400,
           );
         // Independent inserts make retries safe when imports were partially completed.
-        for (const seed of PERMIT_SEEDS) {
+        for (const seed of b.action === "import_v2" ? AMT_V2_SEEDS : PERMIT_SEEDS) {
           const r = await db.from("wp_templates").insert(seed);
           if (r.error && r.error.code !== "23505") throw r.error;
         }
@@ -343,19 +367,19 @@ async function handle(req: NextRequest, context: Context) {
           b.confirm !== true
         )
           throw new AccessError("ยืนยันการตรวจทานแม่แบบก่อนเปลี่ยนสถานะ", 400);
-        const { data, error } = await db
-          .from("wp_templates")
-          .update({ active: b.active })
-          .eq("id", b.id)
-          .eq("company_id", company)
-          .select("*")
-          .maybeSingle();
+        const existing=await db.from("wp_templates").select("id").eq("id",b.id).eq("company_id",company).maybeSingle();
+        if(existing.error)throw existing.error;if(!existing.data)throw new AccessError("ไม่พบแม่แบบ",404);
+        const { data, error } = await db.rpc("wp_set_template_active",{p_company:company,p_id:b.id,p_active:b.active,p_reviewer:actor.key});
         if (error) throw error;
         if (!data) throw new AccessError("ไม่พบแม่แบบ", 404);
         return response({ data });
       }
       const code = text(b.code, "รหัสเอกสาร", 60);
       const config = validateTemplate(b.config);
+      if(config.layoutVersion) {
+        const packageTemplate=AMT_V2_SEEDS.find(t=>t.code===code&&t.source_code===b.source_code&&t.revision===b.revision&&t.config.sourceSha256===config.sourceSha256);
+        if(company!=="amt"||!packageTemplate)throw new AccessError("ผังพิมพ์ไม่ตรงเลขแบบฟอร์มหรือ Revision",400);
+      }
       const latest = await db
         .from("wp_templates")
         .select("version")
@@ -414,6 +438,13 @@ async function handle(req: NextRequest, context: Context) {
     if (resource !== "permits") throw new AccessError("ไม่พบรายการ", 404);
     const id = parts[1];
     if (!id && method === "GET") {
+      if(req.nextUrl.searchParams.has("page")) {
+        const page=Number(req.nextUrl.searchParams.get("page")),limit=25;
+        const query=req.nextUrl.searchParams.get("q")||"",status=req.nextUrl.searchParams.get("status")||"all",queue=req.nextUrl.searchParams.get("queue")||"all";
+        if(!Number.isInteger(page)||page<1||page>100000||query.length>200||!["all","mine","today","due","closing"].includes(queue)||!["all","draft","submitted","approved","active","suspended","closing","closed","cancelled","expired"].includes(status))throw new AccessError("เงื่อนไขค้นหาไม่ถูกต้อง",400);
+        const r=await db.rpc("wp_search_permits",{p_company:company,p_actor:actor.key,p_own:actor.contractor,p_query:query,p_status:status,p_queue:queue,p_offset:(page-1)*limit,p_limit:limit});
+        if(r.error)throw r.error;return response({...r.data,page,pageSize:limit});
+      }
       let q = db
         .from("wp_permits")
         .select("*")
@@ -481,6 +512,12 @@ async function handle(req: NextRequest, context: Context) {
         .eq("active", true);
       if (t.error) throw t.error;
       const data = validateData(b.data, t.data as PermitTemplate[]);
+      if(data.locationId) {
+        const loc=await db.from("wp_locations").select("*").eq("id",data.locationId).eq("company_id",company).eq("active",true).maybeSingle();
+        if(loc.error)throw loc.error;if(!loc.data)throw new AccessError("พื้นที่มาตรฐานเลิกใช้หรือไม่อยู่ในบริษัทนี้",400);
+        data.location=loc.data.name;
+        data.approvers.area_owner=loc.data.area_owner;data.approvers.safety=loc.data.safety;
+      }
       if (actor.contractor)
         data.contractorName = actor.contractorName || data.contractorName;
       if (data.sourcePermitId) {
@@ -542,6 +579,9 @@ async function handle(req: NextRequest, context: Context) {
           409,
         );
       if (b.action === "submit") {
+        const active=await db.from("wp_templates").select("id").eq("company_id",company).eq("active",true);
+        if(active.error)throw active.error;
+        if(existing.data.forms.some(f=>!active.data?.some(t=>t.id===f.template.id)))throw new AccessError("แม่แบบในร่างเลิกใช้แล้ว กรุณาแก้ไขร่างและเลือกแม่แบบที่เปิดใช้อยู่",400);
         const members = await db
           .from("wp_members")
           .select("*")

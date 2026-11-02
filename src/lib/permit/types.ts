@@ -1,10 +1,12 @@
 export type PermitRole = "area_owner" | "safety" | "project_manager";
+export type PermitMemberRole = PermitRole | "permit_admin";
 export type PermitActor = {
   key: string;
   id: string;
   name: string;
   companyId: string;
   admin: boolean;
+  manager?: boolean;
   contractor: boolean;
   // Legacy contractor flag means a permit-only requester, including employees.
   requesterType?: "employee" | "contractor";
@@ -17,7 +19,10 @@ export type TemplateField = {
   id: string;
   label: string;
   required: boolean;
-  kind: "text" | "textarea" | "check";
+  kind: "text" | "textarea" | "check" | "choice";
+  options?: { value: string; label: string }[];
+  section?: string;
+  print?: { page?: number; x: number; y: number; width?: number; height?: number; marks?: { value: string; x: number; y: number }[] };
 };
 export type PermitTemplate = {
   id: string;
@@ -29,7 +34,7 @@ export type PermitTemplate = {
   active: boolean;
   source_code: string | null;
   review_note: string;
-  config: { fields: TemplateField[]; roles: PermitRole[] };
+  config: { fields: TemplateField[]; roles: PermitRole[]; layoutVersion?: string; sourceSha256?: string };
   created_at: string;
 };
 export type PermitForm = {
@@ -61,6 +66,9 @@ export type PermitData = {
   contractorName: string;
   phone: string;
   workers: string;
+  workerCount?: number;
+  locationId?: string;
+  inspections?: { id: string; at: string; actor: string; name: string; formCode: string; answers: Record<string, string>; note: string }[];
   startsAt: string;
   endsAt: string;
   fireImpact: string;
@@ -95,6 +103,9 @@ export const ROLE_LABELS: Record<PermitRole, string> = {
   area_owner: "เจ้าของพื้นที่",
   safety: "เจ้าหน้าที่ความปลอดภัย",
   project_manager: "ผู้จัดการโครงการ",
+};
+export const MEMBER_ROLE_LABELS: Record<PermitMemberRole, string> = {
+  ...ROLE_LABELS, permit_admin: "ผู้ดูแล Work Permit ของบริษัท",
 };
 export const STATUS_LABELS: Record<string, string> = {
   draft: "ร่าง",

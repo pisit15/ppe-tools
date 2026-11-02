@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import {
   ROLE_LABELS,
-  type PermitRole,
+  MEMBER_ROLE_LABELS,
+  type PermitMemberRole,
   type PermitTemplate,
 } from "@/lib/permit/types";
 import { PERMIT_SEEDS } from "@/lib/permit/catalog";
@@ -24,12 +25,14 @@ export default function PermitSettings({
   templates,
   directory,
   onRefresh,
+  globalAdmin = false,
 }: {
   company: string;
   tab: "templates" | "people";
   templates: PermitTemplate[];
   directory: DirectoryEntry[];
   onRefresh: () => Promise<void>;
+  globalAdmin?: boolean;
 }) {
   const [error, setError] = useState(""),
     [message, setMessage] = useState(""),
@@ -37,7 +40,7 @@ export default function PermitSettings({
     [accounts, setAccounts] = useState<Contractor[]>([]),
     [staff, setStaff] = useState<{ key: string; name: string }[]>([]),
     [member, setMember] = useState(""),
-    [role, setRole] = useState<PermitRole>("area_owner");
+    [role, setRole] = useState<PermitMemberRole>("area_owner");
   const [editing, setEditing] = useState<Partial<PermitTemplate> | null>(null),
     [reviewed, setReviewed] = useState(false);
   const [account, setAccount] = useState({
@@ -118,6 +121,7 @@ export default function PermitSettings({
         <>
           <div className="wp-inline">
             {company === "amt" && (
+              <>
               <button
                 className="wp-primary"
                 disabled={busy}
@@ -132,6 +136,8 @@ export default function PermitSettings({
               >
                 นำเข้าต้นแบบ AMITA 9 ประเภท
               </button>
+              <button className="wp-primary" disabled={busy} onClick={() => void run(async () => {await permitApi("templates", company, "POST", {action:"import_v2"});await onRefresh();})}>นำเข้า General + งานบนที่สูง แบบตรงช่อง</button>
+              </>
             )}
             <button className="wp-secondary" onClick={() => setEditing(blank)}>
               สร้างแม่แบบบริษัท
@@ -164,6 +170,7 @@ export default function PermitSettings({
             แม่แบบนำเข้าเป็นฉบับรอตรวจทาน รายการดิจิทัลสรุปจากต้นฉบับ
             ผู้ดูแลต้องตรวจรายการย่อย Revision และผู้ลงนามก่อนเปิดใช้
             การแก้ไขสร้างเวอร์ชันใหม่และไม่เปลี่ยนเอกสารที่บันทึกไปแล้ว
+            รุ่น General + งานบนที่สูงแบบตรงช่องจะเริ่มปิดใช้ ให้เปิด PDF ต้นฉบับเทียบรายการและยืนยันตรวจทานก่อนเปิดใช้
           </div>
           {editing && (
             <form
@@ -207,7 +214,8 @@ export default function PermitSettings({
               </label>
               <h4>ช่องข้อมูลและรายการตรวจ</h4>
               {editing.config?.fields.map((f, i) => (
-                <div key={i} className="wp-template-field">
+                <div key={i} className="wp-template-field-wrap">
+                <div className="wp-template-field">
                   <input
                     aria-label={`ชื่อช่อง ${i + 1}`}
                     required
@@ -234,7 +242,7 @@ export default function PermitSettings({
                           ...editing.config!,
                           fields: editing.config!.fields.map((x, j) =>
                             j === i
-                              ? { ...x, kind: e.target.value as typeof x.kind }
+                              ? { ...x, kind: e.target.value as typeof x.kind, ...(e.target.value === "choice" && !x.options?.length ? {options:[{value:"yes",label:"ใช้ / เกี่ยวข้อง"},{value:"no",label:"ไม่ใช้ / ไม่เกี่ยวข้อง"}]} : {}) }
                               : x,
                           ),
                         },
@@ -243,6 +251,7 @@ export default function PermitSettings({
                   >
                     <option value="textarea">ข้อความหลายบรรทัด</option>
                     <option value="text">ข้อความ</option>
+                    <option value="choice">ตัวเลือกตามแบบฟอร์ม</option>
                     <option value="check">
                       ผ่าน / ไม่ผ่าน / ไม่เกี่ยวข้อง
                     </option>
@@ -284,6 +293,9 @@ export default function PermitSettings({
                   >
                     ลบ
                   </button>
+                </div>
+                {f.kind === "choice" && <label>ตัวเลือก (หนึ่งรายการต่อบรรทัด: รหัส=ข้อความ)<textarea value={(f.options || []).map(o => `${o.value}=${o.label}`).join("\n")} onChange={e => setEditing({...editing,config:{...editing.config!,fields:editing.config!.fields.map((x,j) => j === i ? {...x,options:e.target.value.split("\n").map(line => {const equal=line.indexOf("=");return {value:equal >= 0 ? line.slice(0,equal).trim() : line.trim(),label:equal >= 0 ? line.slice(equal+1) : ""};})} : x)}})} /></label>}
+                {f.section && <small className="wp-muted">หมวด: {f.section}</small>}
                 </div>
               ))}
               <button
@@ -515,7 +527,7 @@ export default function PermitSettings({
             ))}
           </section>
           <section className="wp-panel">
-            <h3>กำหนดผู้มีสิทธิ์ลงนาม</h3>
+            <h3>กำหนดผู้ดูแลและผู้มีสิทธิ์ลงนาม</h3>
             <p className="wp-muted">
               ใช้บัญชีผู้มีสิทธิ์ลงนามที่กำหนดไว้ บัญชีผู้ขออนุญาตไม่มีสิทธิ์อนุมัติ
             </p>
@@ -551,9 +563,9 @@ export default function PermitSettings({
                 บทบาท
                 <select
                   value={role}
-                  onChange={(e) => setRole(e.target.value as PermitRole)}
+                  onChange={(e) => setRole(e.target.value as PermitMemberRole)}
                 >
-                  {Object.entries(ROLE_LABELS).map(([k, v]) => (
+                  {Object.entries(globalAdmin ? MEMBER_ROLE_LABELS : ROLE_LABELS).map(([k, v]) => (
                     <option key={k} value={k}>
                       {v}
                     </option>
@@ -561,17 +573,17 @@ export default function PermitSettings({
                 </select>
               </label>
               <button className="wp-primary" disabled={busy}>
-                เพิ่มสิทธิ์ลงนาม
+                เพิ่มสิทธิ์
               </button>
             </form>
             {directory.map((m) => (
               <div className="wp-account-row" key={m.actor_key + m.role}>
                 <span>
-                  {m.display_name} · {ROLE_LABELS[m.role as PermitRole]}
+                  {m.display_name} · {MEMBER_ROLE_LABELS[m.role as PermitMemberRole] || m.role}
                 </span>
                 <button
                   className="wp-link"
-                  disabled={busy}
+                  disabled={busy || (m.role === "permit_admin" && !globalAdmin)}
                   onClick={() =>
                     void run(async () => {
                       await permitApi("members", company, "DELETE", {

@@ -26,7 +26,7 @@ const actionLabels: Record<string, string> = {
   create: "สร้างคำขอ",
   edit: "แก้ไขร่าง",
 };
-const signedActions = ["submit", "approve", "start", "request_close", "close"];
+const signedActions = ["submit", "approve", "start", "resume", "request_close", "close"];
 export default function PermitDetail({
   permit: p,
   actor,
@@ -52,6 +52,17 @@ export default function PermitDetail({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [qr, setQr] = useState("");
+  const [inspectionFormCode, setInspectionFormCode] = useState("");
+  const [inspectionAnswers, setInspectionAnswers] = useState<Record<string, string>>({});
+  const inspectionForms = p.data.forms.filter(f =>
+    f.template.config.layoutVersion === "amt-2026-11-v2" &&
+    f.template.config.fields.some(field => field.kind === "check"),
+  );
+  const inspectionForm = inspectionForms.find(f => f.template.code === inspectionFormCode) || inspectionForms[0];
+  useEffect(() => {
+    setInspectionFormCode("");
+    setInspectionAnswers({});
+  }, [p.id]);
   useEffect(() => {
     let live = true;
     import("qrcode")
@@ -117,7 +128,12 @@ export default function PermitDetail({
         `permits/${p.id}`,
         company,
         "POST",
-        { action, version: p.version, signature, confirm, note, unsafe },
+        {
+          action, version: p.version, signature, confirm, note, unsafe,
+          ...(action === "inspect" && inspectionForm ? {
+            inspection: {formCode: inspectionForm.template.code, answers: inspectionAnswers},
+          } : {}),
+        },
       );
       onChanged(r.data);
       setAction("");
@@ -125,6 +141,7 @@ export default function PermitDetail({
       setConfirm(false);
       setNote("");
       setUnsafe(false);
+      setInspectionAnswers({});
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -251,7 +268,9 @@ export default function PermitDetail({
               <div className="wp-answer" key={field.id}>
                 <strong>{field.label}</strong>
                 <p className="wp-pre">
-                  {f.answers[field.id] === "yes"
+                  {field.kind === "choice"
+                    ? field.options?.find(o => o.value === f.answers[field.id])?.label || "ยังไม่ระบุ"
+                    : f.answers[field.id] === "yes"
                     ? "ผ่าน / จัดให้มี"
                     : f.answers[field.id] === "no"
                       ? "ไม่ผ่าน"
@@ -280,7 +299,9 @@ export default function PermitDetail({
                         ? "ปิดงาน"
                         : s.stage === "start"
                           ? "เปิดงาน"
-                          : "ยื่นคำขอ"}{" "}
+                          : s.stage === "resume" || s.stage.startsWith("resume:")
+                            ? "ยืนยันกลับเข้าทำงาน"
+                            : "ยื่นคำขอ"}{" "}
                   · {ROLE_LABELS[s.role as PermitRole] || "ผู้ขออนุญาต"}
                 </strong>
                 <img src={s.image} alt={`ลายเซ็น ${s.name}`} />
@@ -291,6 +312,33 @@ export default function PermitDetail({
             ))}
           </div>
         </section>
+        {(p.data.inspections?.length ?? 0) > 0 && (
+          <section className="wp-form-section">
+            <h3>ผลตรวจระหว่างปฏิบัติงาน</h3>
+            {[...(p.data.inspections || [])].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).map(inspection => {
+              const form = p.data.forms.find(f => f.template.code === inspection.formCode);
+              const failed = Object.values(inspection.answers).some(a => a === "no");
+              return (
+                <section key={inspection.id} className="wp-panel">
+                  <div className="wp-section-heading">
+                    <h4>{inspection.formCode} · {inspection.name}</h4>
+                    <span className={`wp-status ${failed ? "suspended" : "active"}`}>
+                      {failed ? "พบข้อไม่ผ่าน — พักงาน" : "ไม่พบข้อไม่ผ่านในรายการ"}
+                    </span>
+                  </div>
+                  <p className="wp-muted">{dateTime(inspection.at)}</p>
+                  {Object.entries(inspection.answers).map(([id, answer]) => (
+                    <div className="wp-answer" key={id}>
+                      <strong>{form?.template.config.fields.find(f => f.id === id)?.label || id}</strong>
+                      <p>{answer === "yes" ? "ผ่าน" : answer === "no" ? "ไม่ผ่าน" : answer.startsWith("na:") ? `ไม่เกี่ยวข้อง: ${answer.slice(3)}` : answer}</p>
+                    </div>
+                  ))}
+                  <p className="wp-pre">{inspection.note}</p>
+                </section>
+              );
+            })}
+          </section>
+        )}
         <section>
           <h3>เอกสารแนบ ({p.data.attachments.length})</h3>
           {p.data.attachments.map((a) => (
@@ -350,6 +398,8 @@ export default function PermitDetail({
                 setSignature("");
                 setConfirm(false);
                 setError("");
+                setInspectionFormCode(inspectionForms[0]?.template.code || "");
+                setInspectionAnswers({});
               }}
             >
               {actionLabels[v]}
@@ -362,6 +412,55 @@ export default function PermitDetail({
         {action && (
           <form onSubmit={perform} className="wp-action-form">
             <h3>{actionLabels[action]}</h3>
+            {action === "inspect" && inspectionForm && (
+              <fieldset className="wp-panel">
+                <legend>รายการตรวจระหว่างปฏิบัติงาน</legend>
+                <label>
+                  แบบฟอร์มที่ตรวจ
+                  <select
+                    value={inspectionForm.template.code}
+                    onChange={e => {
+                      setInspectionFormCode(e.target.value);
+                      setInspectionAnswers({});
+                    }}
+                  >
+                    {inspectionForms.map(f => <option key={f.template.id} value={f.template.code}>{f.template.code} · {f.template.name}</option>)}
+                  </select>
+                </label>
+                <p className="wp-notice">บันทึกผลที่ตรวจพบในรอบนี้ หากมีข้อไม่ผ่าน ระบบจะเปลี่ยนเป็นพักงานทันที</p>
+                {inspectionForm.template.config.fields.filter(f => f.kind === "check").map(field => {
+                  const answer = inspectionAnswers[field.id] || "";
+                  return (
+                    <div key={field.id} className="wp-check-row">
+                      <label htmlFor={`inspection-${field.id}`}>{field.label}</label>
+                      <select
+                        id={`inspection-${field.id}`}
+                        required
+                        value={answer.startsWith("na:") ? "na" : answer}
+                        onChange={e => setInspectionAnswers(a => ({...a, [field.id]: e.target.value === "na" ? "na:" : e.target.value}))}
+                      >
+                        <option value="">ยังไม่ตรวจ</option>
+                        <option value="yes">ผ่าน</option>
+                        <option value="no">ไม่ผ่าน</option>
+                        <option value="na">ไม่เกี่ยวข้อง</option>
+                      </select>
+                      {answer.startsWith("na:") && (
+                        <label>
+                          เหตุผลที่ไม่เกี่ยวข้อง: {field.label}
+                          <input
+                            required
+                            minLength={3}
+                            maxLength={5000}
+                            value={answer.slice(3)}
+                            onChange={e => setInspectionAnswers(a => ({...a, [field.id]: "na:" + e.target.value}))}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </fieldset>
+            )}
             <label>
               บันทึก / เหตุผล / ผลตรวจ
               <textarea
