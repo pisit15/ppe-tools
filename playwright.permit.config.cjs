@@ -1,7 +1,7 @@
 const { defineConfig } = require("@playwright/test");
 module.exports = defineConfig({
   testDir: "./tests",
-  testMatch: /permit-(flow|amt-v2)\.spec\.cjs/,
+  testMatch: /permit-(flow|amt-v2|preview)\.spec\.cjs/,
   timeout: 240000,
   expect: { timeout: 15000 },
   workers: 1,

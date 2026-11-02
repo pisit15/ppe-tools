@@ -4,6 +4,9 @@ Entry: /permit (existing EA SHE Tools application)
 Branch: codex/amt-permit-v2
 
 IMPLEMENTED
+- Live original-template preview beside the editor on desktop, canvas PDF.js display with zoom/page controls, and a mobile preview dialog. Debounced private POST preview accepts partial drafts, uses authoritative active company templates, strips images/signatures/history and never saves a permit.
+- Preview and final PDF share the same ink-aware text layout: actual glyph bounds, width/height/padding checks, measured annex reference fallback, and full-value retention in annexes. Nonempty overflow/unmapped fields are reported by form/field and link back to the editor.
+- Input changes immediately mark the previous image stale; aborted/late responses and cancelled renders cannot overwrite the latest image. Unsaved previews have no document QR or signatures.
 - Dedicated contractor accounts and cookie; existing staff use Tools login.
 - Contractor starts_at/expires_at and active status checked on every API request.
 - Contractor sees only own permits in assigned company. No access to PPE/Chemical from permit cookie.
@@ -55,9 +58,11 @@ VALIDATION
 node --test tests/permit.test.cjs
 node --test tests/permit-pdf.test.cjs
 node --test tests/amt-forms.test.cjs tests/permit-amt-v2.test.cjs
+node --test tests/permit-preview-data.test.cjs tests/permit-text-layout.test.cjs
 node node_modules/typescript/bin/tsc --noEmit --incremental false
 node node_modules/@playwright/test/cli.js test --config playwright.permit.config.cjs
 node tests/chemical-build.cjs
+Production-server isolated E2E: node tests/permit-build.cjs, then set PERMIT_TEST_PRODUCTION=1 and run the permit Playwright config. Never deploy this local build; its credentials and banner are synthetic.
 
 Isolated local preview: node tests/permit-preview.cjs
 URL http://127.0.0.1:4320/permit?company_id=amt

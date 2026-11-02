@@ -10,6 +10,7 @@ import {
 } from "@/lib/permit/types";
 import { localTime, permitApi, type DirectoryEntry } from "./api";
 import PermitFormFields from "./PermitFormFields";
+import PermitLivePreview from "./PermitLivePreview";
 
 type LocationOption = {id: string; name: string; department: string; area_owner: string; safety: string; active: boolean};
 const workTypes = [{code: "AHS-003", label: "งานทั่วไป"}, {code: "AHS-004", label: "งานบนที่สูง"}, {code: "AHS-005", label: "งานความร้อน / ประกายไฟ"}, {code: "AHS-006", label: "งานในที่อับอากาศ"}, {code: "AHS-013", label: "งานยกที่มีความเสี่ยงสูง"}, {code: "AHS-014", label: "งานขุดเจาะ"}, {code: "AHS-015", label: "งานรื้อถอน"}, {code: "AHS-016", label: "งานไฟฟ้าที่อันตรายสูง"}, {code: "AHS-029", label: "งานตัดต่อระบบท่อ"}];
@@ -68,6 +69,7 @@ export default function PermitEditor({
     [error, setError] = useState(""),
     [locations, setLocations] = useState<LocationOption[]>([]),
     [locationNotice, setLocationNotice] = useState("");
+  const [activePreviewForm,setActivePreviewForm]=useState<string|undefined>();
   const options = Array.from(templates.filter(t => t.active).reduce((byCode, t) => {
     const previous = byCode.get(t.code);
     if (!previous || t.version > previous.version) byCode.set(t.code, t);
@@ -192,7 +194,12 @@ export default function PermitEditor({
   const selectedKeys = requiredRoles(data).map(r => data.approvers[r]).filter(Boolean);
   const duplicateApprover = selectedKeys.length !== new Set(selectedKeys).size;
   return (
-    <form onSubmit={save} className="wp-stack">
+    <div className="wp-editor-grid">
+    <form onSubmit={save} className="wp-stack wp-editor-form" onFocusCapture={e=>{
+      const id=(e.target as HTMLElement).id;
+      const form=data.forms.find(f=>id.startsWith(`${f.template.id}-`));
+      if(form)setActivePreviewForm(form.template.code);
+    }}>
       <div className="wp-page-title">
         <div>
           <span className="wp-eyebrow">NEW WORK REQUEST</span>
@@ -230,6 +237,8 @@ export default function PermitEditor({
             <label key={k}>
               {label}
               <input
+                id={`wp-field-${k}`}
+                aria-label={label}
                 required
                 maxLength={k === "phone" ? 80 : 200}
                 value={data[k]}
@@ -241,6 +250,7 @@ export default function PermitEditor({
           <label>
             เริ่มงาน
             <input
+              id="wp-field-startsAt"
               required
               type="datetime-local"
               value={localTime(data.startsAt)}
@@ -253,6 +263,7 @@ export default function PermitEditor({
           <label>
             สิ้นสุดงาน
             <input
+              id="wp-field-endsAt"
               required
               type="datetime-local"
               value={localTime(data.endsAt)}
@@ -264,7 +275,7 @@ export default function PermitEditor({
           </label>
         </div>
         {locationNotice && <p className="wp-notice" role="status">{locationNotice}</p>}
-        <label>จำนวนผู้ปฏิบัติงาน<input type="number" min={1} max={500} value={data.workerCount ?? ""} onChange={e => set("workerCount", e.target.value ? Number(e.target.value) : undefined)} /></label>
+        <label>จำนวนผู้ปฏิบัติงาน<input id="wp-field-workerCount" type="number" min={1} max={500} value={data.workerCount ?? ""} onChange={e => set("workerCount", e.target.value ? Number(e.target.value) : undefined)} /></label>
         <p className="wp-muted">
           เวลาในช่องกรอกตามเขตเวลาของอุปกรณ์ · รายการเอกสารแสดงเวลาไทย
         </p>
@@ -281,6 +292,8 @@ export default function PermitEditor({
           <label key={k}>
             {label}
             <textarea
+              id={`wp-field-${k}`}
+              aria-label={label}
               required
               maxLength={5000}
               value={data[k]}
@@ -415,5 +428,7 @@ export default function PermitEditor({
         </button>
       </div>
     </form>
+    <PermitLivePreview data={data} company={company} activeFormCode={activePreviewForm}/>
+    </div>
   );
 }

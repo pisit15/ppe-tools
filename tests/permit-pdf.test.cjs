@@ -83,6 +83,7 @@ test('legacy output preserves all 10 source pages and signed data with complete 
 test('structured AMT forms print reviewed checkbox fields and preserve N/A reasons and overflow',async()=>{
  const p=sample(AMT_V2_SEEDS);const height=p.data.forms.find(f=>f.template.source_code==='004');
  const check=height.template.config.fields.find(f=>f.kind==='check');height.answers[check.id]='na:ไม่มีบันได ใช้รถกระเชา';
+  height.answers.equipment_ladder='no';
  p.data.detail='รายละเอียดเพิ่มเติมการตรวจรูปแบบภาษาไทย '.repeat(30);
  const signed=closed(p),before=JSON.stringify(signed);const bytes=await renderPermitPdf(signed);
  assert.equal(signed.data.signatures.length,8);assert.equal(signed.data.inspections.length,1);

@@ -107,16 +107,18 @@ export function validateTemplate(v: unknown): PermitTemplate["config"] {
 export function validateData(
   b: unknown,
   templates: PermitTemplate[],
+  options: { preview?: boolean } = {},
 ): PermitData {
+  const preview=options.preview===true;
   const d = b as PermitData;
   if (!d || !Array.isArray(d.forms) || d.forms.length < 1 || d.forms.length > 9)
     throw new AccessError("เลือกแบบฟอร์ม 1–9 ฉบับ", 400);
-  const startsAt = text(d.startsAt, "เวลาเริ่ม", 40),
-    endsAt = text(d.endsAt, "เวลาสิ้นสุด", 40);
+  const startsAt = text(d.startsAt ?? "", "เวลาเริ่ม", 40, !preview),
+    endsAt = text(d.endsAt ?? "", "เวลาสิ้นสุด", 40, !preview);
   if (
-    !Number.isFinite(Date.parse(startsAt)) ||
-    !Number.isFinite(Date.parse(endsAt)) ||
-    Date.parse(endsAt) <= Date.parse(startsAt)
+    (startsAt && !Number.isFinite(Date.parse(startsAt))) ||
+    (endsAt && !Number.isFinite(Date.parse(endsAt))) ||
+    (startsAt && endsAt && Date.parse(endsAt) <= Date.parse(startsAt))
   )
     throw new AccessError("เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม", 400);
   const ids = new Set();
@@ -188,17 +190,17 @@ export function validateData(
     }
   }
   return {
-    title: text(d.title, "ชื่องาน", 200),
-    location: text(d.location, "พื้นที่", 300),
-    detail: text(d.detail, "รายละเอียด", 5000),
-    contractorName: text(d.contractorName, "บริษัทผู้ปฏิบัติงาน", 200),
-    phone: text(d.phone, "เบอร์ติดต่อ", 80),
-    workers: text(d.workers, "รายชื่อผู้ปฏิบัติงาน", 5000),
+    title: text(d.title ?? "", "ชื่องาน", 200, !preview),
+    location: text(d.location ?? "", "พื้นที่", 300, !preview),
+    detail: text(d.detail ?? "", "รายละเอียด", 5000, !preview),
+    contractorName: text(d.contractorName ?? "", "บริษัทผู้ปฏิบัติงาน", 200, !preview),
+    phone: text(d.phone ?? "", "เบอร์ติดต่อ", 80, !preview),
+    workers: text(d.workers ?? "", "รายชื่อผู้ปฏิบัติงาน", 5000, !preview),
     ...(d.workerCount!==undefined ? {workerCount:(()=>{if(!Number.isInteger(d.workerCount)||d.workerCount!<1||d.workerCount!>500)throw new AccessError("จำนวนผู้ปฏิบัติงานต้องเป็น 1–500 คน",400);return d.workerCount;})()}:{}),
     ...(d.locationId ? {locationId:uuid.test(d.locationId)?d.locationId:(()=>{throw new AccessError("พื้นที่มาตรฐานไม่ถูกต้อง",400);})()}:{}),
-    startsAt: new Date(startsAt).toISOString(),
-    endsAt: new Date(endsAt).toISOString(),
-    fireImpact: text(d.fireImpact, "ผลกระทบระบบดับเพลิง", 1500),
+    startsAt: startsAt ? new Date(startsAt).toISOString() : "",
+    endsAt: endsAt ? new Date(endsAt).toISOString() : "",
+    fireImpact: text(d.fireImpact ?? "", "ผลกระทบระบบดับเพลิง", 1500, !preview),
     project: d.project === true,
     forms,
     approvers,

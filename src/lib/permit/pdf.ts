@@ -8,6 +8,10 @@ import { supportsOriginalPdf } from "./catalog";
 export { supportsOriginalPdf } from "./catalog";
 import { displayStatus, STATUS_LABELS, ROLE_LABELS, type Permit, type PermitSignature } from "./types";
 import { documentHash } from "./workflow";
+import { createPdfTextMetrics, fitPdfSlotText } from "./pdf-text-layout";
+
+export type PdfOverflowWarning = { formCode: string; fieldId: string; label: string; page: number; annex: string; reason?: "overflow" | "unmapped" };
+export type PermitPdfOptions = { preview?: boolean; onOverflow?: (warning: PdfOverflowWarning) => void };
 
 // Coordinates use the reviewed 827 x 1170 renders of the supplied originals.
 // Never infer an individual paper checklist answer from a broader digital answer.
@@ -42,7 +46,7 @@ const layouts: Record<string, Layout> = {
 const ink = rgb(0.06, 0.16, 0.31);
 const stageLabels: Record<string, string> = { request: "ส่งคำขอ", approve: "อนุมัติ", start: "ยืนยันเปิดงาน", close: "ปิดงาน" };
 const actionLabels: Record<string, string> = { create: "สร้างคำขอ", edit: "แก้ไขร่าง", submit: "ส่งคำขอ", approve: "อนุมัติ", start: "เปิดงาน", return: "ส่งกลับแก้ไข", suspend: "พักงาน", resume: "กลับเข้าทำงาน", inspect: "ตรวจระหว่างงาน", request_close: "ขอปิดงาน", close: "ตรวจรับปิดงาน", cancel: "ยกเลิก" };
-const date = (v: string, timeOnly = false) => new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", ...(timeOnly ? {hour: "2-digit", minute: "2-digit"} : {day: "2-digit", month: "2-digit", year: "numeric"}) }).format(new Date(v));
+const date = (v: string, timeOnly = false) => !v || !Number.isFinite(Date.parse(v)) ? "" : new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", ...(timeOnly ? {hour: "2-digit", minute: "2-digit"} : {day: "2-digit", month: "2-digit", year: "numeric"}) }).format(new Date(v));
 const graphemes = new Intl.Segmenter("th", { granularity: "grapheme" });
 export function wrapPdfText(value: string, font: PDFFont, size: number, width: number): string[] {
   const lines: string[] = [];
@@ -56,31 +60,36 @@ export function wrapPdfText(value: string, font: PDFFont, size: number, width: n
   }
   return lines;
 }
-export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
+export async function renderPermitPdf(p: Permit, options: PermitPdfOptions = {}): Promise<Uint8Array> {
   if (!supportsOriginalPdf(p)) throw new Error("แม่แบบหรือ Revision นี้ยังไม่มีผังพิมพ์ตรงต้นฉบับ กรุณาใช้พิมพ์สรุปข้อมูล");
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  const font = await doc.embedFont(await readFile(path.join(process.cwd(), "public/fonts/NotoSansThai.ttf")), { subset: true });
-  const ref = p.id.slice(0, 8).toUpperCase();
-  const status = STATUS_LABELS[displayStatus(p)];
+  const fontBytes = await readFile(path.join(process.cwd(), "public/fonts/NotoSansThai.ttf"));
+  const font = await doc.embedFont(fontBytes, { subset: true });
+  const metrics = createPdfTextMetrics(fontBytes);
+  const ref = options.preview ? "ตัวอย่าง" : p.id.slice(0, 8).toUpperCase();
+  const status = options.preview ? "ร่าง ยังไม่ได้บันทึก" : STATUS_LABELS[displayStatus(p)];
   const hash = documentHash(p.data);
   const printedAt = new Date().toISOString();
-  const signatures = p.data.signatures.filter(s => !s.stage.startsWith("superseded:"));
+  const signatures = options.preview ? [] : p.data.signatures.filter(s => !s.stage.startsWith("superseded:"));
   const findSig = (stage: string, role?: string) => signatures.find(s => s.stage === stage && (!role || s.role === role));
   const imageCache = new Map<string, Awaited<ReturnType<PDFDocument["embedPng"]>>>();
   const mappedFields = new Map<number, Set<string>>();
   const extraDetails = new Map<number, { label: string; value: string }[]>();
   const structuredForms = new Set<number>();
+  const sourcePageByForm = new Map<number, number>();
   const safeText = (v: string) => v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
-  function fill(page: PDFPage, box: Box, value: string, appendix: string) {
+  let currentFormCode = "";
+  function warn(fieldId: string, label: string, annex: string, page: number, reason: "overflow" | "unmapped") {
+    options.onOverflow?.({formCode: currentFormCode, fieldId, label, page, annex, reason});
+  }
+  function fill(page: PDFPage, box: Box, value: string, appendix: string, field?: {id: string; label: string}) {
     if (!value || box[2] <= 0) return !value;
     const scale = page.getWidth() / 827;
-    let size = 11;
-    const content = safeText(value).replace(/\s+/g, " ").trim();
-    while (size > 9 && font.widthOfTextAtSize(content, size) > box[2]) size -= 0.5;
-    const text = font.widthOfTextAtSize(content, size) <= box[2] ? content : `ดูภาคผนวก ${appendix}`;
-    page.drawText(text, { x: box[0] * scale, y: page.getHeight() - (box[1] + 11) * scale, size: size * scale, font, color: ink });
-    return text === content;
+    const fit = fitPdfSlotText(value, box[2], box[3], metrics, appendix);
+    if (fit) page.drawText(fit.text, { x: (box[0] + fit.x) * scale, y: page.getHeight() - (box[1] + fit.baseline) * scale, size: fit.size * scale, font, color: ink });
+    if (!fit?.originalFits && field) warn(field.id, field.label, appendix, doc.getPages().indexOf(page) + 1, "overflow");
+    return Boolean(fit?.originalFits);
   }
   async function sign(page: PDFPage, box: Box | undefined, s: PermitSignature | undefined) {
     if (!box || !s?.image) return;
@@ -93,6 +102,8 @@ export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
     page.drawImage(image, {x: box[0] * scale + (box[2] * scale - w) / 2, y: page.getHeight() - (box[1] + box[3]) * scale + (box[3] * scale - h) / 2, width: w, height: h});
   }
   for (const [index, form] of p.data.forms.entries()) {
+    currentFormCode = form.template.code;
+    sourcePageByForm.set(index, doc.getPageCount() + 1);
     const code = form.template.source_code!;
     const sourceBytes = await readFile(path.join(process.cwd(), "data/permit-templates", `${code}.pdf`));
     const structured = form.template.config.layoutVersion === "amt-2026-11-v2";
@@ -111,19 +122,23 @@ export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
       doc.addPage(page);
       const layout = code === "005" ? hot(pageIndex === 1) : layouts[code];
       const appendix = `F${index + 1}`;
+      if(pageIndex===0 && p.data.workers.trim()) warn("workers","รายชื่อผู้ปฏิบัติงาน",appendix,doc.getPages().indexOf(page)+1,"unmapped");
       fill(page, layout.date, date(p.data.startsAt), appendix);
       fill(page, layout.from, date(p.data.startsAt, true), appendix);
       fill(page, layout.to, date(p.data.endsAt, true), appendix);
-      if (layout.workerCount && p.data.workerCount) fill(page, layout.workerCount, String(p.data.workerCount), appendix);
-      const common = (box: Box | undefined, label: string, value: string) => {
-        if ((!box || !fill(page, box, value, appendix)) && pageIndex === 0) details.push({label, value});
+      if (layout.workerCount && p.data.workerCount) fill(page, layout.workerCount, String(p.data.workerCount), appendix, {id:"workerCount",label:"จำนวนผู้ปฏิบัติงาน"});
+      const common = (box: Box | undefined, fieldId: string, label: string, value: string) => {
+        if ((!box || !fill(page, box, value, appendix, {id:fieldId,label})) && pageIndex === 0) {
+          details.push({label, value});
+          if(value.trim() && (!box || box[2]<=0)) warn(fieldId,label,appendix,doc.getPages().indexOf(page)+1,"unmapped");
+        }
       };
-      common(layout.company, "บริษัท / แผนก", p.data.contractorName);
-      common(code === "006" ? undefined : layout.title, "ชื่องาน", p.data.title);
-      common(layout.location, "พื้นที่", p.data.location);
-      common(layout.detail, "รายละเอียดงาน", p.data.detail);
-      common(layout.fire, "ผลกระทบระบบดับเพลิง", p.data.fireImpact);
-      common(layout.phone, "ติดต่อ", p.data.phone);
+      common(layout.company, "contractorName", "บริษัท / แผนก", p.data.contractorName);
+      common(code === "006" ? undefined : layout.title, "title", "ชื่องาน", p.data.title);
+      common(layout.location, "location", "พื้นที่", p.data.location);
+      common(layout.detail, "detail", "รายละเอียดงาน", p.data.detail);
+      common(layout.fire, "fireImpact", "ผลกระทบระบบดับเพลิง", p.data.fireImpact);
+      common(layout.phone, "phone", "ติดต่อ", p.data.phone);
       await sign(page, layout.request, findSig("request", "requester"));
       await sign(page, layout.owner, findSig("approve", "area_owner"));
       await sign(page, layout.safety, findSig("approve", "safety"));
@@ -146,9 +161,9 @@ export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
         }
       }
       if (code === "006") {
-        fill(page, [178, 164, 319, 13], form.answers.equipment, appendix);
-        fill(page, [80, 219, 107, 14], form.answers.entrants || p.data.workers, appendix);
-        fill(page, [223, 219, 98, 14], form.answers.rescuers, appendix);
+        fill(page, [178, 164, 319, 13], form.answers.equipment, appendix, {id:"equipment",label:"เครื่องมือและอุปกรณ์"});
+        fill(page, [80, 219, 107, 14], form.answers.entrants || p.data.workers, appendix, {id:"entrants",label:"รายชื่อผู้ปฏิบัติงาน"});
+        fill(page, [223, 219, 98, 14], form.answers.rescuers, appendix, {id:"rescuers",label:"รายชื่อผู้ช่วยเหลือ"});
         // The original authorizer/supervisor roles are not inferred from SHE approval roles.
       }
       if (structured) {
@@ -168,7 +183,7 @@ export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
               // An explicit "not selected" value is represented by the empty box.
               mappedFields.get(index)!.add(field.id);
             }
-          } else if (mapping.width && fill(page, [mapping.x, mapping.y, mapping.width, mapping.height || 14], answer, appendix)) {
+          } else if (mapping.width && fill(page, [mapping.x, mapping.y, mapping.width, mapping.height || 14], answer, appendix, {id:field.id,label:field.label})) {
             mappedFields.get(index)!.add(field.id);
           }
           // Preserve the reason even when the N/A checkbox is marked on the original.
@@ -176,7 +191,7 @@ export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
         }
       }
       const s = page.getWidth() / 827;
-      const statusNote = p.status === "active" && displayStatus(p) !== "expired" ? status : `${status} (ไม่ใช่การอนุญาตเริ่มงาน)`;
+      const statusNote = !options.preview && p.status === "active" && displayStatus(p) !== "expired" ? status : `${status} (ไม่ใช่การอนุญาตเริ่มงาน)`;
       page.drawText(`${ref} | V${p.version} | ${statusNote} | รายละเอียดและผลตรวจ: ภาคผนวก ${appendix}`, {x: 24 * s, y: 2.5, size: 5.2, font, color: ink});
     }
   }
@@ -197,6 +212,7 @@ export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
     y -= 5;
   }
   for (const [i, form] of p.data.forms.entries()) {
+    currentFormCode = form.template.code;
     const title = `ภาคผนวก F${i + 1} | ${form.template.code} Rev.${form.template.revision}`;
     newPage(title);
     paragraph("การอ่านเอกสาร", "ช่องในต้นฉบับที่ไม่มีข้อมูลตรงกันจะเว้นว่าง ผลตรวจด้านล่างเป็นรายการที่ผู้ใช้บันทึกในระบบ ไม่ใช่ผลตรวจรายช่องหรือรายชั่วโมงที่ไม่ได้บันทึก", title);
@@ -216,7 +232,13 @@ export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
     for (const f of form.template.config.fields) {
       if (structuredForms.has(i) && mappedFields.get(i)!.has(f.id)) continue;
       const a = form.answers[f.id] || "";
+      if (options.preview && !a.trim()) continue;
+      if (structuredForms.has(i) && f.id.startsWith("control_")) {
+        const hazard = form.template.config.fields.find(h => h.id.startsWith("hazard_") && f.id.startsWith(`control_${h.id.slice(7)}_`));
+        if (hazard && form.answers[hazard.id] === "no") continue;
+      }
       if (structuredForms.has(i) && !a && !f.required) continue;
+      if(a.trim() && ((!f.print && ["text","textarea"].includes(f.kind)) || a.startsWith("na:"))) warn(f.id,a.startsWith("na:")?`เหตุผล: ${f.label}`:f.label,`F${i+1}`,sourcePageByForm.get(i)!,"unmapped");
       const answer = f.kind === "check" ? a === "yes" ? "ใช่" : a === "no" ? "ไม่ใช่" : a.startsWith("na:") ? `ไม่เกี่ยวข้อง: ${a.slice(3)}` : a : f.kind === "choice" ? f.options?.find(o => o.value === a)?.label || a : a;
       paragraph(f.label, answer, title);
     }
@@ -235,21 +257,25 @@ export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
       paragraph("บันทึกผลตรวจ", inspection.note, inspectionTitle);
     }
   }
-  const signatureTitle = "หลักฐานการลงนามและประวัติเอกสาร";
+  const signatureTitle = options.preview ? "ตัวอย่างขณะกรอก - ยังไม่ได้บันทึก" : "หลักฐานการลงนามและประวัติเอกสาร";
   newPage(signatureTitle);
-  const statusUrl = `https://tools.eashe.org/permit?company_id=${encodeURIComponent(p.company_id)}&id=${encodeURIComponent(p.id)}`;
-  const qr = await doc.embedPng(await QRCode.toDataURL(statusUrl, {width: 240, margin: 1}));
-  page!.drawImage(qr, {x: 455, y: 693, width: 104, height: 104});
-  page!.drawText("สแกนตรวจสถานะล่าสุด", {x: 452, y: 680, font, size: 8, color: ink});
-  page!.drawText("ต้องเข้าสู่ระบบ", {x: 476, y: 667, font, size: 8, color: ink});
-  page!.drawText(`เลขใบอนุญาต ${ref}`, {x: 36, y: 782, font, size: 12, color: ink});
+  if (!options.preview) {
+    const statusUrl = `https://tools.eashe.org/permit?company_id=${encodeURIComponent(p.company_id)}&id=${encodeURIComponent(p.id)}`;
+    const qr = await doc.embedPng(await QRCode.toDataURL(statusUrl, {width: 240, margin: 1}));
+    page!.drawImage(qr, {x: 455, y: 693, width: 104, height: 104});
+    page!.drawText("สแกนตรวจสถานะล่าสุด", {x: 452, y: 680, font, size: 8, color: ink});
+    page!.drawText("ต้องเข้าสู่ระบบ", {x: 476, y: 667, font, size: 8, color: ink});
+  }
+  page!.drawText(options.preview ? "ตัวอย่างประกอบการกรอกคำขอ" : `เลขใบอนุญาต ${ref}`, {x: 36, y: 782, font, size: 12, color: ink});
   page!.drawText(`สถานะขณะพิมพ์: ${status} | เวอร์ชัน ${p.version}`, {x: 36, y: 757, font, size: 10, color: ink});
   page!.drawText(`พิมพ์เมื่อ ${date(printedAt)} ${date(printedAt, true)} (เวลาไทย)`, {x: 36, y: 735, font, size: 9, color: ink});
-  for (const [line, j] of wrapPdfText("เอกสารที่พิมพ์แล้วไม่ปรับสถานะอัตโนมัติ โปรดสแกนตรวจสถานะปัจจุบันก่อนใช้งาน", font, 9, 390).map((v,j) => [v,j] as const))
+  for (const [line, j] of wrapPdfText(options.preview ? "ยังไม่ได้บันทึกหรือส่งคำขอ ตัวอย่างนี้ไม่ใช่ใบอนุญาตให้เริ่มงาน" : "เอกสารที่พิมพ์แล้วไม่ปรับสถานะอัตโนมัติ โปรดสแกนตรวจสถานะปัจจุบันก่อนใช้งาน", font, 9, 390).map((v,j) => [v,j] as const))
     page!.drawText(line, {x: 36, y: 708 - j * 15, font, size: 9, color: ink});
   y = 635;
-  paragraph("เลขอ้างอิงเต็ม", p.id, signatureTitle);
-  paragraph("รหัสตรวจสอบข้อมูล SHA-256", hash, signatureTitle);
+  if (!options.preview) {
+    paragraph("เลขอ้างอิงเต็ม", p.id, signatureTitle);
+    paragraph("รหัสตรวจสอบข้อมูล SHA-256", hash, signatureTitle);
+  }
   for (const s of signatures) {
     if (y < 125) newPage(`${signatureTitle} (ต่อ)`);
     const signerRole = s.role === "requester" ? "ผู้ขออนุญาต" : ROLE_LABELS[s.role as keyof typeof ROLE_LABELS] || s.role;
@@ -263,12 +289,12 @@ export async function renderPermitPdf(p: Permit): Promise<Uint8Array> {
     }
     paragraph("รหัสข้อมูลขณะลงนาม", s.hash, signatureTitle);
   }
-  for (const e of p.data.events) paragraph("ประวัติ", `${date(e.at)} ${date(e.at,true)} | ${e.name} | ${actionLabels[e.action] || e.action} | ${e.note || "-"}`, signatureTitle);
+  if(!options.preview)for (const e of p.data.events) paragraph("ประวัติ", `${date(e.at)} ${date(e.at,true)} | ${e.name} | ${actionLabels[e.action] || e.action} | ${e.note || "-"}`, signatureTitle);
   for (const a of p.data.attachments) paragraph("เอกสารแนบในระบบ", a.name, signatureTitle);
-  if (p.data.sourcePermitId) paragraph("ใบอนุญาตต้นทาง", p.data.sourcePermitId, signatureTitle);
+  if (!options.preview && p.data.sourcePermitId) paragraph("ใบอนุญาตต้นทาง", p.data.sourcePermitId, signatureTitle);
   for (const [i, pg] of doc.getPages().entries()) pg.drawText(`${i + 1}/${doc.getPageCount()}`, {x: pg.getWidth()-32, y: 4.5, size: 6, font, color: ink});
-  doc.setTitle(`Work Permit ${ref} - ${p.data.title}`);
-  doc.setSubject(`Permit ${p.id}; version ${p.version}; SHA-256 ${hash}`);
+  doc.setTitle(options.preview ? `ตัวอย่างคำขอ - ${p.data.title}` : `Work Permit ${ref} - ${p.data.title}`);
+  doc.setSubject(options.preview ? "Unsaved work permit preview" : `Permit ${p.id}; version ${p.version}; SHA-256 ${hash}`);
   doc.setCreator("EA SHE Work Permit");
   return doc.save();
 }

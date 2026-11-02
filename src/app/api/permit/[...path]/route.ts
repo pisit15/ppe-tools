@@ -63,6 +63,7 @@ async function handle(req: NextRequest, context: Context) {
     const db = getSupabaseServer();
     const methods: Record<string, string[]> = {
       session: ["GET", "POST", "DELETE"],
+      preview: ["POST"],
       companies: ["GET"],
       directory: ["GET"],
       members: ["GET", "POST", "DELETE"],
@@ -144,6 +145,27 @@ async function handle(req: NextRequest, context: Context) {
       actor,
       req.nextUrl.searchParams.get("company_id") || actor.companyId,
     );
+    if(resource === "preview") {
+      const b=await jsonBody(req,400000);
+      const requestKey=text(b.requestKey??"","รหัสตัวอย่าง",80,false);
+      const t=await db.from("wp_templates").select("*").eq("company_id",company).eq("active",true);
+      if(t.error)throw t.error;
+      const raw=b.data as Record<string,unknown>|undefined;
+      if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new AccessError("ข้อมูลตัวอย่างไม่ถูกต้อง",400);
+      const data=validateData({...raw,attachments:[],signatures:[],events:[],sourcePermitId:undefined},t.data as PermitTemplate[],{preview:true});
+      if(actor.contractor)data.contractorName=actor.contractorName||data.contractorName;
+      if(data.locationId) {
+        const loc=await db.from("wp_locations").select("name").eq("id",data.locationId).eq("company_id",company).eq("active",true).maybeSingle();
+        if(loc.error)throw loc.error;if(!loc.data)throw new AccessError("พื้นที่มาตรฐานไม่อยู่ในบริษัทหรือเลิกใช้แล้ว",400);
+        data.location=loc.data.name;
+      }
+      const {renderPermitPdf,supportsOriginalPdf}=await import("@/lib/permit/pdf");
+      const permit:Permit={id:"00000000-0000-4000-8000-000000000000",company_id:company,created_by:actor.key,version:0,status:"draft",created_at:new Date().toISOString(),updated_at:new Date().toISOString(),data};
+      if(!supportsOriginalPdf(permit))throw new AccessError("แม่แบบนี้ยังไม่มีตัวอย่าง PDF ตรงต้นฉบับ",400);
+      const warnings:import("@/lib/permit/pdf").PdfOverflowWarning[]=[];
+      const bytes=await renderPermitPdf(permit,{preview:true,onOverflow:w=>warnings.push(w)});
+      return response({pdf:Buffer.from(bytes).toString("base64"),warnings,requestKey});
+    }
     if (resource === "directory" && method === "GET") {
       const { data, error } = await db
         .from("wp_members")
