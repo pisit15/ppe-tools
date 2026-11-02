@@ -12,6 +12,15 @@ export type Project = {
 
 export const PROJECTS: Project[] = [
   {
+    id: 'first-aid',
+    name: 'First Aid & Medicine Control',
+    description: 'ดูแลจุดปฐมพยาบาล สต็อกยาและเวชภัณฑ์ วันหมดอายุ และการเบิกใช้ ทั้งเจ้าหน้าที่จ่ายให้และผู้เบิกบันทึกเอง',
+    icon: 'heart',
+    color: 'from-emerald-700 to-teal-800',
+    href: '/first-aid',
+    ready: true,
+  },
+  {
     id: 'ppe',
     name: 'PPE Inventory',
     description: 'จัดการสต็อกอุปกรณ์ป้องกันส่วนบุคคล (PPE) รับเข้า เบิกออก ดูรายงาน',
@@ -86,8 +95,9 @@ export const PROJECTS: Project[] = [
 ];
 
 // Module-level access control
-export type ModuleId = 'ppe' | 'she' | 'chemical';
+export type ModuleId = 'ppe' | 'she' | 'chemical' | 'first-aid';
 export const MODULE_LABELS: Record<ModuleId, string> = {
+  'first-aid': 'First Aid & Medicine Control',
   ppe: 'PPE Inventory',
   she: 'SHE Workforce',
   chemical: 'Chemical Management',

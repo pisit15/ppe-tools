@@ -387,6 +387,7 @@ function UserModal({
   const [modChem, setModChem] = useState(
     editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('chemical') : true
   );
+  const [modFirstAid, setModFirstAid] = useState(editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('first-aid') : true);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -415,7 +416,7 @@ function UserModal({
       onError('กรุณาตั้งรหัสผ่าน');
       return;
     }
-    if (!modPpe && !modShe && !modChem) {
+    if (!modPpe && !modShe && !modChem && !modFirstAid) {
       onError('ต้องเลือกระบบที่เข้าได้อย่างน้อย 1 ระบบ');
       return;
     }
@@ -431,12 +432,13 @@ function UserModal({
           display_name: displayName,
           is_active: isActive,
           allowed_modules:
-            modPpe && modShe && modChem
+            modPpe && modShe && modChem && modFirstAid
               ? null
               : [
                   ...(modPpe ? ['ppe'] : []),
                   ...(modShe ? ['she'] : []),
                   ...(modChem ? ['chemical'] : []),
+                  ...(modFirstAid ? ['first-aid'] : []),
                 ],
           ...(password ? { password } : {}),
         }),
@@ -566,7 +568,7 @@ function UserModal({
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">ระบบที่เข้าได้</label>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -594,6 +596,7 @@ function UserModal({
                 />
                 <span className="text-sm text-gray-700">Chemical</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={modFirstAid} onChange={e => setModFirstAid(e.target.checked)} className="w-4 h-4" /><span className="text-sm text-gray-700">First Aid</span></label>
             </div>
           </div>
 

@@ -1,0 +1,305 @@
+import { createHash, randomBytes } from 'node:crypto';
+import { NextRequest, NextResponse } from 'next/server';
+import QRCode from 'qrcode';
+import { getSupabaseServer } from '@/lib/supabase';
+import { AccessError, assertCompany, assertSameOrigin, requireModuleActor, type ToolsActor } from '@/lib/toolsSession';
+import { FirstAidInputError, allowedKeys, bangkokDate, bool, calendarDate, integer, manualPerson, parseTransaction, readJsonBody, record, text, uuid } from './validation';
+import type { FirstAidEmployee, PersonSnapshot, TransactionInput } from './types';
+
+type DB = ReturnType<typeof getSupabaseServer>;
+// Database JSON is normalized at the API boundary; no database record is returned wholesale.
+type Row = Record<string, any>;
+const LOCATION_COLUMNS = 'id,company_id,name,type,area,issue_mode,last_checked,inspection_issue,active,public_token_hash';
+const ITEM_COLUMNS = 'id,company_id,name,generic,category,unit,min,track_expiry,active';
+const DOCUMENT_COLUMNS = 'id,company_id,kind,location_id,destination_id,date,actor_key,actor_name,recording_mode,requester,recipient_person,on_behalf,note,created_at';
+const MOVEMENT_COLUMNS = 'id,company_id,document_id,item_id,location_id,destination_id,quantity,allocations,created_at';
+
+export const firstAidJson = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'private, no-store, max-age=0', 'Pragma': 'no-cache', 'X-Content-Type-Options': 'nosniff' } });
+
+export function firstAidFailure(error: unknown) {
+  if (error instanceof AccessError || error instanceof FirstAidInputError) return firstAidJson({ error: error.message }, error.status);
+  const e = error as { code?: string; message?: string };
+  if (e?.code === 'P0001') return firstAidJson({ error: String(e.message || 'ตรวจสอบข้อมูลรายการอีกครั้ง').slice(0, 200) }, 400);
+  if (e?.code === '23505' || e?.code === '40001' || e?.code === '40P01') return firstAidJson({ error: 'ข้อมูลเปลี่ยนแปลงหรือมีรายการซ้ำ กรุณาโหลดใหม่แล้วลองอีกครั้ง' }, 409);
+  if (['23503', '23514', '22P02', '22007', '22008'].includes(e?.code || '')) return firstAidJson({ error: 'ข้อมูลไม่ถูกต้อง หรือรายการไม่อยู่ในบริษัทนี้' }, 400);
+  console.error('First aid API failed', { code: e?.code || 'unknown' });
+  return firstAidJson({ error: 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่' }, 500);
+}
+
+export async function firstAidActor(request: NextRequest, write = false) {
+  const actor = await requireModuleActor(request, 'first-aid', 'First Aid & Medicine Control');
+  const companyId = request.nextUrl.searchParams.get('company_id') || (!actor.isAdmin ? actor.companyId : '');
+  assertCompany(actor, companyId, true);
+  if (write) assertSameOrigin(request);
+  return { actor, companyId };
+}
+
+function check<T>(result: { data: T; error: unknown }): T {
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+function checkOne<T>(result: { data: T; error: unknown }): NonNullable<T> {
+  const data = check(result);
+  if (data == null) throw new FirstAidInputError('ไม่พบรายการที่ต้องการ', 404);
+  return data as NonNullable<T>;
+}
+
+async function allRows(db: DB, table: string, columns: string, companyId: string, filters: Record<string, string | boolean> = {}): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    let query = db.from(table).select(columns).eq('company_id', companyId).order('id').range(offset, offset + 999);
+    for (const [key, value] of Object.entries(filters)) query = query.eq(key, value);
+    const page = check(await query) || [];
+    rows.push(...page);
+    if (page.length < 1000) return rows;
+  }
+}
+
+export async function companyEmployees(db: DB, companyId: string): Promise<FirstAidEmployee[]> {
+  const company = await allRows(db, 'company_employees', 'id,emp_code,first_name,last_name,department', companyId, { is_active: true });
+  const ppe = await allRows(db, 'ppe_employees', 'id,employee_code,name,department', companyId, { is_active: true });
+  const seen = new Set<string>();
+  const result: FirstAidEmployee[] = [];
+  for (const row of company) {
+    const name = `${row.first_name || ''} ${row.last_name || ''}`.trim();
+    if (!name) continue;
+    const code = String(row.emp_code || '');
+    seen.add(code.toLocaleLowerCase() || name.toLocaleLowerCase());
+    result.push({ id: `company:${row.id}`, code, name, department: String(row.department || '') });
+  }
+  for (const row of ppe) {
+    const name = String(row.name || '').trim(); const code = String(row.employee_code || '');
+    if (!name || seen.has(code.toLocaleLowerCase() || name.toLocaleLowerCase())) continue;
+    seen.add(code.toLocaleLowerCase() || name.toLocaleLowerCase());
+    result.push({ id: `ppe:${row.id}`, code, name, department: String(row.department || '') });
+  }
+  return result.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+}
+
+export function mapLocation(row: Row) {
+  const type = String(row.type || 'ตู้ปฐมพยาบาล');
+  return { id: row.id, name: row.name, type, area: row.area || '', issueMode: row.issue_mode, lastChecked: row.last_checked, inspectionIssue: row.inspection_issue, hasPublicLink: !!row.public_token_hash, icon: type.includes('กระเป๋า') ? 'briefcase-medical' : type.includes('คลัง') ? 'package' : 'building' };
+}
+function mapItem(row: Row) { return { id: row.id, name: row.name, generic: row.generic || '', category: row.category, unit: row.unit, min: row.min, trackExpiry: row.track_expiry, icon: row.category === 'ยา' ? 'pill' : row.unit === 'ขวด' ? 'droplet' : 'bandage' }; }
+function mapLot(row: Row) { return { id: row.id, itemId: row.item_id, locationId: row.location_id, code: row.code, expiry: row.expiry, quantity: row.quantity }; }
+function mapThreshold(row: Row) { return { itemId: row.item_id, locationId: row.location_id, min: row.min }; }
+function mapInspection(row: Row) { return { id: row.id, locationId: row.location_id, date: row.date, notes: row.notes || '', hasIssue: row.has_issue, ready: row.ready ?? !row.has_issue, lowItems: row.low_items || [], expiredLots: row.expired_lots || [] }; }
+function mapVisit(row: Row) { return { id: row.id, date: row.date, person: row.person, service: row.service, note: row.note || '', timeIn: row.time_in || '', timeOut: row.time_out || '' }; }
+
+export function mapEvent(movement: Row, document: Row) {
+  return {
+    id: movement.id, documentId: document.id, date: document.date, kind: document.kind, itemId: movement.item_id,
+    locationId: movement.location_id, destinationId: movement.destination_id || undefined, quantity: movement.quantity,
+    allocations: movement.allocations || [], requester: document.kind === 'issue' ? document.requester || null : null, recipientPerson: document.kind === 'issue' ? document.recipient_person || null : null,
+    recipient: document.recipient_person?.name || '', onBehalf: !!document.on_behalf, note: document.note || '',
+    recordedBy: { id: document.actor_key, name: document.actor_name, identityMethod: document.recording_mode === 'self_service' ? 'self_declared' : 'authenticated_session' },
+    recordingMode: document.recording_mode, recordedAt: document.created_at,
+  };
+}
+
+async function companyInfo(db: DB, companyId: string) {
+  const [company, settings] = await Promise.all([
+    db.from('company_settings').select('company_id,company_name,full_name').eq('company_id', companyId).maybeSingle(),
+    db.from('fa_company_settings').select('infirmary_enabled').eq('company_id', companyId).maybeSingle(),
+  ]);
+  const row = check(company); const config = check(settings);
+  return { id: companyId, name: row?.full_name || row?.company_name || companyId.toUpperCase(), short: row?.company_name || companyId.toUpperCase(), infirmary: !!config?.infirmary_enabled };
+}
+
+export async function loadFirstAidState(companyId: string, actor: ToolsActor) {
+  const db = getSupabaseServer();
+  const [company, locations, items, thresholds, lots, movementResult, inspectionResult, visits, employees, usageResult] = await Promise.all([
+    companyInfo(db, companyId), allRows(db, 'fa_locations', LOCATION_COLUMNS, companyId, { active: true }),
+    allRows(db, 'fa_items', ITEM_COLUMNS, companyId, { active: true }), allRows(db, 'fa_location_items', 'id,item_id,location_id,min', companyId),
+    allRows(db, 'fa_lots', 'id,item_id,location_id,code,expiry,quantity', companyId),
+    db.from('fa_movements').select(MOVEMENT_COLUMNS).eq('company_id', companyId).order('created_at', { ascending: false }).limit(501),
+    db.from('fa_inspections').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(200),
+    actor.isAdmin ? db.from('fa_visits').select('id,date,person,service,note,time_in,time_out').eq('company_id', companyId).order('created_at', { ascending: false }).limit(200).then(check) : Promise.resolve([]),
+    companyEmployees(db, companyId), db.rpc('fa_usage_summary', { p_company_id: companyId }),
+  ]);
+  const movements: Row[] = (check(movementResult) || []).slice(0, 500);
+  const documentIds = [...new Set(movements.map(row => row.document_id))]; const documents: Row[] = [];
+  for (let offset = 0; offset < documentIds.length; offset += 100) documents.push(...check(await db.from('fa_documents').select(DOCUMENT_COLUMNS).eq('company_id', companyId).in('id', documentIds.slice(offset, offset + 100))) || []);
+  const byId = new Map(documents.map(row => [row.id, row]));
+  return {
+    schemaVersion: 3, asOf: bangkokDate(), company, locations: locations.map(mapLocation), items: items.map(mapItem), thresholds: thresholds.map(mapThreshold), lots: lots.map(mapLot),
+    events: movements.filter(row => byId.has(row.document_id)).map(row => mapEvent(row, byId.get(row.document_id)!)),
+    inspections: (check(inspectionResult) || []).map(mapInspection), visits: (visits || []).map(mapVisit), employees,
+    session: { id: `${actor.accountTable}:${actor.id}`, name: actor.displayName, identityMethod: 'authenticated_session' },
+    permissions: { canManage: true, canClinical: actor.isAdmin, public: false }, usageSummary: check(usageResult), historyLimit: 500, historyHasMore: (movementResult.data?.length || 0) > 500,
+  };
+}
+
+async function resolvePerson(db: DB, companyId: string, id: string | undefined, supplied: unknown): Promise<PersonSnapshot> {
+  if (!id || id === 'manual') return manualPerson(supplied);
+  const match = /^(company|ppe):(.+)$/.exec(id);
+  if (!match) throw new FirstAidInputError('รหัสพนักงานไม่ถูกต้อง');
+  const employeeId = uuid(match[2], 'รหัสพนักงาน');
+  if (match[1] === 'company') {
+    const row = check(await db.from('company_employees').select('id,emp_code,first_name,last_name,department').eq('company_id', companyId).eq('id', employeeId).eq('is_active', true).maybeSingle());
+    if (!row) throw new FirstAidInputError('ไม่พบพนักงานในบริษัทนี้');
+    return { id, code: row.emp_code || '', name: `${row.first_name || ''} ${row.last_name || ''}`.trim(), department: row.department || 'ไม่ได้ระบุแผนก', identityMethod: 'self_declared' };
+  }
+  const row = check(await db.from('ppe_employees').select('id,employee_code,name,department').eq('company_id', companyId).eq('id', employeeId).eq('is_active', true).maybeSingle());
+  if (!row) throw new FirstAidInputError('ไม่พบพนักงานในบริษัทนี้');
+  return { id, code: row.employee_code || '', name: row.name, department: row.department || 'ไม่ได้ระบุแผนก', identityMethod: 'self_declared' };
+}
+
+async function transactionPayload(db: DB, companyId: string, input: TransactionInput, publicRequest = false) {
+  let requester: PersonSnapshot | undefined; let recipientPerson: PersonSnapshot | undefined;
+  if (input.kind === 'issue') {
+    if (publicRequest) {
+      if (input.requesterId && input.requesterId !== 'manual') throw new FirstAidInputError('หน้านี้ให้ระบุชื่อผู้เบิกด้วยตนเอง');
+      if (input.onBehalf && input.recipientId && input.recipientId !== 'manual') throw new FirstAidInputError('กรุณาระบุชื่อผู้รับจริงด้วยตนเอง');
+      requester = manualPerson(input.requesterPerson || input.requester);
+      recipientPerson = input.onBehalf ? manualPerson(input.recipientPerson) : requester;
+    } else {
+      requester = await resolvePerson(db, companyId, input.requesterId, input.requesterPerson || input.requester);
+      recipientPerson = input.onBehalf ? await resolvePerson(db, companyId, input.recipientId, input.recipientPerson) : requester;
+    }
+  }
+  return { kind: input.kind, locationId: input.locationId, destinationId: input.destinationId || null, date: input.date, lines: input.lines, expiry: input.expiry || null, lotCode: input.lotCode || '', requester: requester || null, recipientPerson: recipientPerson || null, onBehalf: !!input.onBehalf, note: input.note || '', mode: publicRequest ? 'self_service' : 'staff' };
+}
+
+function transactionReceipt(result: Row) {
+  if (!result?.document || !Array.isArray(result.movements)) throw new Error('Invalid transaction response');
+  return { documentId: result.document.id, events: result.movements.map((movement: Row) => mapEvent(movement, result.document)) };
+}
+
+export async function postFirstAidTransaction(request: NextRequest) {
+  const { actor, companyId } = await firstAidActor(request, true);
+  const input = parseTransaction(await readJsonBody(request)); const db = getSupabaseServer();
+  const payload = await transactionPayload(db, companyId, input);
+  const data = check(await db.rpc('fa_post_transaction', { p_company_id: companyId, p_actor_key: `${actor.accountTable}:${actor.id}`, p_actor_name: actor.displayName, p_idempotency_key: input.idempotencyKey, p_payload: payload, p_public_token_hash: null }));
+  return transactionReceipt(data);
+}
+
+function tokenHash(token: string) {
+  if (!/^[a-f0-9]{64}$/.test(token)) throw new FirstAidInputError('ไม่พบลิงก์จุดปฐมพยาบาลนี้', 404);
+  return createHash('sha256').update(token).digest('hex');
+}
+
+async function publicLocation(db: DB, token: string): Promise<Row> {
+  const row = check(await db.from('fa_locations').select(LOCATION_COLUMNS).eq('public_token_hash', tokenHash(token)).eq('active', true).maybeSingle());
+  if (!row) throw new FirstAidInputError('ลิงก์นี้หมดอายุหรือถูกยกเลิกแล้ว', 404);
+  if (row.issue_mode !== 'self_service') throw new FirstAidInputError('จุดนี้ให้เจ้าหน้าที่เป็นผู้บันทึก กรุณาติดต่อเจ้าหน้าที่ประจำจุด', 403);
+  return row;
+}
+
+export async function loadPublicFirstAidState(token: string) {
+  const db = getSupabaseServer(); const location = await publicLocation(db, token); const companyId: string = location.company_id;
+  const [company, lots, thresholds] = await Promise.all([
+    companyInfo(db, companyId), allRows(db, 'fa_lots', 'id,item_id,location_id,code,expiry,quantity', companyId, { location_id: location.id }),
+    allRows(db, 'fa_location_items', 'id,item_id,location_id,min', companyId, { location_id: location.id }),
+  ]);
+  const ids = [...new Set([...lots.map(row => row.item_id), ...thresholds.map(row => row.item_id)])];
+  const items: Row[] = [];
+  for (let offset = 0; offset < ids.length; offset += 100) items.push(...check(await db.from('fa_items').select(ITEM_COLUMNS).eq('company_id', companyId).eq('active', true).in('id', ids.slice(offset, offset + 100))) || []);
+  return { schemaVersion: 3, asOf: bangkokDate(), company: { name: company.name, short: company.short, infirmary: false }, locations: [mapLocation({ ...location, public_token_hash: null })], items: items.map(mapItem), lots: lots.map(mapLot), thresholds: thresholds.map(mapThreshold), events: [], inspections: [], visits: [], employees: [], permissions: { canManage: false, canClinical: false, public: true } };
+}
+
+export async function postPublicFirstAidTransaction(request: NextRequest, token: string) {
+  assertSameOrigin(request);
+  const db = getSupabaseServer(); const location = await publicLocation(db, token);
+  const input = parseTransaction(await readJsonBody(request));
+  if (input.kind !== 'issue' || input.locationId !== location.id) throw new FirstAidInputError('ลิงก์นี้ใช้บันทึกการหยิบใช้ได้เฉพาะจุดที่ระบุ', 403);
+  const payload = await transactionPayload(db, location.company_id, input, true);
+  const data = check(await db.rpc('fa_post_transaction', { p_company_id: location.company_id, p_actor_key: 'self_declared', p_actor_name: payload.requester?.name || '', p_idempotency_key: input.idempotencyKey, p_payload: payload, p_public_token_hash: tokenHash(token) }));
+  return transactionReceipt(data);
+}
+
+async function scopedRow(db: DB, table: string, companyId: string, id: unknown) {
+  const validId = uuid(id);
+  const row = check(await db.from(table).select('id').eq('company_id', companyId).eq('id', validId).maybeSingle());
+  if (!row) throw new FirstAidInputError('ไม่พบรายการในบริษัทนี้', 404);
+  return validId;
+}
+
+async function createMasterRow(db: DB, table: 'fa_items' | 'fa_locations' | 'fa_visits', companyId: string, createId: unknown, values: Record<string, unknown>) {
+  const id = createId == null ? undefined : uuid(createId, 'รหัสสร้างรายการ');
+  if (id) {
+    const existing = check(await db.from(table).select('id,' + Object.keys(values).join(',')).eq('company_id', companyId).eq('id', id).maybeSingle()) as Row | null;
+    if (existing) {
+      if (Object.keys(values).some(key => ['time_in', 'time_out'].includes(key) && existing[key] && values[key] ? String(existing[key]).slice(0, 5) !== String(values[key]).slice(0, 5) : existing[key] !== values[key])) throw new FirstAidInputError('รหัสนี้ถูกใช้สร้างรายการด้วยข้อมูลอื่นแล้ว กรุณาโหลดใหม่', 409);
+      return { id };
+    }
+  }
+  return checkOne(await db.from(table).insert({ ...(id ? { id } : {}), company_id: companyId, ...values }).select('id').single());
+}
+
+export async function manageFirstAid(request: NextRequest) {
+  const { actor, companyId } = await firstAidActor(request, true); const db = getSupabaseServer();
+  const body = record(await readJsonBody(request)); const action = text(body.action, 'การดำเนินการ', 40);
+  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
+  if (action === 'visit' && !actor.isAdmin) throw new AccessError('เฉพาะผู้ดูแลที่มีสิทธิ์ข้อมูลบริการห้องพยาบาล');
+  // Authenticated writes initialize only their selected company's configuration.
+  check(await db.from('fa_company_settings').upsert({ company_id: companyId }, { onConflict: 'company_id', ignoreDuplicates: true }));
+  if (action === 'location') {
+    allowedKeys(body, ['action', 'id', 'createId', 'name', 'type', 'area', 'issueMode']);
+    if (body.id && body.createId) throw new FirstAidInputError('เลือกแก้ไขหรือสร้างรายการอย่างใดอย่างหนึ่ง');
+    if (!['controlled', 'self_service'].includes(String(body.issueMode))) throw new FirstAidInputError('วิธีบันทึกการเบิกไม่ถูกต้อง');
+    const values = { name: text(body.name, 'ชื่อจุดปฐมพยาบาล'), type: text(body.type, 'ประเภทจุด', 80), area: text(body.area, 'พื้นที่', 200, false), issue_mode: body.issueMode };
+    const id = body.id ? await scopedRow(db, 'fa_locations', companyId, body.id) : null;
+    const row = id ? checkOne(await db.from('fa_locations').update(values).eq('company_id', companyId).eq('id', id).select('id').single()) : await createMasterRow(db, 'fa_locations', companyId, body.createId, values);
+    return { ok: true, id: row.id };
+  }
+  if (action === 'item') {
+    allowedKeys(body, ['action', 'id', 'createId', 'name', 'generic', 'category', 'unit', 'min', 'trackExpiry']);
+    if (body.id && body.createId) throw new FirstAidInputError('เลือกแก้ไขหรือสร้างรายการอย่างใดอย่างหนึ่ง');
+    const values = { name: text(body.name, 'ชื่อรายการ'), generic: text(body.generic, 'รายละเอียด', 200, false), category: text(body.category, 'หมวดหมู่', 80), unit: text(body.unit, 'หน่วยนับ', 40), min: integer(body.min ?? 0, 'จำนวนขั้นต่ำ'), track_expiry: bool(body.trackExpiry, true) };
+    const id = body.id ? await scopedRow(db, 'fa_items', companyId, body.id) : null;
+    if (id) {
+      const existing = checkOne(await db.from('fa_items').select('track_expiry,unit').eq('company_id', companyId).eq('id', id).single());
+      if (existing.unit !== values.unit) {
+        const [lots, movements] = await Promise.all([
+          db.from('fa_lots').select('id').eq('company_id', companyId).eq('item_id', id).limit(1),
+          db.from('fa_movements').select('id').eq('company_id', companyId).eq('item_id', id).limit(1),
+        ]);
+        if (check(lots)?.length || check(movements)?.length) throw new FirstAidInputError('รายการนี้มีล็อตหรือประวัติการเคลื่อนไหวแล้ว หากเปลี่ยนหน่วยนับให้สร้างรายการใหม่', 409);
+      }
+      if (!existing.track_expiry && values.track_expiry) {
+        const missing = check(await db.from('fa_lots').select('id').eq('company_id', companyId).eq('item_id', id).is('expiry', null).gt('quantity', 0).limit(1));
+        if (missing?.length) throw new FirstAidInputError('มีล็อตที่ยังไม่ระบุวันหมดอายุ กรุณาจัดการก่อนเปิดติดตามวันหมดอายุ');
+      }
+    }
+    const row = id ? checkOne(await db.from('fa_items').update(values).eq('company_id', companyId).eq('id', id).select('id').single()) : await createMasterRow(db, 'fa_items', companyId, body.createId, values);
+    return { ok: true, id: row.id };
+  }
+  if (action === 'thresholds') {
+    allowedKeys(body, ['action', 'locationId', 'thresholds']); const locationId = await scopedRow(db, 'fa_locations', companyId, body.locationId);
+    if (!Array.isArray(body.thresholds) || !body.thresholds.length || body.thresholds.length > 200) throw new FirstAidInputError('กำหนดเกณฑ์ได้สูงสุด 200 รายการต่อครั้ง');
+    const rows = body.thresholds.map(value => { const row = record(value); allowedKeys(row, ['itemId', 'min']); return { company_id: companyId, location_id: locationId, item_id: uuid(row.itemId), min: integer(row.min, 'จำนวนขั้นต่ำ') }; });
+    if (new Set(rows.map(row => row.item_id)).size !== rows.length) throw new FirstAidInputError('รายการเกณฑ์ซ้ำกัน');
+    check(await db.rpc('fa_save_thresholds', { p_company_id: companyId, p_location_id: locationId, p_items: rows.map(row => ({ itemId: row.item_id, min: row.min })) }));
+    return { ok: true };
+  }
+  if (action === 'settings') {
+    allowedKeys(body, ['action', 'infirmary']); if (!actor.isAdmin) throw new AccessError('เฉพาะผู้ดูแลระบบสามารถเปิดส่วนบริการห้องพยาบาล');
+    check(await db.from('fa_company_settings').update({ infirmary_enabled: bool(body.infirmary) }).eq('company_id', companyId)); return { ok: true };
+  }
+  if (action === 'inspection') {
+    allowedKeys(body, ['action', 'createId', 'locationId', 'notes', 'hasIssue']);
+    const createId = uuid(body.createId, 'รหัสบันทึกผลตรวจ');
+    const locationId = await scopedRow(db, 'fa_locations', companyId, body.locationId);
+    const result = check(await db.rpc('fa_record_inspection', { p_company_id: companyId, p_location_id: locationId, p_actor_key: `${actor.accountTable}:${actor.id}`, p_notes: text(body.notes, 'หมายเหตุ', 500, false), p_has_issue: bool(body.hasIssue, false), p_create_id: createId }));
+    return { ok: true, inspection: result };
+  }
+  if (action === 'visit') {
+    allowedKeys(body, ['action', 'createId', 'date', 'person', 'service', 'note', 'timeIn', 'timeOut']);
+    const settings = checkOne(await db.from('fa_company_settings').select('infirmary_enabled').eq('company_id', companyId).single());
+    if (!settings.infirmary_enabled) throw new FirstAidInputError('บริษัทยังไม่ได้เปิดบริการห้องพยาบาล');
+    const date = calendarDate(body.date); if (date > bangkokDate()) throw new FirstAidInputError('ไม่อนุญาตให้บันทึกบริการล่วงหน้า');
+    const time = (value: unknown) => { if (value == null || value === '') return null; if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new FirstAidInputError('เวลาไม่ถูกต้อง'); return value; };
+    const row = await createMasterRow(db, 'fa_visits', companyId, body.createId, { date, person: text(body.person, 'ชื่อผู้ใช้บริการ'), service: text(body.service, 'ประเภทบริการ', 80), note: text(body.note, 'บันทึกการดูแล', 2000, false), time_in: time(body.timeIn), time_out: time(body.timeOut), actor_key: `${actor.accountTable}:${actor.id}` });
+    return { ok: true, id: row.id };
+  }
+  allowedKeys(body, ['action', 'locationId']); const locationId = await scopedRow(db, 'fa_locations', companyId, body.locationId);
+  const point = checkOne(await db.from('fa_locations').select('issue_mode').eq('company_id', companyId).eq('id', locationId).single());
+  if (point.issue_mode !== 'self_service') throw new FirstAidInputError('เปิดรูปแบบผู้เบิกบันทึกเองก่อนสร้างลิงก์');
+  const token = randomBytes(32).toString('hex');
+  check(await db.from('fa_locations').update({ public_token_hash: tokenHash(token) }).eq('company_id', companyId).eq('id', locationId));
+  const url = new URL(`/first-aid/take/${token}`, request.nextUrl.origin).href;
+  const qrSvg = await QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 3, width: 400 });
+  return { ok: true, url, qrSvg };
+}

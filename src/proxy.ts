@@ -12,6 +12,7 @@ import { SA_COOKIE, verifySessionToken } from '@/lib/superAdminSession';
 import { apiError, TOOLS_COOKIE, verifyToolsSession } from '@/lib/toolsSession';
 import { requirePPEActor, guardLegacyPPE } from '@/lib/ppe-access';
 import { guardSHE } from '@/lib/she-access';
+import { isPublicFirstAidPath } from '@/lib/first-aid/public-path';
 
 const ADMIN_HOST_PREFIX = 'admin.';
 
@@ -26,9 +27,10 @@ export default async function proxy(request: NextRequest) {
   const local = isLocalHost(host);
   const toolsSession = verifyToolsSession(request.cookies.get(TOOLS_COOKIE)?.value);
   if (toolsSession?.table === 'ppe_requesters') {
+    const publicFirstAid = isPublicFirstAidPath(pathname);
     const allowedAPI = ['/api/auth/session', '/api/auth/login', '/api/ppe/catalog', '/api/ppe/requests'];
-    if (pathname.startsWith('/api/') && !allowedAPI.includes(pathname)) return NextResponse.json({ error: 'บัญชีนี้ใช้ได้เฉพาะการขอเบิก PPE' }, { status: 403 });
-    if (!pathname.startsWith('/api/') && !pathname.startsWith('/_next/') && !['/ppe/requests'].includes(pathname) && !pathname.includes('.')) {
+    if (pathname.startsWith('/api/') && !allowedAPI.includes(pathname) && !publicFirstAid) return NextResponse.json({ error: 'บัญชีนี้ใช้ได้เฉพาะการขอเบิก PPE' }, { status: 403 });
+    if (!pathname.startsWith('/api/') && !pathname.startsWith('/_next/') && !['/ppe/requests'].includes(pathname) && !pathname.includes('.') && !publicFirstAid) {
       const url = request.nextUrl.clone(); url.pathname = '/ppe/requests'; url.search = '';
       return NextResponse.redirect(url);
     }
