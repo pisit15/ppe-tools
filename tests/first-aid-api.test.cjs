@@ -139,6 +139,54 @@ test('stock lists paginate beyond the default PostgREST row limit without trunca
   assert.equal(state.lots.reduce((sum, lot) => sum + lot.quantity, 0), 1007);
 });
 
+test('archived item and location names remain available for history without appearing in active inventory or public stock', async () => {
+  const archived = { ...db.tables.fa_items[0], id: randomUUID(), name: 'Historic old packaging', active: false };
+  const archivedPoint = { ...db.tables.fa_locations[0], id: randomUUID(), name: 'Company-wide historical log; point unknown', active: false, public_token_hash: null };
+  db.tables.fa_items.push(archived);
+  db.tables.fa_locations.push(archivedPoint);
+  db.tables.fa_movements[0].item_id = archived.id;
+  db.tables.fa_movements[0].location_id = archivedPoint.id;
+  const state = await server.loadFirstAidState('amt', actor());
+  assert.deepEqual(state.items.map(row => row.id), [ids.item]);
+  assert.deepEqual(state.archivedItems.map(row => row.name), ['Historic old packaging']);
+  assert.deepEqual(state.locations.map(row => row.id), [ids.location]);
+  assert.deepEqual(state.archivedLocations.map(row => row.name), ['Company-wide historical log; point unknown']);
+  assert.equal(state.events[0].itemId, archived.id);
+  assert.equal(state.events[0].locationId, archivedPoint.id);
+  const publicState = await server.loadPublicFirstAidState(token);
+  assert.equal(publicState.items.some(row => row.id === archived.id), false);
+  assert.equal(publicState.locations.some(row => row.id === archivedPoint.id), false);
+  assert.equal('archivedItems' in publicState, false);
+  assert.equal('archivedLocations' in publicState, false);
+});
+
+test('Excel history preserves unknown recorder identity and month-only date precision', () => {
+  const movement = db.tables.fa_movements[0],document = db.tables.fa_documents[0];
+  const monthly = server.mapEvent(movement, { ...document, actor_key: 'excel-import:month:source-hash', requester: null, recipient_person: null });
+  assert.equal(monthly.recordingMode, 'legacy');
+  assert.equal(monthly.recordedBy.identityMethod, 'legacy_import');
+  assert.equal(monthly.datePrecision, 'month');
+  assert.equal(monthly.requester, null);
+  assert.equal(server.mapEvent(movement, document).datePrecision, 'day');
+  assert.equal(server.mapEvent(movement, document).recordedBy.identityMethod, 'authenticated_session');
+});
+
+test('view balances exclude unknown tracked expiry while preserving physical stock and usable equipment', async () => {
+  const model = await import(require('node:url').pathToFileURL(path.join(root, 'public/first-aid/model.mjs')).href);
+  const state = { asOf: '2026-11-02', items: [{ id: 'medicine', trackExpiry: true },{ id: 'equipment', trackExpiry: false }], locations: [{ id: 'point', lastChecked: '2026-11-02' }], thresholds: [{ itemId: 'medicine', locationId: 'point', min: 0 }], lots: [
+    { id: 'pending', itemId: 'medicine', locationId: 'point', expiry: null, quantity: 12 },
+    { id: 'expired', itemId: 'medicine', locationId: 'point', expiry: '2026-10-01', quantity: 3 },
+    { id: 'usable', itemId: 'medicine', locationId: 'point', expiry: '2027-10-01', quantity: 4 },
+    { id: 'equipment-lot', itemId: 'equipment', locationId: 'point', expiry: null, quantity: 2 },
+  ] };
+  assert.equal(model.itemBalance(state, 'medicine'), 4);
+  assert.equal(model.itemBalance(state, 'equipment'), 2);
+  assert.equal(model.pendingExpiryLots(state).reduce((sum,lot) => sum+lot.quantity,0), 12);
+  assert.equal(model.getItemStatus(state, 'medicine').label, 'รอยืนยันวันหมดอายุ');
+  assert.equal(model.locationStatus(state, 'point').ready, false);
+  assert.equal(state.lots.reduce((sum,lot) => sum+lot.quantity,0), 21);
+});
+
 test('public state exposes only the token point stock and no employee directory, history, clinical data or session', async () => {
   const state = await server.loadPublicFirstAidState(token);
   assert.equal(state.locations.length, 1);

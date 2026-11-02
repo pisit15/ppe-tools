@@ -10,6 +10,7 @@ before(async()=>{
   await db.exec('create role anon; create role authenticated; create role service_role bypassrls;');
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261102105832_first_aid_control.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261102111010_first_aid_inspection_ready.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261102115731_first_aid_unknown_expiry_hold.sql'),'utf8'));
   ({today,expired,early,late}=(await db.query(`select to_char((now() at time zone 'Asia/Bangkok')::date,'YYYY-MM-DD') today,to_char((now() at time zone 'Asia/Bangkok')::date-1,'YYYY-MM-DD') expired,to_char((now() at time zone 'Asia/Bangkok')::date+30,'YYYY-MM-DD') early,to_char((now() at time zone 'Asia/Bangkok')::date+300,'YYYY-MM-DD') late`)).rows[0]);
 });
 after(async()=>{await db?.close();});
@@ -106,6 +107,34 @@ test('receipt expiry validation, typed quantity checks and non-expiring equipmen
   const result=await post(f,payload(f,{kind:'receive',lines:[{itemId:f.equipment,quantity:3}],lotCode:'NO-EXPIRY'}));
   assert.equal(result.movements[0].allocations[0].expiry,null);
   assert.equal((await db.query('select quantity from fa_lots where item_id=$1',[f.equipment])).rows[0].quantity,3);
+});
+
+test('tracked imported stock without expiry cannot issue or transfer; untracked equipment remains usable',async()=>{
+  const f=await fixture(),pending=randomUUID(),equipmentLot=randomUUID();
+  await db.query(`insert into fa_lots(id,company_id,item_id,location_id,code,expiry,quantity) values($1,$2,$3,$4,'IMPORT-PENDING',null,12),($5,$2,$6,$4,'EQUIPMENT',null,3)`,[pending,f.company,f.item,f.location,equipmentLot,f.equipment]);
+  for(const kind of ['issue','transfer']){
+    await assert.rejects(post(f,payload(f,{kind,...(kind==='transfer'?{destinationId:f.self}:{}),lines:[{itemId:f.item,quantity:1,lotId:pending}]})),/ยอดพร้อมใช้ไม่เพียงพอ/);
+  }
+  await assert.rejects(post(f,payload(f,{lines:[{itemId:f.item,quantity:31}]})),/ยอดพร้อมใช้ไม่เพียงพอ/);
+  assert.equal(await quantity(pending),12);
+  await post(f,payload(f,{lines:[{itemId:f.equipment,quantity:1,lotId:equipmentLot}]}));
+  assert.equal(await quantity(equipmentLot),2);
+});
+
+test('public self-service cannot select imported tracked stock whose expiry is unconfirmed',async()=>{
+  const f=await fixture(),pending=randomUUID();
+  await db.query(`insert into fa_lots(id,company_id,item_id,location_id,code,expiry,quantity) values($1,$2,$3,$4,'IMPORT-PENDING',null,12)`,[pending,f.company,f.item,f.self]);
+  await assert.rejects(post(f,payload(f,{locationId:f.self,mode:'self_service',lines:[{itemId:f.item,quantity:1,lotId:pending}]}),randomUUID(),f.hash),/ยอดพร้อมใช้ไม่เพียงพอ/);
+  assert.equal(await quantity(pending),12);
+});
+
+test('inspection cannot mark a point ready while tracked stock has an unconfirmed expiry even at minimum zero',async()=>{
+  const f=await fixture();
+  await db.query('update fa_lots set quantity=0 where location_id=$1',[f.location]);
+  await db.query(`insert into fa_lots(company_id,item_id,location_id,code,expiry,quantity) values($1,$2,$3,'IMPORT-PENDING',null,12)`,[f.company,f.item,f.location]);
+  await db.query('insert into fa_location_items(company_id,location_id,item_id,min) values($1,$2,$3,0)',[f.company,f.location,f.item]);
+  const result=(await db.query(`select fa_record_inspection($1,$2,'staff','Checked',false,$3) result`,[f.company,f.location,randomUUID()])).rows[0].result;
+  assert.equal(result.ready,false);
 });
 
 test('transfer conserves physical stock and preserves lot and expiry at destination',async()=>{

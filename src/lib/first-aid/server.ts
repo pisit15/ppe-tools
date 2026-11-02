@@ -88,13 +88,14 @@ function mapInspection(row: Row) { return { id: row.id, locationId: row.location
 function mapVisit(row: Row) { return { id: row.id, date: row.date, person: row.person, service: row.service, note: row.note || '', timeIn: row.time_in || '', timeOut: row.time_out || '' }; }
 
 export function mapEvent(movement: Row, document: Row) {
+  const imported = String(document.actor_key || '').startsWith('excel-import:');
   return {
-    id: movement.id, documentId: document.id, date: document.date, kind: document.kind, itemId: movement.item_id,
+    id: movement.id, documentId: document.id, date: document.date, datePrecision: String(document.actor_key || '').startsWith('excel-import:month:') ? 'month' : 'day', kind: document.kind, itemId: movement.item_id,
     locationId: movement.location_id, destinationId: movement.destination_id || undefined, quantity: movement.quantity,
     allocations: movement.allocations || [], requester: document.kind === 'issue' ? document.requester || null : null, recipientPerson: document.kind === 'issue' ? document.recipient_person || null : null,
     recipient: document.recipient_person?.name || '', onBehalf: !!document.on_behalf, note: document.note || '',
-    recordedBy: { id: document.actor_key, name: document.actor_name, identityMethod: document.recording_mode === 'self_service' ? 'self_declared' : 'authenticated_session' },
-    recordingMode: document.recording_mode, recordedAt: document.created_at,
+    recordedBy: { id: document.actor_key, name: document.actor_name, identityMethod: imported ? 'legacy_import' : document.recording_mode === 'self_service' ? 'self_declared' : 'authenticated_session' },
+    recordingMode: imported ? 'legacy' : document.recording_mode, recordedAt: document.created_at,
   };
 }
 
@@ -110,8 +111,8 @@ async function companyInfo(db: DB, companyId: string) {
 export async function loadFirstAidState(companyId: string, actor: ToolsActor) {
   const db = getSupabaseServer();
   const [company, locations, items, thresholds, lots, movementResult, inspectionResult, visits, employees, usageResult] = await Promise.all([
-    companyInfo(db, companyId), allRows(db, 'fa_locations', LOCATION_COLUMNS, companyId, { active: true }),
-    allRows(db, 'fa_items', ITEM_COLUMNS, companyId, { active: true }), allRows(db, 'fa_location_items', 'id,item_id,location_id,min', companyId),
+    companyInfo(db, companyId), allRows(db, 'fa_locations', LOCATION_COLUMNS, companyId),
+    allRows(db, 'fa_items', ITEM_COLUMNS, companyId), allRows(db, 'fa_location_items', 'id,item_id,location_id,min', companyId),
     allRows(db, 'fa_lots', 'id,item_id,location_id,code,expiry,quantity', companyId),
     db.from('fa_movements').select(MOVEMENT_COLUMNS).eq('company_id', companyId).order('created_at', { ascending: false }).limit(501),
     db.from('fa_inspections').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(200),
@@ -123,7 +124,7 @@ export async function loadFirstAidState(companyId: string, actor: ToolsActor) {
   for (let offset = 0; offset < documentIds.length; offset += 100) documents.push(...check(await db.from('fa_documents').select(DOCUMENT_COLUMNS).eq('company_id', companyId).in('id', documentIds.slice(offset, offset + 100))) || []);
   const byId = new Map(documents.map(row => [row.id, row]));
   return {
-    schemaVersion: 3, asOf: bangkokDate(), company, locations: locations.map(mapLocation), items: items.map(mapItem), thresholds: thresholds.map(mapThreshold), lots: lots.map(mapLot),
+    schemaVersion: 3, asOf: bangkokDate(), company, locations: locations.filter(row => row.active).map(mapLocation), archivedLocations: locations.filter(row => !row.active).map(mapLocation), items: items.filter(row => row.active).map(mapItem), archivedItems: items.filter(row => !row.active).map(mapItem), thresholds: thresholds.map(mapThreshold), lots: lots.map(mapLot),
     events: movements.filter(row => byId.has(row.document_id)).map(row => mapEvent(row, byId.get(row.document_id)!)),
     inspections: (check(inspectionResult) || []).map(mapInspection), visits: (visits || []).map(mapVisit), employees,
     session: { id: `${actor.accountTable}:${actor.id}`, name: actor.displayName, identityMethod: 'authenticated_session' },
