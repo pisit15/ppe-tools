@@ -44,6 +44,14 @@ const layouts: Record<string, Layout> = {
     detail: [185, 148, 312, 13], fire: [0, 0, 0, 0], request: [505, 305, 96, 20] },
 };
 const ink = rgb(0.06, 0.16, 0.31);
+function tick(page: PDFPage, x: number, y: number) {
+  const scale = page.getWidth() / 827;
+  const point = (dx: number, dy: number) => ({ x: (x + dx) * scale, y: page.getHeight() - (y + dy) * scale });
+  // Vector strokes keep a real check mark inside the original square without
+  // depending on a font's symbol coverage or glyph metrics.
+  page.drawLine({ start: point(-2.8, 0), end: point(-0.7, 2.3), thickness: 1.15 * scale, color: ink });
+  page.drawLine({ start: point(-0.7, 2.3), end: point(3.1, -2.8), thickness: 1.15 * scale, color: ink });
+}
 const stageLabels: Record<string, string> = { request: "ส่งคำขอ", approve: "อนุมัติ", start: "ยืนยันเปิดงาน", close: "ปิดงาน" };
 const actionLabels: Record<string, string> = { create: "สร้างคำขอ", edit: "แก้ไขร่าง", submit: "ส่งคำขอ", approve: "อนุมัติ", start: "เปิดงาน", return: "ส่งกลับแก้ไข", suspend: "พักงาน", resume: "กลับเข้าทำงาน", inspect: "ตรวจระหว่างงาน", request_close: "ขอปิดงาน", close: "ตรวจรับปิดงาน", cancel: "ยกเลิก" };
 const date = (v: string, timeOnly = false) => !v || !Number.isFinite(Date.parse(v)) ? "" : new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", ...(timeOnly ? {hour: "2-digit", minute: "2-digit"} : {day: "2-digit", month: "2-digit", year: "numeric"}) }).format(new Date(v));
@@ -155,9 +163,8 @@ export async function renderPermitPdf(p: Permit, options: PermitPdfOptions = {})
       }
       if (code === "003") {
         const codes = ["004", "005", "006", "013", "014", "015", "016", "029"];
-        const scale = page.getWidth() / 827;
         for (const [i, c] of codes.entries()) if (p.data.forms.some(f => f.template.source_code === c)) {
-          page.drawText("X", {x: [62,160,257,354,457,556,651,753][i] * scale, y: page.getHeight() - 358 * scale, font, size: 11 * scale, color: ink});
+          tick(page, [66,164,261,358,461,560,655,757][i], 353);
         }
       }
       if (code === "006") {
@@ -167,7 +174,6 @@ export async function renderPermitPdf(p: Permit, options: PermitPdfOptions = {})
         // The original authorizer/supervisor roles are not inferred from SHE approval roles.
       }
       if (structured) {
-        const scale = page.getWidth() / 827;
         for (const field of form.template.config.fields) {
           const mapping = field.print;
           const answer = form.answers[field.id] || "";
@@ -177,7 +183,7 @@ export async function renderPermitPdf(p: Permit, options: PermitPdfOptions = {})
             const mark = mapping.marks.find(m => m.value === value);
             if (mark) {
               // Mark coordinates are the centre of the original checkbox.
-              page.drawText("X", {x: (mark.x - 3) * scale, y: page.getHeight() - (mark.y + 4) * scale, font, size: 10 * scale, color: ink});
+              tick(page, mark.x, mark.y);
               mappedFields.get(index)!.add(field.id);
             } else if (field.kind === "choice" && value === "no" && field.options?.some(o => o.value === "no")) {
               // An explicit "not selected" value is represented by the empty box.

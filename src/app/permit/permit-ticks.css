@@ -1,0 +1,93 @@
+/* The online assessment follows the original AMT row/checkbox structure.
+   Native radio groups keep "not assessed" separate from an explicit N answer. */
+.wp-ticks { container-type: inline-size; container-name: permit-ticks; }
+.wp-shell .wp-ticks .wp-field-group-body { padding-bottom: 20px; }
+.wp-tick-instructions { margin: 0 0 14px; color: #63748d; font-size: 12px; line-height: 1.8; }
+.wp-shell .wp-ticks .wp-tick-field { position: relative; min-width: 0; margin: 0; padding: 0; border: 0; }
+.wp-shell .wp-ticks .wp-tick-field:focus-visible { outline: 2px solid #2454d6; outline-offset: 4px; border-radius: 4px; }
+.wp-shell .wp-ticks .wp-tick-legend { width: 100%; padding: 0; margin: 0 0 8px; color: #324a68; font-size: 12px; font-weight: 500; line-height: 1.8; }
+.wp-tick-options { display: flex; align-items: stretch; flex-wrap: wrap; gap: 4px 12px; }
+.wp-shell .wp-ticks label.wp-tick-option { display: flex; align-items: flex-start; justify-content: flex-start; gap: 8px; min-height: 44px; padding: 10px 0; margin: 0; color: #40536c; font-size: 12px; font-weight: 400; cursor: pointer; line-height: 1.8; }
+.wp-tick-option > span { min-width: 0; overflow-wrap: anywhere; }
+.wp-shell .wp-ticks .wp-tick-option > input[type="radio"] {
+  appearance: none; -webkit-appearance: none; position: relative; display: block;
+  width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; padding: 0;
+  margin: 2px 0 0; border: 1.5px solid #8e9db1; border-radius: 2px;
+  background: #fff; color: #fff; cursor: pointer; box-shadow: none;
+}
+.wp-shell .wp-ticks .wp-tick-option > input[type="radio"]:checked { background: #2454d6; border-color: #2454d6; }
+.wp-shell .wp-ticks .wp-tick-option > input[type="radio"]:checked::after { content: ""; position: absolute; top: 1px; left: 5px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.wp-shell .wp-ticks .wp-tick-option > input[type="radio"]:focus-visible { outline: 3px solid #91aff4; outline-offset: 3px; }
+.wp-shell .wp-ticks .wp-tick-option[data-selected="true"] { color: #244b9d; }
+.wp-shell .wp-ticks .wp-tick-option[data-negative="true"][data-selected="true"] { color: #5c6470; }
+.wp-shell .wp-ticks .wp-tick-option[data-negative="true"] > input[type="radio"]:checked { background: #68788e; border-color: #68788e; }
+.wp-shell .wp-ticks .wp-tick-check-field .wp-tick-option[data-negative="true"][data-selected="true"] { color: #b23e35; }
+.wp-shell .wp-ticks .wp-tick-check-field .wp-tick-option[data-negative="true"] > input[type="radio"]:checked { background: #b94b40; border-color: #b94b40; }
+.wp-shell .wp-ticks .wp-tick-field:disabled .wp-tick-option { color: #7a8595; cursor: default; }
+.wp-shell .wp-ticks .wp-tick-field:disabled .wp-tick-option > input[type="radio"] { border-color: #c1cad7; background: #f3f5f8; cursor: default; }
+.wp-tick-clear { display: block; min-height: 28px; padding: 2px 4px; margin: 0 0 0 auto; border: 0; background: transparent; color: #6b7f9b; font: inherit; font-size: 10px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.wp-tick-clear:hover { color: #2454d6; }
+.wp-tick-section-fields > .wp-tick-field { padding: 8px 0!important; border-bottom: 1px solid #e5ebf3!important; }
+.wp-tick-section-fields > .wp-tick-field:last-child { border-bottom: 0!important; }
+.wp-tick-section-fields .wp-tick-clause { flex: 1 1 210px; font-weight: 500; }
+.wp-tick-section-fields .wp-tick-option:not(.wp-tick-clause) { flex: 0 0 auto; }
+.wp-tick-section-fields .wp-note-field { margin-top: 14px!important; }
+.wp-shell .wp-ticks .wp-tick-reason { display: block; font-size: 11px; margin: 5px 0 12px; color: #697c96; }
+.wp-tick-reason input { margin-top: 6px; }
+.wp-shell .wp-ticks .wp-tick-matrix { width: 100%; table-layout: fixed; border: 1px solid #cfd9e6; border-collapse: collapse; border-radius: 0; font-size: 12px; }
+.wp-tick-matrix .wp-tick-yn-col { width: 44px; }
+.wp-tick-matrix .wp-tick-hazard-col { width: 29%; }
+.wp-shell .wp-ticks .wp-tick-matrix thead th { font-size: 11px; padding: 8px 5px; text-align: left; white-space: normal; border: 1px solid #cfd9e6; background: #e9eef3; color: #334962; font-weight: 600; }
+.wp-shell .wp-ticks .wp-tick-matrix thead th:first-child,
+.wp-shell .wp-ticks .wp-tick-matrix thead th:nth-child(2) { text-align: center; background: #e0e9f7; }
+.wp-shell .wp-ticks .wp-tick-matrix td, .wp-shell .wp-ticks .wp-tick-matrix tbody th { padding: 8px; border: 1px solid #d7e0ec; vertical-align: top; white-space: normal; }
+.wp-shell .wp-ticks .wp-tick-matrix .wp-tick-yn { padding: 3px 0; background: #f0f4fa; }
+.wp-tick-hazard-choice .wp-tick-options { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.wp-shell .wp-ticks label.wp-tick-option.wp-tick-clause { font-weight: 450; }
+.wp-shell .wp-ticks .wp-tick-hazard-choice label.wp-tick-option { min-height: 44px; padding: 10px 4px; justify-content: center; }
+.wp-tick-hazard-choice .wp-tick-option > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+.wp-shell .wp-ticks .wp-tick-matrix .wp-tick-hazard-name { background: #fff; font-weight: 400; padding-top: 14px; }
+.wp-tick-hazard-name strong { display: block; font-weight: 550; line-height: 1.85; font-size: 12px; color: #334c6b; overflow-wrap: anywhere; }
+.wp-tick-hazard-icon { display: block; width: 44px; height: 44px; object-fit: contain; margin: 0 auto 10px; }
+.wp-tick-hazard-name > span { display: block; margin-top: 7px; color: #78889c; font-size: 10px; }
+.wp-tick-matrix tr[data-assessment="yes"] .wp-tick-hazard-name > span { color: #2454d6; }
+.wp-tick-matrix tr[data-assessment="no"] .wp-tick-hazard-name > span { color: #5f7189; }
+.wp-tick-hazard-name .wp-tick-clear { margin: 5px 0 0; }
+.wp-shell .wp-ticks .wp-tick-matrix .wp-tick-controls { padding: 6px 9px; background: #fff; }
+.wp-tick-control + .wp-tick-control { border-top: 1px solid #e7edf5; }
+.wp-tick-control .wp-tick-options { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
+.wp-tick-control .wp-tick-option:not(.wp-tick-clause) { font-size: 10px!important; gap: 5px!important; white-space: nowrap; }
+.wp-tick-control .wp-tick-option:not(.wp-tick-clause) > input[type="radio"] { width: 15px!important; height: 15px!important; min-height: 15px!important; flex-basis: 15px!important; margin-top: 3px!important; }
+.wp-tick-control .wp-tick-option:not(.wp-tick-clause) > input[type="radio"]:checked::after { left: 4px!important; width: 4px!important; height: 8px!important; }
+.wp-tick-control-hint { color: #7d8a9c; font-size: 10px; line-height: 1.8; margin: 3px 0 5px; }
+.wp-tick-control .wp-note-field { display: block; padding: 0 0 12px!important; margin: 4px 0 0!important; font-size: 11px!important; }
+.wp-tick-control .wp-note-field textarea { min-height: 65px; }
+@container permit-ticks (max-width: 460px) {
+  .wp-shell .wp-ticks .wp-tick-matrix { display: block; border: 0; }
+  .wp-tick-matrix colgroup { display: none; }
+  .wp-tick-matrix thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+  .wp-tick-matrix tbody { display: grid; gap: 12px; }
+  .wp-tick-matrix tr { display: grid; grid-template-columns: 88px minmax(0,1fr); border: 1px solid #d0dce9; border-radius: 8px; overflow: hidden; }
+  .wp-shell .wp-ticks .wp-tick-matrix td, .wp-shell .wp-ticks .wp-tick-matrix tbody th { display: block; border: 0; padding: 10px; }
+  .wp-shell .wp-ticks .wp-tick-matrix .wp-tick-yn { grid-column: 1; grid-row: 1; padding: 8px 0; }
+  .wp-tick-hazard-choice .wp-tick-options { gap: 0; }
+  .wp-shell .wp-ticks .wp-tick-hazard-choice label.wp-tick-option { flex-direction: column; align-items: center; min-height: 60px; padding: 7px 2px; gap: 3px; }
+  .wp-tick-hazard-choice .wp-tick-option > span { position: static; width: auto; height: auto; clip: auto; font-size: 11px; font-weight: 600; }
+  .wp-shell .wp-ticks .wp-tick-matrix .wp-tick-hazard-name { grid-column: 2; grid-row: 1; display: grid; grid-template-columns: 38px minmax(0,1fr); gap: 4px 10px; align-items: start; padding: 13px 10px; }
+  .wp-tick-hazard-icon { width: 38px; height: 38px; grid-column: 1; grid-row: 1/4; margin: 0; }
+  .wp-tick-hazard-name strong { grid-column: 2; font-size: 12px; }
+  .wp-tick-hazard-name > span { grid-column: 2; margin: 0; }
+  .wp-tick-hazard-name .wp-tick-clear { grid-column: 2; margin: 0; width: fit-content; padding: 0; }
+  .wp-shell .wp-ticks .wp-tick-matrix .wp-tick-controls { grid-column: 1/-1; grid-row: 2; border-top: 1px solid #dce5f0; padding: 7px 12px; }
+  .wp-tick-control .wp-tick-options { gap: 10px; }
+}
+@media (max-width: 760px) {
+  .wp-tick-instructions { font-size: 12px; }
+  .wp-shell .wp-ticks label.wp-tick-option { min-height: 44px; }
+  .wp-tick-clear { min-height: 44px; font-size: 11px; padding: 6px; }
+  .wp-tick-control .wp-tick-option:not(.wp-tick-clause) { font-size: 11px!important; }
+  .wp-tick-section-fields .wp-tick-clause { flex-basis: 160px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wp-ticks * { scroll-behavior: auto!important; }
+}

@@ -30,10 +30,10 @@ import {
 import { event, transition } from "@/lib/permit/workflow";
 import { PERMIT_SEEDS } from "@/lib/permit/catalog";
 import { AMT_V2_SEEDS } from "@/lib/permit/amt-forms";
+import { templateReplacementSnapshot } from "@/lib/permit/template-upgrade";
 import {
   requiredRoles,
   type Permit,
-  type PermitRole,
   type PermitTemplate,
 } from "@/lib/permit/types";
 export const dynamic = "force-dynamic";
@@ -553,9 +553,13 @@ async function handle(req: NextRequest, context: Context) {
         if (!source.data) throw new AccessError("ไม่พบใบอนุญาตต้นทาง", 400);
         canReadPermit(actor, source.data);
       }
+      const archivedDocument = existing ? templateReplacementSnapshot(existing.data, data) : undefined;
+      const editEvent = event(actor, existing ? "edit" : "create", archivedDocument
+        ? "เปลี่ยนแม่แบบในร่าง เก็บคำตอบและเอกสารฉบับก่อนเปลี่ยนไว้ในประวัติ กรุณาประเมินรายการใหม่ก่อนส่งคำขอ"
+        : "");
       data.events = [
         ...(existing?.data.events || []),
-        event(actor, existing ? "edit" : "create"),
+        { ...editEvent, ...(archivedDocument ? { document: archivedDocument } : {}) },
       ];
       data.signatures = existing?.data.signatures || [];
       if (existing) {

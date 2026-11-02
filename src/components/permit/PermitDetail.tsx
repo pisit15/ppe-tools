@@ -8,6 +8,8 @@ import {
   type Permit,
   type PermitActor,
   type PermitRole,
+  type PermitData,
+  type TemplateField,
 } from "@/lib/permit/types";
 import { dateTime, permitApi } from "./api";
 import SignatureInput from "./SignatureInput";
@@ -548,6 +550,7 @@ export default function PermitDetail({
                   {e.name} · {dateTime(e.at)}
                 </span>
                 {e.note && <p className="wp-pre">{e.note}</p>}
+                {e.document && <ArchivedPermitDocument document={e.document} />}
               </li>
             ))}
           </ol>
@@ -559,4 +562,28 @@ export default function PermitDetail({
 
     </div>
   );
+}
+
+function archivedAnswer(field: TemplateField | undefined, value: string) {
+  if (field?.kind === "choice") return field.options?.find(option => option.value === value)?.label || value;
+  if (field?.kind === "check") return value === "yes" ? "ผ่าน / จัดให้มี" : value === "no" ? "ไม่ผ่าน" : value.startsWith("na:") ? `ไม่เกี่ยวข้อง: ${value.slice(3)}` : value;
+  return value;
+}
+
+function ArchivedPermitDocument({ document }: { document: Omit<PermitData, "events"> }) {
+  const [open, setOpen] = useState(false);
+  return <details className="wpd-archive wp-no-print" onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary>ดูข้อมูลเอกสารก่อนเปลี่ยนแปลง</summary>
+    {open && <div>
+      <p className="wp-muted">ข้อมูลย้อนหลังสำหรับอ้างอิง ไม่ใช่ผลประเมินของร่างปัจจุบัน</p>
+      <p className="wp-pre"><strong>{document.title}</strong>{"\n"}{document.location}{"\n"}{document.detail}</p>
+      {document.forms.map(form => <section key={form.template.id}>
+        <h4>{form.template.code} · Rev.{form.template.revision} / V{form.template.version}</h4>
+        {Object.entries(form.answers).filter(([, value]) => Boolean(value)).map(([id, value]) => {
+          const field = form.template.config.fields.find(candidate => candidate.id === id);
+          return <div className="wp-answer" key={id}><strong>{field?.label || id}</strong><p className="wp-pre">{archivedAnswer(field, value)}</p></div>;
+        })}
+      </section>)}
+    </div>}
+  </details>;
 }

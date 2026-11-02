@@ -1,5 +1,6 @@
 const {test, expect} = require('@playwright/test');
 const fs = require('node:fs');
+const { setPermitChoice, permitFieldDisabled } = require('./permit-field-input.cjs');
 const signature = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jmV8AAAAASUVORK5CYII=';
 const ownerKey = 'company_users:aaaaaaaa-1111-4111-8111-111111111111';
 const safetyKey = 'company_users:bbbbbbbb-1111-4111-8111-111111111111';
@@ -57,16 +58,15 @@ test('AMT v2 guided requester, scoped manager, location and signed lifecycle',as
   const general=templates.find(t=>t.code==='AHS-003');
   const hazard=general.config.fields.find(f=>f.id.startsWith('hazard_'));
   const control=general.config.fields.find(f=>f.id.startsWith('control_'+hazard.id.slice(7)+'_'));
-  const hazardInput=worker.locator(`[id="${general.id}-${hazard.id}"]`);
-  await hazardInput.selectOption('yes');
+  await setPermitChoice(worker, `${general.id}-${hazard.id}`, 'yes');
   await expect(worker.locator(`[id="${general.id}-${control.id}"]`)).toBeVisible();
-  await hazardInput.selectOption('no');
-  await expect(worker.locator(`[id="${general.id}-${control.id}"]`)).toHaveCount(0);
+  await setPermitChoice(worker, `${general.id}-${hazard.id}`, 'no');
+  await expect(worker.locator(`[id="${general.id}-${control.id}"] input[type="radio"]`).first()).toBeDisabled();
   for(const t of templates) for(const f of t.config.fields) {
     const input=worker.locator(`[id="${t.id}-${f.id}"]`);
-    if(!await input.count())continue;
-    if(f.kind==='choice')await input.selectOption(t.code==='AHS-004'&&['equipment_ladder','ppe_harness'].includes(f.id)?'yes':'no');
-    else if(f.kind==='check')await input.selectOption('yes');
+    if(!await input.count() || await permitFieldDisabled(input))continue;
+    if(f.kind==='choice')await setPermitChoice(worker, `${t.id}-${f.id}`,t.code==='AHS-004'&&['equipment_ladder','ppe_harness'].includes(f.id)?'yes':'no');
+    else if(f.kind==='check')await setPermitChoice(worker, `${t.id}-${f.id}`,'yes');
     else await input.fill('ข้อมูลทดสอบครบถ้วน');
   }
   await expect(worker.locator(`[id="${templates.find(t=>t.code==='AHS-004').id}-equipment"]`)).toHaveCount(0);

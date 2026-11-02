@@ -10,6 +10,7 @@ import {
   type PermitTemplate,
 } from "@/lib/permit/types";
 import { localTime, permitApi, type DirectoryEntry } from "./api";
+import { getPermitTemplateUpgrades, upgradePermitForms } from "@/lib/permit/template-upgrade";
 import PermitFormFields, { isPermitFieldEntered, visiblePermitFields } from "./PermitFormFields";
 import PermitLivePreview from "./PermitLivePreview";
 import "@/app/permit/permit-editor.css";
@@ -73,6 +74,8 @@ export default function PermitEditor({
     [locationNotice, setLocationNotice] = useState("");
   const [activePreviewForm,setActivePreviewForm]=useState<string|undefined>();
   const [previewLauncher, setPreviewLauncher] = useState<HTMLElement | null>(null);
+  const [upgradeApplied, setUpgradeApplied] = useState(false);
+  const templateUpgrades = getPermitTemplateUpgrades(data, templates);
   const options = Array.from(templates.filter(t => t.active).reduce((byCode, t) => {
     const previous = byCode.get(t.code);
     if (!previous || t.version > previous.version) byCode.set(t.code, t);
@@ -110,6 +113,10 @@ export default function PermitEditor({
     });
   }
   function toggle(t: PermitTemplate) {
+    if (templateUpgrades.length) {
+      setError("เปลี่ยนแม่แบบเดิมเป็นแบบติ๊กตามต้นฉบับก่อนเลือกลักษณะงานเพิ่มเติม");
+      return;
+    }
     if (data.forms.some(f => f.template.id === t.id)) {
       if (company === "amt" && t.code === "AHS-003" && data.forms.some(f => f.template.code !== "AHS-003" && f.template.source_code)) {setError("งานเสี่ยงสูงต้องแนบงานทั่วไปในชุดงานเดียวกัน");return;}
       setData(d => suggestApprovers({...d, forms:d.forms.filter(f => f.template.id !== t.id)}));
@@ -226,6 +233,13 @@ export default function PermitEditor({
       {copy&&<div className="wp-notice">ฉบับใหม่นี้อ้างอิงใบเดิม ผู้เกี่ยวข้องต้องลงนามใหม่ก่อนเริ่มช่วงเวลาถัดไป</div>}
       <section id="wp-section-types" tabIndex={-1} className="wp-panel wp-editor-section">
         <SectionTitle icon={<FileText size={19}/>} title="ลักษณะงานและแบบฟอร์ม" subtitle="เลือกได้หลายประเภทในคำขอเดียว"/>
+        {templateUpgrades.length > 0 && <div className="wp-template-upgrade" role="status">
+          <strong>มีแม่แบบแบบติ๊กตามต้นฉบับพร้อมใช้</strong>
+          <p>{templateUpgrades.map(item => item.replacement.code).join(" / ")} แยกอันตรายและมาตรการเป็นรายข้อ ข้อมูลงานและข้อความที่ใช้ร่วมกันจะคงไว้ ส่วนรายการความปลอดภัยต้องตรวจและเลือกใหม่</p>
+          <p>{copy ? "ใบเดิมยังเก็บไว้อ้างอิงจากร่างฉบับใหม่นี้" : "เมื่อบันทึก ระบบจะเก็บคำตอบจากแม่แบบเดิมครบถ้วนในประวัติการเปลี่ยนแม่แบบ"}</p>
+          <button type="button" className="wp-primary" onClick={() => { setData(current => suggestApprovers(upgradePermitForms(current, templates))); setUpgradeApplied(true); setActivePreviewForm(undefined); setError(""); }}>เปลี่ยนเป็นแบบติ๊กตามต้นฉบับ</button>
+        </div>}
+        {upgradeApplied && <p className="wp-notice" role="status">เปลี่ยนเป็นแบบรายช่องแล้ว กรุณาประเมินอันตรายและติ๊กมาตรการแต่ละข้อใหม่ก่อนส่งคำขอ การเปลี่ยนแปลงจะถูกเก็บเมื่อบันทึกร่าง</p>}
         {!options.length&&<p className="wp-notice">ยังไม่มีแม่แบบที่เปิดใช้ ให้ผู้ดูแลตรวจทานและเปิดใช้ในเมนูแม่แบบ</p>}
         <div className="wp-task-choices" aria-label="เลือกลักษณะงาน">{options.map(t=>{
           const selected=data.forms.some(f=>f.template.id===t.id);

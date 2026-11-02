@@ -81,6 +81,10 @@
   .wpd-document .wp-timeline b { color: #30445e; font-size: 12px; font-weight: 600; }
   .wpd-document .wp-timeline span { margin-top: 2px; color: #7a899d; font-size: 11px; }
   .wpd-document .wp-timeline p { margin: 8px 0 0; padding: 10px 13px; background: #f7f9fc; border-radius: 7px; font-size: 12px; }
+  .wpd-archive { margin-top: 10px; border: 1px solid #dce5f1; border-radius: 8px; background: #fbfcff; }
+  .wpd-archive summary { padding: 10px 12px; color: #315a9b; font-size: 12px; cursor: pointer; }
+  .wpd-archive > div { padding: 0 14px 14px; border-top: 1px solid #e7edf6; }
+  .wpd-archive .wp-answer { grid-template-columns: minmax(0, 1fr); gap: 6px; }
 
   .wps-settings > .wp-page-title { align-items: flex-start; gap: 25px; }
   .wps-settings > .wp-page-title p { max-width: 600px; margin-top: 7px; font-size: 13px; color: #748398; }

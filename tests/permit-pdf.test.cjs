@@ -47,6 +47,17 @@ function textOperations(doc,pageIndex=0){
  const streams=doc.getPage(pageIndex).node.Contents();
  return streams.asArray().reduce((sum,ref)=>sum+(Buffer.from(decodePDFRawStream(doc.context.lookup(ref)).decode()).toString('latin1').match(/\bBT\b/g)||[]).length,0);
 }
+function strokeOperations(doc,pageIndex=0){
+ const streams=doc.getPage(pageIndex).node.Contents();
+ return streams.asArray().reduce((sum,ref)=>sum+(Buffer.from(decodePDFRawStream(doc.context.lookup(ref)).decode()).toString('latin1').match(/(?:^|\s)S(?=\s|$)/g)||[]).length,0);
+}
+function linePaths(doc,pageIndex=0){
+ const streams=doc.getPage(pageIndex).node.Contents();
+ return streams.asArray().flatMap(ref=>{
+  const source=Buffer.from(decodePDFRawStream(doc.context.lookup(ref)).decode()).toString('latin1');
+  return [...source.matchAll(/([-\d.]+) ([-\d.]+) m\s+([-\d.]+) ([-\d.]+) l\s+S/g)].map(match=>match.slice(1).map(Number));
+ });
+}
 function decodedQr(doc){
  const jsQR=require('jsqr');
  for(const page of doc.getPages()){
@@ -103,7 +114,16 @@ test('an explicit unselected choice leaves its exact original checkbox blank',as
  const p=sample(AMT_V2_SEEDS);const field=p.data.forms[0].template.config.fields.find(f=>f.kind==='choice'&&f.print?.marks?.some(m=>m.value==='yes'));
  const selected=await PDFDocument.load(await renderPermitPdf(p));p.data.forms[0].answers[field.id]='no';
  const unselected=await PDFDocument.load(await renderPermitPdf(p));
- assert.equal(textOperations(selected)-textOperations(unselected),1,'only the selected checkbox mark is added to the source page');
+ assert.equal(strokeOperations(selected)-strokeOperations(unselected),2,'the selected checkbox adds the two strokes of a tick to the source page');
+ assert.equal(textOperations(selected)-textOperations(unselected),0,'ticks are vector paths rather than font-dependent X glyphs');
+ const blankPaths=linePaths(unselected);
+ const added=linePaths(selected).filter(path=>!blankPaths.some(other=>path.every((value,i)=>Math.abs(value-other[i])<0.0001)));
+ assert.equal(added.length,2,'a selected box has exactly two new line segments');
+ const page=selected.getPage(0),scale=page.getWidth()/827,mark=field.print.marks.find(mark=>mark.value==='yes');
+ for(const path of added)for(let i=0;i<4;i+=2){
+  const x=path[i]/scale,y=(page.getHeight()-path[i+1])/scale;
+  assert.ok(Math.abs(x-mark.x)<=4&&Math.abs(y-mark.y)<=4,'every tick endpoint remains inside its reviewed original checkbox');
+ }
 });
 test('unsupported company, revision or source checksum cannot use another original mapping',async()=>{
  const p=sample();p.company_id='other';assert.equal(supportsOriginalPdf(p),false);await assert.rejects(renderPermitPdf(p));
