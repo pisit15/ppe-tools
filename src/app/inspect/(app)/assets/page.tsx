@@ -8,7 +8,8 @@ import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, ClipboardCh
 import type { InspAssetView, InspCategoryRow, InspDueState, InspTemplateRow } from '@/lib/inspect/types';
 import { DUE_STATE_LABEL } from '@/lib/inspect/constants';
 import { AssetForm, type AssetFormValue } from '../../_components/AssetForm';
-import { CategoryIcon, CategoryTile } from '../../_components/icons';
+import { CategoryIcon } from '../../_components/icons';
+import { MarkerGlyph } from '../../_components/markers';
 import { Drawer, DueBadge, EmptyState, Modal, Skeleton, ToastView, VIZ, bangkokToday, btnGhost, btnPrimary, btnSecondary, cardClass, daysUntil, errMsg, getJson, inputClass, postJson, relativeDays, selectCompact, thaiDate, useCompany, useToast } from '../../_components/ui';
 
 const PAGE = 30;
@@ -156,7 +157,7 @@ function AssetsInner() {
                         <td className="px-4 py-3"><input type="checkbox" className="accent-[#4E79A7]" checked={selected.has(a.id)} onChange={e => setSelected(prev => { const n = new Set(prev); if (e.target.checked) n.add(a.id); else n.delete(a.id); return n; })} aria-label={`เลือก ${a.code}`} /></td>
                         <td className="px-4 py-3">
                           <Link href={`/inspect/assets/${a.id}`} className="flex items-center gap-3 group">
-                            <CategoryTile name={a.category.icon} color={a.category.color} size={36} />
+                            <MarkerGlyph categoryKey={a.category.key} icon={a.category.icon} agent={a.attributes?.agent} color={a.category.color} size={32} />
                             <span className="min-w-0"><span className="block font-medium text-gray-900 group-hover:underline">{a.code}</span><span className="block text-xs text-gray-500 truncate">{a.category.name}{a.name ? ` · ${a.name}` : ''}{attrSummary(a) ? ` · ${attrSummary(a)}` : ''}</span></span>
                           </Link>
                         </td>

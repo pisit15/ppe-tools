@@ -204,7 +204,7 @@ export type InspServiceEventRow = {
 /** Inspection as listed in history/log (with photos and asset summary). */
 export type InspInspectionView = InspInspectionRow & {
   photos: Pick<InspPhotoRow, 'id' | 'storage_path' | 'deleted_at'>[];
-  asset?: Pick<InspAssetRow, 'id' | 'code' | 'name' | 'department' | 'location'> & { category_name: string; category_color: string; category_icon: string };
+  asset?: Pick<InspAssetRow, 'id' | 'code' | 'name' | 'department' | 'location'> & { category_name: string; category_color: string; category_icon: string; category_key: string; agent: string | number | null };
 };
 
 /** What the public QR form receives for an asset token. */

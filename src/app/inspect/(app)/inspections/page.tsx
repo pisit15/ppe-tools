@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ChevronLeft, ChevronRight, Download, ListChecks, Search, X } from 'lucide-react';
 import type { InspInspectionView } from '@/lib/inspect/types';
-import { CategoryTile } from '../../_components/icons';
+import { MarkerGlyph } from '../../_components/markers';
 import { EmptyState, OverallBadge, Skeleton, ToastView, VIZ, btnGhost, btnPrimary, btnSecondary, cardClass, currentPeriod, errMsg, getJson, inputClass, postJson, selectCompact, shiftPeriod, thaiDate, thaiPeriod, useCompany, useToast } from '../../_components/ui';
 
 const PAGE = 30;
@@ -101,7 +101,7 @@ function Inner() {
                   {view.map(r => (
                     <tr key={r.id} className="hover:bg-gray-50/80 align-top">
                       <td className="px-4 py-3 whitespace-nowrap text-gray-800">{thaiDate(r.inspected_on)}</td>
-                      <td className="px-4 py-3"><Link href={`/inspect/assets/${r.asset_id}`} className="flex items-center gap-2 hover:underline"><CategoryTile name={r.asset?.category_icon || 'shield'} color={r.asset?.category_color || VIZ.neutral} size={32} /><span><span className="block font-medium text-gray-900">{r.asset?.code}</span><span className="block text-xs text-gray-500">{r.asset?.category_name}{r.asset?.department ? ` · ${r.asset.department}` : ''}</span></span></Link></td>
+                      <td className="px-4 py-3"><Link href={`/inspect/assets/${r.asset_id}`} className="flex items-center gap-2 hover:underline"><MarkerGlyph categoryKey={r.asset?.category_key || ''} icon={r.asset?.category_icon || 'shield'} agent={r.asset?.agent} color={r.asset?.category_color || VIZ.neutral} size={30} /><span><span className="block font-medium text-gray-900">{r.asset?.code}</span><span className="block text-xs text-gray-500">{r.asset?.category_name}{r.asset?.department ? ` · ${r.asset.department}` : ''}</span></span></Link></td>
                       <td className="px-4 py-3"><OverallBadge overall={r.overall} />{r.overall === 'fail' && (r.resolved_at ? <span className="block text-xs mt-1" style={{ color: VIZ.positive }}>ปิดงาน {thaiDate(r.resolved_at.slice(0, 10))}</span> : <span className="block text-xs mt-1 font-medium" style={{ color: VIZ.secondary }}>รอแก้ไข</span>)}</td>
                       <td className="px-4 py-3 max-w-[360px]">{r.fail_items.length > 0 && <p className="text-gray-800">{r.fail_items.length} ข้อ: {r.fail_items.join(', ')}</p>}{r.note && <p className="text-gray-500 text-xs mt-0.5">“{r.note}”</p>}{r.photos.length > 0 && <p className="text-xs text-gray-400 mt-0.5">รูป {r.photos.filter(p => !p.deleted_at).length}/{r.photos.length}</p>}</td>
                       <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{r.inspector_name}<span className="block text-xs text-gray-400">{r.inspector_code}</span></td>
