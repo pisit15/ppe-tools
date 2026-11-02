@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ROLE_LABELS,
   MEMBER_ROLE_LABELS,
@@ -53,20 +53,20 @@ export default function PermitSettings({
     starts_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
   });
-  async function loadPeople() {
+  const loadPeople = useCallback(async () => {
     const [a, s] = await Promise.all([
       permitApi<{ data: Contractor[] }>("contractors", company),
       permitApi<{ data: { key: string; name: string }[] }>("members", company),
     ]);
     setAccounts(a.data);
     setStaff(s.data);
-  }
+  }, [company]);
   useEffect(() => {
     if (tab === "people")
       loadPeople().catch((e) =>
         setError(e.message),
       ); /* Requests contain a fixed company; component is keyed by company. */
-  }, [tab, company]);
+  }, [tab, loadPeople]);
   async function run(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -99,12 +99,16 @@ export default function PermitSettings({
     },
   };
   return (
-    <div className="wp-stack">
+    <div className={`wp-stack wps-settings ${tab === "people" ? "is-people" : "is-templates"}`}>
       <div className="wp-page-title">
         <div>
-          <span className="wp-eyebrow">WORKSPACE SETTINGS</span>
+          <span className="wp-eyebrow">{company.toUpperCase()} · WORKSPACE SETTINGS</span>
           <h2>{tab === "templates" ? "แม่แบบเอกสาร" : "ผู้ใช้และผู้ลงนาม"}</h2>
-          <p>ตั้งค่าสำหรับบริษัท {company.toUpperCase()}</p>
+          <p>{tab === "templates" ? "จัดการฉบับที่ใช้งาน พร้อมเก็บประวัติแม่แบบทุกเวอร์ชัน" : "จัดการบัญชีผู้ขออนุญาตและสิทธิ์ผู้ลงนามของบริษัท"}</p>
+        </div>
+        <div className="wps-summary" aria-label="สรุปการตั้งค่า">
+          <div><strong>{tab === "templates" ? templates.filter(t => t.active).length : accounts.filter(a => a.active && Date.parse(a.starts_at) <= Date.now() && Date.parse(a.expires_at) > Date.now()).length}</strong><span>{tab === "templates" ? "แม่แบบเปิดใช้" : "บัญชีใช้งานได้"}</span></div>
+          <div><strong>{tab === "templates" ? templates.length : new Set(directory.map(m => m.actor_key)).size}</strong><span>{tab === "templates" ? "แม่แบบทั้งหมด" : "ผู้มีสิทธิ์ลงนาม / ดูแล"}</span></div>
         </div>
       </div>
       {error && (
@@ -119,11 +123,11 @@ export default function PermitSettings({
       )}
       {tab === "templates" ? (
         <>
-          <div className="wp-inline">
+          <div className="wp-inline wps-template-tools">
             {company === "amt" && (
               <>
               <button
-                className="wp-primary"
+                className="wp-secondary"
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -136,10 +140,10 @@ export default function PermitSettings({
               >
                 นำเข้าต้นแบบ AMITA 9 ประเภท
               </button>
-              <button className="wp-primary" disabled={busy} onClick={() => void run(async () => {await permitApi("templates", company, "POST", {action:"import_v2"});await onRefresh();})}>นำเข้า General + งานบนที่สูง แบบตรงช่อง</button>
+              <button className="wp-secondary" disabled={busy} onClick={() => void run(async () => {await permitApi("templates", company, "POST", {action:"import_v2"});await onRefresh();})}>นำเข้า General + งานบนที่สูง แบบตรงช่อง</button>
               </>
             )}
-            <button className="wp-secondary" onClick={() => setEditing(blank)}>
+            <button className="wp-primary" onClick={() => setEditing(blank)}>
               สร้างแม่แบบบริษัท
             </button>
             <label className="wp-inline">
@@ -166,7 +170,7 @@ export default function PermitSettings({
               </select>
             </label>
           </div>
-          <div className="wp-notice">
+          <div className="wp-notice wps-template-notice">
             แม่แบบนำเข้าเป็นฉบับรอตรวจทาน รายการดิจิทัลสรุปจากต้นฉบับ
             ผู้ดูแลต้องตรวจรายการย่อย Revision และผู้ลงนามก่อนเปิดใช้
             การแก้ไขสร้างเวอร์ชันใหม่และไม่เปลี่ยนเอกสารที่บันทึกไปแล้ว
@@ -174,7 +178,7 @@ export default function PermitSettings({
           </div>
           {editing && (
             <form
-              className="wp-panel"
+              className="wp-panel wps-template-editor"
               onSubmit={(e) => {
                 e.preventDefault();
                 void run(async () => {
@@ -325,7 +329,7 @@ export default function PermitSettings({
                 ลำดับอนุมัติ: เจ้าของพื้นที่ → เจ้าหน้าที่ความปลอดภัย →
                 ผู้จัดการโครงการ (กรณีงานโครงการ)
               </p>
-              <div className="wp-inline">
+              <div className="wp-inline wps-editor-actions">
                 <button className="wp-primary" disabled={busy}>
                   บันทึกเวอร์ชันใหม่
                 </button>
@@ -339,7 +343,7 @@ export default function PermitSettings({
               </div>
             </form>
           )}
-          <label className="wp-inline wp-panel">
+          <label className="wp-inline wp-panel wps-review-banner">
             <input
               type="checkbox"
               checked={reviewed}
@@ -348,9 +352,9 @@ export default function PermitSettings({
             ข้าพเจ้าได้ตรวจทานเนื้อหา Revision
             และขั้นตอนลงนามของแม่แบบที่จะเปิดใช้แล้ว
           </label>
-          <div className="wp-template-grid">
+          <div className="wp-template-grid wps-template-list">
             {templates.map((t) => (
-              <section key={t.id} className="wp-panel wp-template-card">
+              <section key={t.id} className="wp-panel wp-template-card wps-template-card">
                 <div className="wp-inline">
                   <span className="wp-code">{t.code}</span>
                   <span
@@ -360,7 +364,7 @@ export default function PermitSettings({
                   </span>
                 </div>
                 <h3>{t.name}</h3>
-                <p>
+                <p className="wps-template-meta">
                   Rev.{t.revision} · เวอร์ชัน {t.version} ·{" "}
                   {t.config.fields.length} รายการ
                 </p>
@@ -383,7 +387,7 @@ export default function PermitSettings({
                     แก้เป็นเวอร์ชันใหม่
                   </button>
                   <button
-                    className="wp-primary"
+                    className={t.active ? "wp-secondary" : "wp-primary"}
                     disabled={busy || (!t.active && !reviewed)}
                     onClick={() =>
                       void run(async () => {
@@ -405,7 +409,10 @@ export default function PermitSettings({
         </>
       ) : (
         <>
-          <section className="wp-panel">
+          <section className="wp-panel wps-account-create">
+            <details>
+              <summary><span><strong>เพิ่มบัญชีผู้ขออนุญาต</strong><small>สำหรับพนักงานแผนกอื่นหรือผู้รับเหมา · กำหนดวันหมดอายุได้</small></span><span className="wps-disclosure-mark" aria-hidden="true">+</span></summary>
+              <div className="wps-disclosure-body">
             <h3>สร้างบัญชีผู้ขออนุญาตทำงาน</h3>
             <p className="wp-muted">
               เข้าถึงเฉพาะ Work Permit และใบอนุญาตที่ตนสร้าง ·
@@ -483,11 +490,13 @@ export default function PermitSettings({
                 สร้างบัญชีผู้ขออนุญาต
               </button>
             </form>
+              </div>
+            </details>
           </section>
-          <section className="wp-panel">
-            <h3>บัญชีผู้ขออนุญาต ({accounts.length})</h3>
+          <section className="wp-panel wps-accounts">
+            <div className="wpd-section-title"><h3>บัญชีผู้ขออนุญาต</h3><span>{accounts.length} บัญชี</span></div>
             {!accounts.length && (
-              <p className="wp-muted">ยังไม่มีบัญชีผู้ขออนุญาต</p>
+              <div className="wps-empty"><span aria-hidden="true">↗</span><p>ยังไม่มีบัญชีผู้ขออนุญาต</p><small>เพิ่มบัญชีให้แผนกภายในหรือผู้รับเหมาได้จากเมนูด้านบน</small></div>
             )}
             {accounts.map((a) => (
               <div className="wp-account-row" key={a.id}>
@@ -526,7 +535,7 @@ export default function PermitSettings({
               </div>
             ))}
           </section>
-          <section className="wp-panel">
+          <section className="wp-panel wps-signers">
             <h3>กำหนดผู้ดูแลและผู้มีสิทธิ์ลงนาม</h3>
             <p className="wp-muted">
               ใช้บัญชีผู้มีสิทธิ์ลงนามที่กำหนดไว้ บัญชีผู้ขออนุญาตไม่มีสิทธิ์อนุมัติ
