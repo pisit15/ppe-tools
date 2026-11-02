@@ -15,7 +15,7 @@ const CONTEXT_MS = 10 * 60 * 1000;      // follow-up photo / "ไม่ผ่า
 const OVERRIDE_MS = 12 * 60 * 60 * 1000; // "วันที่ 31/10" stays in force for 12 h
 const MAX_PHOTOS = 3;
 const PENDING_MS = 30 * 60 * 1000;  // held photo (already passed this round) waits for "ตรวจซ้ำ" up to 30 min
-const HELP = 'วิธีบันทึกผลตรวจทาง LINE\n1) ถ่ายรูปอุปกรณ์ให้เห็น QR ชัด (ห่างไม่เกิน ~70 ซม.) แล้วส่งมาที่นี่ทีละรูป\n2) ระบบตอบกลับว่าบันทึกถังไหนแล้ว\n3) ถ้าไม่ผ่าน พิมพ์ต่อว่า "ไม่ผ่าน <สิ่งที่พบ>" ภายใน 10 นาที\n4) ถ้าตรวจวันก่อนหน้า พิมพ์ "วันที่ 31/10" ก่อนส่งรูป\n5) ถังที่ตรวจผ่านแล้วในรอบนี้ ระบบจะถามก่อน — พิมพ์ "ตรวจซ้ำ" เพื่อยืนยัน\nรูปที่ 2–3 ของถังเดิมส่งต่อได้เลย (ภายใน 10 นาที)';
+const HELP = 'วิธีบันทึกผลตรวจทาง LINE\n1) ถ่ายรูปอุปกรณ์ให้เห็น QR ชัด (ห่างไม่เกิน ~70 ซม.) แล้วส่งมาที่นี่ทีละรูป\n2) ระบบตอบกลับว่าบันทึกถังไหนแล้ว — ส่ง QR ก่อนเสมอ รูปเพิ่มส่งตามหลัง\n3) ถ้าไม่ผ่าน พิมพ์ต่อว่า "ไม่ผ่าน <สิ่งที่พบ>" ภายใน 10 นาที\n4) ถ้าตรวจวันก่อนหน้า พิมพ์ "วันที่ 31/10" ก่อนส่งรูป\n5) ถังที่ตรวจผ่านแล้วในรอบนี้ ระบบจะถามก่อน — พิมพ์ "ตรวจซ้ำ" เพื่อยืนยัน\nรูปที่ 2–3 ของถังเดิมส่งต่อได้เลย (ภายใน 10 นาที)';
 
 type Ctx = { db: SupabaseClient; lineUserId: string; accessToken: string };
 
@@ -150,8 +150,8 @@ export async function handleInspectImage(ctx: Ctx, messageId: string): Promise<L
   if (!token) {
     const follow = await attachFollowUp(ctx, messageId, buf);
     if (follow.length) return follow;
-    await rememberOrphan(ctx, messageId);
-    return [text(`อ่าน QR ในรูปนี้ไม่ได้ — ส่งรูปที่เห็น QR ของถังนี้ตามมาภายใน 10 นาที ระบบจะแนบรูปนี้ให้เอง\n(หรือถ่ายใหม่ให้ QR อยู่กลางภาพ ≤ 70 ซม. ไม่ย้อนแสง)\n(ระบบ: ${debug})`)];
+    // Rule (owner, 2 Nov): QR photo always comes first; a photo without a readable QR and without a recent asset is not kept.
+    return [text(`อ่าน QR ในรูปนี้ไม่ได้ และยังไม่มีถังล่าสุดให้แนบ — ส่งรูปที่เห็น QR ของถังก่อน แล้วค่อยส่งรูปเพิ่มตาม\n(ถ่ายให้ QR อยู่กลางภาพ ≤ 70 ซม. ไม่ย้อนแสง)\n(ระบบ: ${debug})`)];
   }
 
   const { data: assetRow } = await db.from('insp_assets').select('*').eq('qr_token', token).maybeSingle();
@@ -204,7 +204,6 @@ async function recordPass(ctx: Ctx, asset: InspAssetRow, buf: Buffer, messageId:
   if (error || !created) { console.error('line inspection insert failed', error?.message); return [text('บันทึกไม่สำเร็จ กรุณาลองใหม่')]; }
   const row = created as InspInspectionRow;
   await addPhoto(db, asset, row.id, buf, messageId);
-  const orphans = await attachOrphans(ctx, asset, row.id, cur);
   await db.from('insp_line_users').update({ last_inspection_id: row.id, last_asset_id: asset.id, last_at: new Date().toISOString(), pending_asset_id: null, pending_message_id: null, pending_at: null }).eq('line_user_id', lineUserId);
 
   const st = statusRes.data as InspAssetStatusRow | null;
@@ -212,31 +211,8 @@ async function recordPass(ctx: Ctx, asset: InspAssetRow, buf: Buffer, messageId:
   const lines = [`✅ ${asset.code}${where ? ` · ${where}` : ''}`, `บันทึกแล้ว — ผ่าน · ${thai(inspected_on)} · ${who.name}${confirmed ? ' (ตรวจซ้ำ)' : ''}`];
   if (st?.next_service_due_on && st.next_service_due_on < bangkokToday()) lines.push(`⚠️ เลยกำหนดทดสอบตามรอบ (${thai(st.next_service_due_on)}) — แจ้ง SHE`);
   if (st && Number(st.open_failures) > 0) lines.push(`⚠️ มีรายการไม่ผ่านค้างแก้ไข ${st.open_failures} รายการ`);
-  if (orphans > 0) lines.push(`แนบรูปที่ส่งก่อนหน้าให้ด้วย ${orphans} รูป`);
   lines.push('ถ้าไม่ผ่าน พิมพ์: ไม่ผ่าน <สิ่งที่พบ>');
   return [text(lines.join('\n'))];
-}
-
-/**
- * Photos that arrived without a readable QR and without a recent asset context are remembered (≤ 2, 10 min)
- * in pending_message_id (comma-separated) with pending_asset_id = null, and attached to the next recorded asset.
- */
-async function rememberOrphan(ctx: Ctx, messageId: string) {
-  const cur = await lineUser(ctx.db, ctx.lineUserId);
-  const fresh = cur?.pending_asset_id === null && cur.pending_message_id && cur.pending_at && Date.now() - Date.parse(cur.pending_at) < CONTEXT_MS ? cur.pending_message_id.split(',') : [];
-  const ids = [...fresh, messageId].slice(-2);
-  await ctx.db.from('insp_line_users').upsert({ line_user_id: ctx.lineUserId, company_id: cur?.company_id ?? null, inspector_code: cur?.inspector_code ?? '', inspector_name: cur?.inspector_name ?? '', linked_via: cur?.linked_via ?? 'code', pending_asset_id: null, pending_message_id: ids.join(','), pending_at: new Date().toISOString() }, { onConflict: 'line_user_id' });
-}
-async function attachOrphans(ctx: Ctx, asset: InspAssetRow, inspectionId: string, cur: InspLineUserRow): Promise<number> {
-  if (cur.pending_asset_id !== null || !cur.pending_message_id || !cur.pending_at || Date.now() - Date.parse(cur.pending_at) > CONTEXT_MS) return 0;
-  let n = 0;
-  for (const id of cur.pending_message_id.split(',').filter(Boolean)) {
-    const buf = await fetchContent(id, ctx.accessToken);
-    if (!buf) continue;
-    const r = await addPhoto(ctx.db, asset, inspectionId, buf, id);
-    if (r !== null) n++;
-  }
-  return n;
 }
 
 /** A photo that has no readable QR but arrives right after a successful one → extra photo of that asset. */
