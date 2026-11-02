@@ -110,12 +110,29 @@ export async function handleInspectText(ctx: Ctx, raw: string): Promise<LineMess
     const cur = await lineUser(db, lineUserId);
     if (!cur?.last_inspection_id || !cur.last_at || Date.now() - Date.parse(cur.last_at) > CONTEXT_MS) return [text('ไม่มีรายการตรวจล่าสุดใน 10 นาทีนี้ — ส่งรูปถังก่อน แล้วพิมพ์ "ไม่ผ่าน <สิ่งที่พบ>" ตาม')];
     const note = failMatch[1].trim().slice(0, 1000);
-    const { data: insp } = await db.from('insp_inspections').select('id, note, asset_id').eq('id', cur.last_inspection_id).maybeSingle();
-    if (!insp) return [text('ไม่พบรายการตรวจล่าสุด')];
+    const ctxRow = await inspectionWithItems(db, cur.last_inspection_id);
+    if (!ctxRow) return [text('ไม่พบรายการตรวจล่าสุด')];
+    const { insp, items, code } = ctxRow;
+    const guessed = note ? matchItems(items, note) : [];
     const merged = [insp.note, note].filter(Boolean).join(' · ');
-    await db.from('insp_inspections').update({ overall: 'fail', note: merged }).eq('id', insp.id);
-    const { data: a } = await db.from('insp_assets').select('code').eq('id', insp.asset_id).maybeSingle();
-    return [text(`บันทึก ${a?.code || ''} เป็น "ไม่ผ่าน"${note ? `\n${note}` : ''}\nทีม SHE จะระบุข้อที่ไม่ผ่านและปิดงานเมื่อแก้ไขแล้ว`)];
+    await applyFail(db, insp.id, items, guessed, merged);
+    await db.from('insp_line_users').update({ last_at: new Date().toISOString() }).eq('line_user_id', lineUserId);
+    return [text(`บันทึก ${code} เป็น "ไม่ผ่าน"${note ? `\n${note}` : ''}\n\nข้อที่ไม่ผ่าน:\n${itemList(items, guessed)}\n\nถ้าไม่ตรง พิมพ์เลขข้อ เช่น "1 4" (ภายใน 10 นาที)`)];
+  }
+
+  // Digits after a fail → set the failed items explicitly (e.g. "1 4" or "2,5")
+  if (/^\d{1,2}([\s,]+\d{1,2})*$/.test(t)) {
+    const cur = await lineUser(db, lineUserId);
+    if (!cur?.last_inspection_id || !cur.last_at || Date.now() - Date.parse(cur.last_at) > CONTEXT_MS) return null; // let the general bot handle plain numbers
+    const ctxRow = await inspectionWithItems(db, cur.last_inspection_id);
+    if (!ctxRow) return null;
+    const { insp, items, code } = ctxRow;
+    const nums = [...new Set(t.split(/[\s,]+/).map(Number))].filter(n => n >= 1 && n <= items.length);
+    if (nums.length === 0) return [text(`เลขข้อต้องอยู่ระหว่าง 1–${items.length}`)];
+    const keys = nums.map(n => items[n - 1].key);
+    await applyFail(db, insp.id, items, keys, insp.note);
+    await db.from('insp_line_users').update({ last_at: new Date().toISOString() }).eq('line_user_id', lineUserId);
+    return [text(`อัปเดต ${code} — ข้อที่ไม่ผ่าน:\n${itemList(items, keys)}`)];
   }
 
   if (/^(ตรวจซ้ำ|ยืนยัน|repeat|yes)$/i.test(t)) {
@@ -277,6 +294,34 @@ async function decodeToken(buf: Buffer): Promise<{ token: string | null; debug: 
     } catch (e) { const msg = e instanceof Error ? e.message : String(e); console.error('qr decode attempt failed', msg); notes.push(`err: ${msg.slice(0, 80)}`); }
   }
   return { token: null, debug: notes.join(', ') };
+}
+
+// ---------------------------------------------------------------- fail items helpers
+type Item = { key: string; label: string; kind: string };
+const ITEM_WORDS: Record<string, string[]> = {
+  pressure: ['เกจ', 'ความดัน', 'แรงดัน', 'เข็ม', 'เขตแดง'], hose: ['สาย', 'ข้อต่อ'], nozzle: ['หัวฉีด'], horn: ['กรวย', 'ฮอร์น'],
+  seal_pin: ['ซีล', 'สลัก', 'พิน', 'ตะกั่ว'], cylinder: ['ตัวถัง', 'บุบ', 'สนิม', 'ผุ', 'บวม'], label: ['ป้าย', 'ฉลาก', 'สติ๊กเกอร์'],
+  mount: ['แขวน', 'ตู้', 'ขาตั้ง', 'ที่วาง'], access: ['กีดขวาง', 'ขวาง', 'เข้าถึง', 'บัง'], powder: ['ผง', 'จับตัว', 'เป็นก้อน'], weight_ok: ['น้ำหนัก', 'เบา'], wheels: ['ล้อ'],
+};
+function matchItems(items: Item[], note: string): string[] {
+  const n = note.toLowerCase();
+  return items.filter(it => it.kind !== 'number' && ((ITEM_WORDS[it.key] || []).some(w => n.includes(w)) || it.label.toLowerCase().split(/[\s/()]+/).some(w => w.length >= 3 && n.includes(w)))).map(it => it.key);
+}
+function itemList(items: Item[], failKeys: string[]) {
+  return items.filter(it => it.kind !== 'number').map((it, i) => `${failKeys.includes(it.key) ? '❌' : '▫️'} ${i + 1}. ${it.label}`).join('\n');
+}
+async function inspectionWithItems(db: SupabaseClient, inspectionId: string) {
+  const { data: insp } = await db.from('insp_inspections').select('id, note, asset_id, template_id, results').eq('id', inspectionId).maybeSingle();
+  if (!insp) return null;
+  const [{ data: tpl }, { data: a }] = await Promise.all([db.from('insp_templates').select('items').eq('id', insp.template_id).maybeSingle(), db.from('insp_assets').select('code').eq('id', insp.asset_id).maybeSingle()]);
+  const items = ((tpl?.items || []) as Item[]).filter(it => it.kind !== 'number');
+  return { insp: insp as { id: string; note: string; asset_id: string; results: Record<string, InspResultValue> }, items, code: (a?.code as string) || '' };
+}
+async function applyFail(db: SupabaseClient, inspectionId: string, items: Item[], failKeys: string[], note: string) {
+  const { data: cur } = await db.from('insp_inspections').select('results').eq('id', inspectionId).maybeSingle();
+  const results: Record<string, InspResultValue> = { ...((cur?.results as Record<string, InspResultValue>) || {}) };
+  for (const it of items) results[it.key] = failKeys.includes(it.key) ? 'fail' : (results[it.key] === 'fail' ? 'pass' : results[it.key] ?? 'pass');
+  await db.from('insp_inspections').update({ overall: 'fail', fail_items: failKeys, results, note }).eq('id', inspectionId);
 }
 
 const TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
