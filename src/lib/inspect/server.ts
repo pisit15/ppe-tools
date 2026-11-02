@@ -232,10 +232,10 @@ export async function listInspections(companyId: string, f: { asset_id?: string;
   const assetIds = [...new Set(rows.map(r => r.asset_id))];
   const assets = new Map<string, InspInspectionView['asset']>();
   if (assetIds.length) {
-    const { data: ar, error: aErr } = await db().from('insp_assets').select(`id, code, name, department, location, insp_categories!insp_assets_category_id_fkey(name, color)`).in('id', assetIds);
+    const { data: ar, error: aErr } = await db().from('insp_assets').select(`id, code, name, department, location, insp_categories!insp_assets_category_id_fkey(name, color, icon)`).in('id', assetIds);
     if (aErr) throw aErr;
-    for (const a of (ar || []) as unknown as (Pick<InspAssetRow, 'id' | 'code' | 'name' | 'department' | 'location'> & { insp_categories: { name: string; color: string } })[]) {
-      assets.set(a.id, { id: a.id, code: a.code, name: a.name, department: a.department, location: a.location, category_name: a.insp_categories?.name || '', category_color: a.insp_categories?.color || '#4E79A7' });
+    for (const a of (ar || []) as unknown as (Pick<InspAssetRow, 'id' | 'code' | 'name' | 'department' | 'location'> & { insp_categories: { name: string; color: string; icon: string } })[]) {
+      assets.set(a.id, { id: a.id, code: a.code, name: a.name, department: a.department, location: a.location, category_name: a.insp_categories?.name || '', category_color: a.insp_categories?.color || '#4E79A7', category_icon: a.insp_categories?.icon || 'shield' });
     }
   }
   return rows.map(({ insp_photos, ...r }) => ({ ...r, photos: insp_photos || [], asset: assets.get(r.asset_id) }));
