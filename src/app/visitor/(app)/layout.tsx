@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
-import { ArrowLeft, ClipboardCheck, Link2, LogOut, Eye, EyeOff, MonitorPlay } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { ArrowLeft, ChevronDown, ClipboardCheck, Link2, LogOut, Eye, EyeOff, MonitorPlay } from 'lucide-react';
 import { useAuth, type LoginCompanyOption } from '@/components/AuthProvider';
 import { VIZ, cardClass, inputClass, labelClass } from '../_components/ui';
 
@@ -30,7 +30,7 @@ export default function VisitorLayout({ children }: { children: React.ReactNode 
               const active = href === '/visitor' ? pathname === href : pathname.startsWith(href);
               return <Link key={href} href={href} aria-current={active ? 'page' : undefined} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${active ? 'bg-[#4E79A7]/10 text-[#4E79A7]' : 'text-gray-600 hover:bg-gray-100'}`}><Icon size={16} />{label}</Link>;
             })}
-            <a href={`/visitor/board/${user.companyId === 'admin' ? 'amt' : user.companyId}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"><MonitorPlay size={16} />เปิดจอ รปภ</a>
+            <BoardLink companyId={user.companyId} isAdmin={user.role === 'admin' || user.companyId === 'admin'} />
           </nav>
           <div className="flex items-center gap-3 text-sm">
             <span className="hidden md:block text-right"><span className="block font-medium">{user.nickname || user.displayName}</span><span className="block text-xs text-gray-500">{user.role === 'admin' ? 'ผู้ดูแลระบบ' : `ทีม SHE · ${user.companyName}`}</span></span>
@@ -39,6 +39,7 @@ export default function VisitorLayout({ children }: { children: React.ReactNode 
         </div>
         <nav className="sm:hidden flex gap-1 px-4 pb-2 overflow-x-auto">
           {NAV.map(({ href, label }) => <Link key={href} href={href} className={`rounded-lg px-3 py-1.5 text-sm whitespace-nowrap ${pathname === href ? 'bg-[#4E79A7]/10 text-[#4E79A7]' : 'text-gray-600'}`}>{label}</Link>)}
+          <BoardLink companyId={user.companyId} isAdmin={user.role === 'admin' || user.companyId === 'admin'} compact />
         </nav>
       </header>
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">{children}</main>
@@ -92,6 +93,45 @@ function VisitorLogin() {
         )}
         <p className="mt-6 text-xs text-gray-400">หน้าสำหรับพนักงานยื่นคำขอและจอ รปภ ไม่ต้องเข้าสู่ระบบ — ขอลิงก์ได้จากทีม SHE</p>
       </div>
+    </div>
+  );
+}
+
+type CompanyOpt = { company_id: string; company_name: string };
+const BOARD_PICK_KEY = 'visitor_admin_company';
+
+/** "เปิดจอ รปภ": one link for a company user; for the super admin a picker of every company (board pages are public, one URL per company). */
+function BoardLink({ companyId, isAdmin, compact }: { companyId: string; isAdmin: boolean; compact?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [companies, setCompanies] = useState<CompanyOpt[]>([]);
+  const ref = useRef<HTMLDivElement>(null);
+  const cls = compact ? 'rounded-lg px-3 py-1.5 text-sm whitespace-nowrap text-gray-600 inline-flex items-center gap-1' : 'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100';
+  useEffect(() => {
+    if (!isAdmin || !open || companies.length) return;
+    fetch('/api/companies', { credentials: 'include' }).then(r => r.json()).then((d: unknown) => setCompanies(Array.isArray(d) ? (d as CompanyOpt[]) : [])).catch(() => setCompanies([]));
+  }, [isAdmin, open, companies.length]);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  if (!isAdmin) return <a href={`/visitor/board/${companyId}`} target="_blank" rel="noreferrer" className={cls}><MonitorPlay size={16} />เปิดจอ รปภ</a>;
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open} className={cls}><MonitorPlay size={16} />เปิดจอ รปภ<ChevronDown size={14} /></button>
+      {open && (
+        <div role="menu" className="absolute right-0 sm:left-0 sm:right-auto mt-1 w-64 max-h-80 overflow-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1 z-30">
+          <div className="px-3 py-1.5 text-xs text-gray-500">เลือกบริษัท — เปิดในแท็บใหม่</div>
+          {companies.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">กำลังโหลด…</div>}
+          {companies.map(c => (
+            <a key={c.company_id} role="menuitem" href={`/visitor/board/${c.company_id}`} target="_blank" rel="noreferrer" onClick={() => { try { localStorage.setItem(BOARD_PICK_KEY, c.company_id); } catch { /* ignore */ } setOpen(false); }}
+              className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              <span>{c.company_name}</span><span className="font-mono text-xs text-gray-400">{c.company_id.toUpperCase()}</span>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

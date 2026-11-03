@@ -36,7 +36,7 @@ export default function VisitorSettingsPage() {
   const boardQr = useQr(company ? `${origin}/visitor/board/${company}` : null, 200);
 
   useEffect(() => {
-    if (isAdmin) getJson<Company[]>('/api/companies').then(d => { const list = Array.isArray(d) ? d : []; setCompanies(list); if (!company && list[0]) setCompany(list.find(c => c.company_id === 'amt')?.company_id || list[0].company_id); }).catch(() => setCompanies([]));
+    if (isAdmin) getJson<Company[]>('/api/companies').then(d => { const list = Array.isArray(d) ? d : []; setCompanies(list); if (!company && list[0]) { let remembered = ''; try { remembered = localStorage.getItem('visitor_admin_company') || ''; } catch { /* ignore */ } setCompany(list.find(c => c.company_id === remembered)?.company_id || list.find(c => c.company_id === 'amt')?.company_id || list[0].company_id); } }).catch(() => setCompanies([]));
   }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (user && !isAdmin) setCompany(user.companyId); }, [user, isAdmin]);
 
@@ -107,7 +107,7 @@ export default function VisitorSettingsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div><h1 className="text-2xl font-semibold">ลิงก์ขอ & จอ รปภ</h1><p className="text-sm text-gray-500">ลิงก์ขอแจกให้พนักงานที่ได้รับมอบหมายเท่านั้น (ไม่ต้อง login) · จอ รปภ เปิดได้ทุกเครื่องโดยไม่ต้อง login</p></div>
-        {isAdmin && <select className={`${inputClass} !w-64`} value={company} onChange={e => setCompany(e.target.value)}>{companies.map(c => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}</select>}
+        {isAdmin && <select className={`${inputClass} !w-64`} value={company} onChange={e => { setCompany(e.target.value); try { localStorage.setItem('visitor_admin_company', e.target.value); } catch { /* ignore */ } }}>{companies.map(c => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}</select>}
       </div>
 
       <section className={cardClass} style={{ borderLeft: `4px solid ${VIZ.positive}` }}>

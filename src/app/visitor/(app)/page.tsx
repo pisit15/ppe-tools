@@ -19,6 +19,9 @@ export default function VisitorQueuePage() {
   const isAdmin = user?.role === 'admin';
   const [companies, setCompanies] = useState<Company[]>([]);
   const [company, setCompany] = useState(isAdmin ? 'all' : (user?.companyId || ''));
+  const [restored, setRestored] = useState(!isAdmin);
+  // Admin: restore the last company filter after mount (localStorage is client-only; avoids a hydration mismatch).
+  useEffect(() => { if (isAdmin && !restored) { try { const v = localStorage.getItem('visitor_queue_company'); if (v) setCompany(v); } catch { /* ignore */ } setRestored(true); } }, [isAdmin, restored]);
   const [view, setView] = useState<View>('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -31,6 +34,7 @@ export default function VisitorQueuePage() {
 
   useEffect(() => { if (isAdmin) getJson<Company[]>('/api/companies').then(d => setCompanies(Array.isArray(d) ? d : [])).catch(() => setCompanies([])); }, [isAdmin]);
   useEffect(() => { if (user && !isAdmin) setCompany(user.companyId); }, [user, isAdmin]);
+  useEffect(() => { if (isAdmin && restored && company) { try { localStorage.setItem('visitor_queue_company', company); } catch { /* ignore */ } } }, [isAdmin, restored, company]);
 
   const load = useCallback(async () => {
     if (!company) return;
