@@ -62,16 +62,16 @@ export async function handleVisitorPostback(db: SupabaseClient, scope: GroupScop
     }
     // Vehicles waiting for a decision: approve people + decide all pending vehicles the same way, or go to the web for per-vehicle.
     const plates = pendingVehicles.map(v => `${v.plate}${v.reason ? ` (${v.reason.slice(0, 40)})` : ''}`).join(', ');
+    // Buttons template limits: label ≤ 20 chars, text ≤ 160 chars (no title/thumbnail). Longer → LINE 400 and silence.
     return [{
       type: 'template', altText: `ยืนยันอนุมัติ ${r.request_no} — มีรถรอพิจารณา ${pendingVehicles.length} คัน`,
       template: {
         type: 'buttons',
-        title: `อนุมัติ ${r.request_no}`.slice(0, 40),
-        text: `${r.visitor_company} · ${r.visitor_persons.length} คน\nรถรอพิจารณา ${pendingVehicles.length} คัน: ${plates}\n${who}`.slice(0, 160),
+        text: `อนุมัติ ${r.request_no}\n${r.visitor_company} · ${r.visitor_persons.length} คน\nรถรอพิจารณา ${pendingVehicles.length} คัน: ${plates}\n${who}`.slice(0, 160),
         actions: [
-          { type: 'postback', label: 'อนุมัติ + รถเข้าได้ทุกคัน', data: confirmPostback(r.id, 'allowed'), displayText: `อนุมัติ ${r.request_no} รถเข้าได้` },
-          { type: 'postback', label: 'อนุมัติ + รถจอดลานนอก', data: confirmPostback(r.id, 'outside'), displayText: `อนุมัติ ${r.request_no} รถจอดนอก` },
-          { type: 'uri', label: 'เปิดในระบบ (ตัดสินรายคัน)', uri: 'https://tools.eashe.org/visitor' },
+          { type: 'postback', label: 'อนุมัติ รถเข้าได้', data: confirmPostback(r.id, 'allowed'), displayText: `อนุมัติ ${r.request_no} รถเข้าได้` },
+          { type: 'postback', label: 'อนุมัติ รถจอดนอก', data: confirmPostback(r.id, 'outside'), displayText: `อนุมัติ ${r.request_no} รถจอดนอก` },
+          { type: 'uri', label: 'เปิดในระบบ', uri: 'https://tools.eashe.org/visitor' },
         ] as Json,
       },
     }];

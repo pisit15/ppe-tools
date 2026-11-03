@@ -255,7 +255,7 @@ export function withQuickReply(messages: LineMessage[]): LineMessage[] {
 /** Plain-text stand-ins used only if LINE rejects a card (keeps the bot from going silent). */
 export function textFallback(messages: LineMessage[]): LineMessage[] {
   return messages.map(m => {
-    if (m.type !== 'flex') return m;
+    if (m.type !== 'flex' && m.type !== 'template') return m;
     const alt = typeof m.altText === 'string' ? m.altText : 'ผลลัพธ์';
     return { ...text(`${alt}\nดูรายละเอียดที่ ${SITE}`), ...(m.quickReply ? { quickReply: m.quickReply } : {}) };
   });
