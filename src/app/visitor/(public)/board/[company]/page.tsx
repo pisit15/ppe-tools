@@ -110,29 +110,29 @@ export default function BoardPage() {
   const glass = bgUrl ? { background: `${C.panel}D9`, backdropFilter: 'blur(6px)' } : { background: C.panel };
 
   return (
-    <div className="min-h-screen" style={{ background: C.bg, color: C.text, fontSize: 18 }}>
+    <div className="min-h-screen text-base sm:text-lg" style={{ background: C.bg, color: C.text }}>
       {bgUrl && <div aria-hidden className="fixed inset-0 z-0" style={{ backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}><div className="absolute inset-0" style={{ background: overlay }} /></div>}
       <div className="relative z-10">
-        <header className="flex items-center justify-between gap-4 px-6 py-4" style={{ borderBottom: `1px solid ${C.line}`, ...glass }}>
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 sm:px-6 py-3 sm:py-4" style={{ borderBottom: `1px solid ${C.line}`, ...glass }}>
           <div>
             <div className="text-sm tracking-wide" style={{ color: C.dim }}>{data?.company.name || company.toUpperCase()} · ป้อม รปภ</div>
-            <h1 className="text-2xl font-semibold">รายชื่อบุคคลภายนอกที่อนุมัติเข้าพื้นที่</h1>
+            <h1 className="text-xl sm:text-2xl font-semibold leading-tight">รายชื่อบุคคลภายนอกที่อนุมัติเข้าพื้นที่</h1>
           </div>
-          <div className="text-right">
-            <div className="text-4xl font-mono font-semibold tabular-nums">{clock}</div>
-            <div className="text-sm" style={{ color: C.dim }}>{data ? thaiDate(data.today, true) : ''} · อัปเดตอัตโนมัติทุก 30 วินาที</div>
+          <div className="flex items-baseline gap-3 sm:block sm:text-right">
+            <div className="text-3xl sm:text-4xl font-mono font-semibold tabular-nums">{clock}</div>
+            <div className="text-xs sm:text-sm" style={{ color: C.dim }}>{data ? thaiDate(data.today, true) : ''} · อัปเดตอัตโนมัติทุก 30 วินาที</div>
           </div>
         </header>
 
-        <div className="px-6 pt-4 flex flex-wrap items-center gap-3">
+        <div className="px-3 sm:px-6 pt-3 sm:pt-4 flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
             {(['yesterday', 'today', 'tomorrow'] as Tab[]).map(t => (
-              <button key={t} type="button" onClick={() => setTab(t)} className="px-5 py-2 font-medium" style={{ background: tab === t ? C.primary : C.panel, color: tab === t ? C.onAccent : C.text }}>
-                {t === 'today' ? 'วันนี้' : t === 'tomorrow' ? `พรุ่งนี้ ${tomorrow ? thaiDate(tomorrow) : ''}` : `เมื่อวาน ${yesterday ? thaiDate(yesterday) : ''}`}
+              <button key={t} type="button" onClick={() => setTab(t)} className="px-3 sm:px-5 py-2 font-medium whitespace-nowrap" style={{ background: tab === t ? C.primary : C.panel, color: tab === t ? C.onAccent : C.text }}>
+                {t === 'today' ? 'วันนี้' : t === 'tomorrow' ? <>พรุ่งนี้<span className="hidden sm:inline"> {tomorrow ? thaiDate(tomorrow) : ''}</span></> : <>เมื่อวาน<span className="hidden sm:inline"> {yesterday ? thaiDate(yesterday) : ''}</span></>}
               </button>
             ))}
           </div>
-          <div className="flex gap-2 flex-wrap ml-auto text-base">
+          <div className="flex gap-2 flex-wrap w-full order-last sm:order-none sm:w-auto sm:ml-auto text-base">
             <Kpi C={C} label="คำขอ" value={counts.requests} color={C.primary} />
             <Kpi C={C} label="รอเข้า" value={counts.expected} color={C.warn} />
             <Kpi C={C} label="อยู่ในพื้นที่" value={counts.inside} color={C.positive} />
@@ -145,7 +145,7 @@ export default function BoardPage() {
 
         {showSettings && <SettingsPanel C={C} prefs={prefs} hasCompanyBg={Boolean(data?.background)} onChange={updatePrefs} onPick={pickBackground} onClose={() => setShowSettings(false)} />}
 
-        <main className="px-6 py-4 space-y-4">
+        <main className="px-3 sm:px-6 py-3 sm:py-4 space-y-3 sm:space-y-4">
           {error && <p style={{ color: C.danger }}>{error}</p>}
           {tab === 'yesterday' && <p className="text-sm" style={{ color: C.dim }}>ประวัติย้อนหลัง 1 วัน (ดูอย่างเดียว) — รายชื่อที่ยังไม่ได้กด &quot;ออก&quot; จะยังแสดงในแท็บวันนี้ด้วย</p>}
           {data && list.length === 0 && <p className="py-16 text-center text-2xl" style={{ color: C.dim }}>ไม่มีรายการที่อนุมัติสำหรับ{tab === 'today' ? 'วันนี้' : tab === 'tomorrow' ? 'พรุ่งนี้' : 'เมื่อวาน'}</p>}
@@ -163,7 +163,7 @@ export default function BoardPage() {
 }
 
 function Kpi({ C, label, value, color }: { C: Palette; label: string; value: number; color: string }) {
-  return <div className="rounded-lg px-4 py-1.5 flex items-baseline gap-2" style={{ background: C.panel, borderLeft: `4px solid ${color}` }}><span className="text-2xl font-semibold tabular-nums" style={{ color }}>{value}</span><span className="text-sm" style={{ color: C.dim }}>{label}</span></div>;
+  return <div className="rounded-lg px-3 sm:px-4 py-1.5 flex items-baseline gap-2 flex-1 sm:flex-none" style={{ background: C.panel, borderLeft: `4px solid ${color}` }}><span className="text-2xl font-semibold tabular-nums" style={{ color }}>{value}</span><span className="text-sm" style={{ color: C.dim }}>{label}</span></div>;
 }
 
 function SettingsPanel({ C, prefs, hasCompanyBg, onChange, onPick, onClose }: { C: Palette; prefs: Prefs; hasCompanyBg: boolean; onChange: (p: Partial<Prefs>) => void; onPick: (f: File | undefined) => void; onClose: () => void }) {
@@ -173,7 +173,7 @@ function SettingsPanel({ C, prefs, hasCompanyBg, onChange, onPick, onClose }: { 
     <button key={mode} type="button" disabled={disabled} onClick={() => onChange({ bgMode: mode })} className="px-3 py-1.5 disabled:opacity-40" style={{ background: prefs.bgMode === mode ? C.primary : 'transparent', color: prefs.bgMode === mode ? C.onAccent : C.text }}>{label}</button>
   );
   return (
-    <section className="mx-6 mt-3 rounded-xl p-4 flex flex-wrap items-center gap-4 text-base" style={{ background: C.panel, border: `1px solid ${C.line}` }} aria-label="ตั้งค่าหน้าจอ">
+    <section className="mx-3 sm:mx-6 mt-3 rounded-xl p-3 sm:p-4 flex flex-wrap items-center gap-4 text-base" style={{ background: C.panel, border: `1px solid ${C.line}` }} aria-label="ตั้งค่าหน้าจอ">
       <div className="flex items-center gap-2">
         <span style={{ color: C.dim }}>ธีม</span>
         <div className="flex rounded-lg overflow-hidden" style={{ border: `1px solid ${C.line}` }}>
@@ -232,12 +232,12 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
 
   return (
     <section className="rounded-xl overflow-hidden" style={{ background: C.panel, border: `1px solid ${carried ? C.warn : C.line}` }}>
-      <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-3" style={{ borderBottom: collapsed ? 'none' : `1px solid ${C.line}` }}>
-        <button type="button" onClick={onToggle} aria-expanded={!collapsed} className="flex items-start gap-3 text-left min-w-0 flex-1">
-          <span className="mt-1.5 shrink-0" style={{ color: C.dim }}>{collapsed ? <ChevronRight size={22} /> : <ChevronDown size={22} />}</span>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 px-3 sm:px-5 py-3" style={{ borderBottom: collapsed ? 'none' : `1px solid ${C.line}` }}>
+        <button type="button" onClick={onToggle} aria-expanded={!collapsed} className="flex items-start gap-2 sm:gap-3 text-left min-w-0 w-full sm:flex-1">
+          <span className="mt-1 sm:mt-1.5 shrink-0" style={{ color: C.dim }}>{collapsed ? <ChevronRight size={22} /> : <ChevronDown size={22} />}</span>
           <span className="min-w-0">
-            <span className="text-2xl font-semibold block">{r.visitor_company}</span>
-            <span className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-base" style={{ color: C.dim }}>
+            <span className="text-xl sm:text-2xl font-semibold block leading-snug break-words">{r.visitor_company}</span>
+            <span className="mt-1 flex flex-wrap gap-x-3 sm:gap-x-4 gap-y-0.5 text-sm sm:text-base" style={{ color: C.dim }}>
               <span className="font-mono">{r.request_no}</span>
               <span>{r.purpose === 'อื่นๆ (Others)' ? r.purpose_other : r.purpose}</span>
               <span className="inline-flex items-center gap-1"><Phone size={14} />ผู้แจ้ง {r.informer_name} ({r.informer_department}) {r.informer_phone}</span>
@@ -248,10 +248,10 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
             {!collapsed && ppe && <span className="mt-1 flex items-center gap-2 text-base"><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${C.positive}33`, color: C.positive }}>ตรวจ PPE</span><span style={{ color: C.dim }}>{ppe.label}:</span><span className="font-medium">{ppeText(ppe)}</span></span>}
           </span>
         </button>
-        <div className="text-right shrink-0">
-          <div className="text-3xl font-mono font-semibold tabular-nums">{hhmm(r.time_from)}–{hhmm(r.time_to)}</div>
+        <div className="shrink-0 pl-8 sm:pl-0 sm:text-right flex flex-wrap items-baseline gap-x-3 sm:block">
+          <div className="text-2xl sm:text-3xl font-mono font-semibold tabular-nums">{hhmm(r.time_from)}–{hhmm(r.time_to)}</div>
           <div className="text-sm" style={{ color: carried ? C.warn : C.dim }}>{carried ? `เข้าเมื่อ ${thaiDate(r.arrival_date)} ยังไม่ออก` : thaiDate(r.arrival_date, true)} · {r.persons.length} คน</div>
-          <div className="mt-1 flex justify-end gap-3 text-sm tabular-nums">
+          <div className="sm:mt-1 flex sm:justify-end gap-3 text-sm tabular-nums">
             {expected > 0 && <span style={{ color: C.warn }}>รอ {expected}</span>}
             {inside > 0 && <span style={{ color: C.positive }}>ใน {inside}</span>}
             {left > 0 && <span style={{ color: C.dim }}>ออก {left}</span>}
@@ -268,19 +268,19 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
               const b = busy === p.id;
               const dot = state === 'inside' ? C.positive : state === 'left' ? C.dim : state === 'noshow' ? C.danger : C.warn;
               return (
-                <li key={p.id} className="flex items-center gap-4 px-5 py-2.5" style={{ borderTop: `1px solid ${C.line}`, opacity: state === 'left' || state === 'noshow' ? 0.6 : 1 }}>
+                <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-4 px-3 sm:px-5 py-2.5" style={{ borderTop: `1px solid ${C.line}`, opacity: state === 'left' || state === 'noshow' ? 0.6 : 1 }}>
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ background: dot }} />
-                  <span className="w-8 text-right tabular-nums" style={{ color: C.dim }}>{p.seq}.</span>
-                  <span className="flex-1 text-xl font-medium" style={{ textDecoration: state === 'noshow' ? 'line-through' : 'none' }}>
+                  <span className="w-6 sm:w-8 text-right tabular-nums" style={{ color: C.dim }}>{p.seq}.</span>
+                  <span className="flex-1 min-w-0 text-lg sm:text-xl font-medium break-words" style={{ textDecoration: state === 'noshow' ? 'line-through' : 'none' }}>
                     {p.name}{p.detail && <span className="ml-2 text-base font-normal" style={{ color: C.dim }}>{p.detail}</span>}
                     {p.added_by_guard && <span className="ml-2 align-middle text-xs px-2 py-0.5 rounded-full" style={{ background: `${C.primary}33`, color: C.primary }}>เพิ่มหน้างาน</span>}
                   </span>
-                  <span className="w-44 text-base tabular-nums" style={{ color: C.dim }}>
+                  <span className="order-last basis-full pl-12 sm:order-none sm:basis-auto sm:pl-0 sm:w-44 text-sm sm:text-base tabular-nums empty:hidden sm:empty:inline-block" style={{ color: C.dim }}>
                     {state === 'noshow' && <span style={{ color: C.danger }}>ไม่มา</span>}
                     {p.arrived_at && <span>เข้า {bangkokTime(p.arrived_at)}</span>}{p.left_at && <span> · ออก {bangkokTime(p.left_at)}</span>}
                   </span>
                   {canMark && (
-                    <span className="flex gap-2">
+                    <span className="flex gap-2 ml-auto">
                       {state === 'expected' && <><Btn C={C} color={C.positive} busy={b} onClick={() => onMark(p.id, 'arrive')}><LogIn size={18} />มาถึง</Btn><Btn C={C} color={C.dim} ghost busy={b} onClick={() => onMark(p.id, 'no_show')} label="ไม่มา"><UserX size={16} /></Btn></>}
                       {state === 'inside' && <><Btn C={C} color={C.primary} busy={b} onClick={() => onMark(p.id, 'leave')}><LogOut size={18} />ออก</Btn><Btn C={C} color={C.dim} ghost busy={b} onClick={() => onMark(p.id, 'undo_arrive')} label="ยกเลิกมาถึง"><RotateCcw size={16} /></Btn></>}
                       {state === 'left' && <Btn C={C} color={C.dim} ghost busy={b} onClick={() => onMark(p.id, 'undo_leave')} label="ยกเลิกออก"><RotateCcw size={16} />ยังไม่ออก</Btn>}
@@ -292,7 +292,7 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
             })}
           </ul>
           {canMark && (
-            <div className="px-5 py-3 flex flex-wrap items-center gap-3" style={{ borderTop: `1px solid ${C.line}`, background: `${C.line}55` }}>
+            <div className="px-3 sm:px-5 py-3 flex flex-wrap items-center gap-3" style={{ borderTop: `1px solid ${C.line}`, background: `${C.line}55` }}>
               {adding ? (
                 <form onSubmit={e => { e.preventDefault(); submitAdd(); }} className="flex flex-wrap items-center gap-2 flex-1">
                   <input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อ-นามสกุล ผู้ที่มาเพิ่ม" maxLength={120} className="rounded-lg px-3 py-2 text-base flex-1 min-w-48" style={{ background: C.bg, color: C.text, border: `1px solid ${C.line}` }} />
@@ -318,7 +318,7 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
 
 function Btn({ C, children, color, onClick, busy, ghost, label }: { C: Palette; children: React.ReactNode; color: string; onClick: () => void; busy: boolean; ghost?: boolean; label?: string }) {
   return (
-    <button type="button" onClick={onClick} disabled={busy} aria-label={label} title={label} className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-base font-medium disabled:opacity-50"
+    <button type="button" onClick={onClick} disabled={busy} aria-label={label} title={label} className="inline-flex items-center gap-1.5 rounded-lg px-3 sm:px-4 py-2 text-base font-medium disabled:opacity-50 whitespace-nowrap"
       style={ghost ? { border: `1px solid ${color}`, color } : { background: color, color: C.onAccent }}>{children}</button>
   );
 }
