@@ -1,4 +1,4 @@
-import type { HasPermit, VisitorStatus } from './types';
+import type { GateCheckConfig, GateCheckRow, HasPermit, VisitorStatus } from './types';
 
 // Option lists copied from Jotform 241632326118046 (30 Oct 2026). Free text is never
 // forced into these lists: the API stores whatever the form sends after length checks.
@@ -58,33 +58,57 @@ export const VISITOR_LIMITS = {
   boardDaysAhead: 1, // today + tomorrow
 };
 
-// "ตรวจอุปกรณ์ PPE ที่ทางเข้า โดย รปภ." — the matrix image on the Jotform, as data so the form and the
-// guard board can highlight the row that applies to a request.
-export type PpeRow = { key: string; label: string; en: string; hat: boolean; vest: boolean; shoes: boolean };
-export const PPE_MATRIX: PpeRow[] = [
-  { key: 'contractor', label: 'ผู้รับเหมา', en: 'Contractor', hat: true, vest: true, shoes: true },
-  { key: 'transport', label: 'พนักงานขับรถส่งสินค้า', en: 'Transportation Driver', hat: true, vest: true, shoes: true },
-  { key: 'visitor_work', label: 'ผู้มาติดต่อ (เข้าพื้นที่ทำงาน)', en: 'Visitor (At working area)', hat: true, vest: true, shoes: true },
-  { key: 'delivery', label: 'บริษัทขนส่งเอกชน', en: 'Private Delivery Driver', hat: false, vest: true, shoes: false },
-  { key: 'garbage', label: 'รถขยะทั่วไป รีไซเคิล ติดเชื้อ', en: 'Garbage truck', hat: false, vest: true, shoes: false },
-  { key: 'visitor_meeting', label: 'ผู้มาติดต่อ (ไม่มีการทำงาน)', en: 'Visitor (At Meeting room)', hat: false, vest: false, shoes: false },
-];
-export const PPE_LABEL = { hat: 'หมวกเซฟตี้', vest: 'เสื้อสะท้อนแสง', shoes: 'รองเท้าเซฟตี้' } as const;
+// "ตรวจที่ทางเข้า โดย รปภ." — per-company matrix (visitor_company_options.gate_check). This is the AMT default
+// (Jotform table: helmet / vest / shoes); other companies edit columns and rows in /visitor/settings.
+const P_CONTRACTOR = 'ผู้รับเหมาปฏิบัติงาน (Contractor\'s Working)';
+const P_GOODS = ['ส่งสินค้า (Deliver Goods)', 'รับสินค้า (Received Goods)'];
+const P_DOCS = 'รับ/ส่งเอกสาร (Receive/Send Documents)';
+export const DEFAULT_GATE_CHECK: GateCheckConfig = {
+  title: 'ตรวจอุปกรณ์ PPE ที่ทางเข้า โดย รปภ.',
+  items: ['หมวกเซฟตี้', 'เสื้อสะท้อนแสง', 'รองเท้าเซฟตี้'],
+  rows: [
+    { key: 'contractor', label: 'ผู้รับเหมา', en: 'Contractor', purposes: [P_CONTRACTOR], areaMode: 'any', areas: [], checks: [true, true, true] },
+    { key: 'garbage', label: 'รถขยะทั่วไป รีไซเคิล ติดเชื้อ', en: 'Garbage truck', purposes: P_GOODS, areaMode: 'areas', areas: ['ห้องขยะ (Solid Waste)'], checks: [false, true, false] },
+    { key: 'transport', label: 'พนักงานขับรถส่งสินค้า', en: 'Transportation Driver', purposes: P_GOODS, areaMode: 'any', areas: [], checks: [true, true, true] },
+    { key: 'delivery', label: 'บริษัทขนส่งเอกชน', en: 'Private Delivery Driver', purposes: [P_DOCS], areaMode: 'any', areas: [], checks: [false, true, false] },
+    { key: 'visitor_work', label: 'ผู้มาติดต่อ (เข้าพื้นที่ทำงาน)', en: 'Visitor (At working area)', purposes: [], areaMode: 'with_area', areas: [], checks: [true, true, true] },
+    { key: 'visitor_meeting', label: 'ผู้มาติดต่อ (ไม่มีการทำงาน)', en: 'Visitor (At Meeting room)', purposes: [], areaMode: 'without_area', areas: [], checks: [false, false, false] },
+  ],
+};
 
-/** Which PPE row applies to a request (purpose + work areas). Returns null when nothing is chosen yet. */
-export function ppeRowFor(purpose: string, workAreas: string[]): PpeRow | null {
-  if (!purpose) return null;
-  const find = (k: string) => PPE_MATRIX.find(r => r.key === k) || null;
-  if (/ผู้รับเหมา/.test(purpose)) return find('contractor');
-  // Only deliver/receive goods are transport drivers; "นำเสนอสินค้า" (present product) is an ordinary visitor.
-  if (/ส่งสินค้า|รับสินค้า|deliver|received goods/i.test(purpose)) return workAreas.some(a => /ขยะ|waste/i.test(a)) ? find('garbage') : find('transport');
-  if (/เอกสาร/.test(purpose)) return find('delivery');
-  return workAreas.length > 0 ? find('visitor_work') : find('visitor_meeting');
+/** Normalise whatever is stored (or null) into a usable config: pads/truncates checks to items, drops blanks. */
+export function gateCheckConfig(raw: unknown): GateCheckConfig {
+  if (!raw || typeof raw !== 'object') return DEFAULT_GATE_CHECK;
+  const c = raw as Partial<GateCheckConfig>;
+  const items = Array.isArray(c.items) ? c.items.map(x => String(x ?? '').trim()).filter(Boolean).slice(0, 12) : [];
+  const rows: GateCheckRow[] = Array.isArray(c.rows) ? c.rows.filter(r => r && typeof r === 'object').map((r, i): GateCheckRow => ({
+    key: String(r.key || `row${i}`),
+    label: String(r.label ?? '').trim().slice(0, 80),
+    en: String(r.en ?? '').trim().slice(0, 80),
+    purposes: Array.isArray(r.purposes) ? r.purposes.map(String) : [],
+    areaMode: r.areaMode === 'with_area' || r.areaMode === 'without_area' || r.areaMode === 'areas' ? r.areaMode : 'any',
+    areas: Array.isArray(r.areas) ? r.areas.map(String) : [],
+    checks: items.map((_, k) => Boolean(Array.isArray(r.checks) && r.checks[k])),
+  })).filter(r => r.label).slice(0, 30) : [];
+  return { title: String(c.title ?? '').trim().slice(0, 120) || 'ตรวจที่ทางเข้า โดย รปภ.', items, rows };
 }
-export function ppeText(row: PpeRow | null) {
+
+/** First row whose rule matches (purpose + work areas). Null when no purpose yet or nothing matches. */
+export function gateCheckRowFor(config: GateCheckConfig, purpose: string, workAreas: string[]): GateCheckRow | null {
+  if (!purpose) return null;
+  const hasArea = workAreas.length > 0;
+  return config.rows.find(r => {
+    if (r.purposes.length && !r.purposes.includes(purpose)) return false;
+    if (r.areaMode === 'with_area') return hasArea;
+    if (r.areaMode === 'without_area') return !hasArea;
+    if (r.areaMode === 'areas') return r.areas.some(a => workAreas.includes(a));
+    return true;
+  }) || null;
+}
+export function gateCheckText(config: GateCheckConfig, row: GateCheckRow | null) {
   if (!row) return '';
-  const items = (['hat', 'vest', 'shoes'] as const).filter(k => row[k]).map(k => PPE_LABEL[k]);
-  return items.length ? items.join(' · ') : 'ไม่ต้องใช้ PPE';
+  const items = config.items.filter((_, k) => row.checks[k]);
+  return items.length ? items.join(' · ') : 'ไม่ต้องตรวจเพิ่มเติม';
 }
 
 // "การพิจารณาการอนุญาตให้นำรถเข้าภายในโรงงาน" — vehicle-entry policy per purpose (owner, 30 Oct 2026).

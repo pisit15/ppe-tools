@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useParams } from 'next/navigation';
 import { CheckCircle2, Plus, Trash2, Users, Building2, CalendarDays, ClipboardList, Copy } from 'lucide-react';
-import { HAS_PERMIT_LABEL, PPE_LABEL, PPE_MATRIX, PURPOSE_OTHER, VEHICLE_TYPES, VISITOR_LIMITS, VISITOR_PURPOSES, ppeRowFor, vehiclePolicyFor } from '@/lib/visitor/constants';
+import { DEFAULT_GATE_CHECK, HAS_PERMIT_LABEL, PURPOSE_OTHER, VEHICLE_TYPES, VISITOR_LIMITS, VISITOR_PURPOSES, gateCheckRowFor, vehiclePolicyFor } from '@/lib/visitor/constants';
 import { Car, ParkingCircle } from 'lucide-react';
 import { Check, X } from 'lucide-react';
 import type { CreateVisitorRequestInput, HasPermit, VehicleInput, VisitorBackground, VisitorLinkInfo } from '@/lib/visitor/types';
@@ -51,7 +51,8 @@ export default function VisitorRequestPage() {
 
   const isContractor = /ผู้รับเหมา/.test(purpose);
   const otherAreaPicked = areas.some(a => /อื่น/.test(a));
-  const ppeRow = ppeRowFor(purpose, isContractor ? areas : []);
+  const gate = link?.gate_check || DEFAULT_GATE_CHECK;
+  const ppeRow = gateCheckRowFor(gate, purpose, isContractor ? areas : []);
   const vehiclePolicy = purpose ? vehiclePolicyFor(purpose) : null;
   const filledVehicles = vehicles.filter(v => v.plate?.trim() || v.reason?.trim());
   const updateVehicle = (i: number, patch: Partial<VehicleInput>) => setVehicles(prev => prev.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
@@ -265,22 +266,22 @@ export default function VisitorRequestPage() {
           <div className="mt-4"><label className={labelClass} htmlFor="note">หมายเหตุถึงทีม SHE</label><textarea id="note" className={inputClass} rows={3} value={note} onChange={e => setNote(e.target.value)} maxLength={1000} /></div>
         </section>
 
-        <section className={cardClass}>
-          <h2 className="text-lg font-semibold mb-1" style={{ color: VIZ.primary }}>ตรวจอุปกรณ์ PPE ที่ทางเข้า โดย รปภ.</h2>
-          <p className="text-sm text-gray-500 mb-3">{ppeRow ? <>คำขอนี้เข้าข่าย <strong style={{ color: VIZ.text }}>{ppeRow.label}</strong> — แจ้งผู้มาติดต่อเตรียม PPE ตามแถวที่ไฮไลต์</> : 'เลือกวัตถุประสงค์แล้วระบบจะไฮไลต์แถวที่ใช้กับคำขอนี้'}</p>
+        {gate.rows.length > 0 && gate.items.length > 0 && <section className={cardClass}>
+          <h2 className="text-lg font-semibold mb-1" style={{ color: VIZ.primary }}>{gate.title}</h2>
+          <p className="text-sm text-gray-500 mb-3">{ppeRow ? <>คำขอนี้เข้าข่าย <strong style={{ color: VIZ.text }}>{ppeRow.label}</strong> — แจ้งผู้มาติดต่อเตรียมตามแถวที่ไฮไลต์</> : 'เลือกวัตถุประสงค์แล้วระบบจะไฮไลต์แถวที่ใช้กับคำขอนี้'}</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead><tr className="text-gray-600" style={{ background: VIZ.bg }}>
                 <th className="text-left px-3 py-2 border border-gray-200">ประเภทผู้มาติดต่อ</th>
-                {(['hat', 'vest', 'shoes'] as const).map(k => <th key={k} className="px-3 py-2 border border-gray-200 text-center font-medium">{PPE_LABEL[k]}</th>)}
+                {gate.items.map((it, k) => <th key={k} className="px-3 py-2 border border-gray-200 text-center font-medium">{it}</th>)}
               </tr></thead>
               <tbody>
-                {PPE_MATRIX.map(r => {
+                {gate.rows.map(r => {
                   const hit = ppeRow?.key === r.key;
                   return (
                     <tr key={r.key} style={hit ? { background: `${VIZ.secondary}22`, outline: `2px solid ${VIZ.secondary}`, outlineOffset: -2 } : undefined}>
-                      <td className="px-3 py-2 border border-gray-200"><span className={hit ? 'font-semibold' : ''}>{r.label}</span><span className="block text-xs text-gray-500">{r.en}</span></td>
-                      {(['hat', 'vest', 'shoes'] as const).map(k => <td key={k} className="px-3 py-2 border border-gray-200 text-center">{r[k] ? <Check size={20} className="inline" style={{ color: VIZ.positive }} aria-label="ต้องใช้" /> : <X size={20} className="inline" style={{ color: VIZ.accent }} aria-label="ไม่ต้องใช้" />}</td>)}
+                      <td className="px-3 py-2 border border-gray-200"><span className={hit ? 'font-semibold' : ''}>{r.label}</span>{r.en && <span className="block text-xs text-gray-500">{r.en}</span>}</td>
+                      {gate.items.map((_, k) => <td key={k} className="px-3 py-2 border border-gray-200 text-center">{r.checks[k] ? <Check size={20} className="inline" style={{ color: VIZ.positive }} aria-label="ต้องมี" /> : <X size={20} className="inline" style={{ color: VIZ.accent }} aria-label="ไม่ต้อง" />}</td>)}
                     </tr>
                   );
                 })}
@@ -288,7 +289,7 @@ export default function VisitorRequestPage() {
             </table>
           </div>
           {isContractor && <p className="mt-3 text-sm rounded-lg px-3 py-2" style={{ background: `${VIZ.secondary}1A`, color: '#8a4b00' }}>ผู้รับเหมาปฏิบัติงานต้องมี Permit to Work ที่อนุมัติแล้วก่อนเริ่มงานที่มีความเสี่ยง</p>}
-        </section>
+        </section>}
 
         <div className="flex justify-end gap-3">
           <button type="submit" disabled={busy} className="rounded-lg px-6 py-3 text-white font-medium disabled:opacity-60" style={{ background: VIZ.primary }}>{busy ? 'กำลังส่ง…' : 'ส่งคำขอ'}</button>

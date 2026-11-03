@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AccessError, apiError, assertCompany } from '@/lib/toolsSession';
 import { requireVisitorApprover } from '@/lib/visitor/access';
 import { db } from '@/lib/visitor/server';
+import { gateCheckConfig } from '@/lib/visitor/constants';
 import type { VisitorCompanyOptionsRow } from '@/lib/visitor/types';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     assertCompany(actor, company, true);
     const { data, error } = await db().from('visitor_company_options').select('*').eq('company_id', company).maybeSingle();
     if (error) throw error;
-    const row = (data as VisitorCompanyOptionsRow | null) || { company_id: company, areas: [], departments: [], form_background: null, form_background_dim: 75, line_group_id: null, notify_new: true, notify_decision: true, updated_at: '', updated_by: null };
+    const row = (data as VisitorCompanyOptionsRow | null) || { company_id: company, areas: [], departments: [], form_background: null, form_background_dim: 75, line_group_id: null, notify_new: true, notify_decision: true, gate_check: null, updated_at: '', updated_by: null };
     return NextResponse.json({ data: row });
   } catch (error) {
     return apiError(error);
@@ -44,7 +45,7 @@ const MAX_BG = 800_000; // chars of data URL (~600 KB JPEG)
 export async function PUT(request: NextRequest) {
   try {
     const actor = await requireVisitorApprover(request);
-    const body = (await request.json().catch(() => null)) as { company_id?: unknown; areas?: unknown; departments?: unknown; form_background?: unknown; form_background_dim?: unknown; line_group_id?: unknown; notify_new?: unknown; notify_decision?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as { company_id?: unknown; areas?: unknown; departments?: unknown; form_background?: unknown; form_background_dim?: unknown; line_group_id?: unknown; notify_new?: unknown; notify_decision?: unknown; gate_check?: unknown } | null;
     const company = body?.company_id;
     assertCompany(actor, company, true);
     const areas = cleanList(body?.areas, 'พื้นที่');
@@ -73,6 +74,15 @@ export async function PUT(request: NextRequest) {
     }
     if (body?.notify_new !== undefined) patch.notify_new = Boolean(body.notify_new);
     if (body?.notify_decision !== undefined) patch.notify_decision = Boolean(body.notify_decision);
+    if (body?.gate_check !== undefined) {
+      // null = back to the built-in default; otherwise normalise and cap size (jsonb column, but keep it sane).
+      if (body.gate_check === null) patch.gate_check = null;
+      else {
+        const cfg = gateCheckConfig(body.gate_check);
+        if (JSON.stringify(cfg).length > 60_000) return NextResponse.json({ error: 'ตารางตรวจที่ทางเข้าใหญ่เกินไป' }, { status: 400 });
+        patch.gate_check = cfg;
+      }
+    }
     const { data, error } = await db().from('visitor_company_options')
       .upsert(patch, { onConflict: 'company_id' })
       .select('*').single();

@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { LogIn, LogOut, RotateCcw, Phone, MapPin, ShieldAlert, Maximize2, ChevronDown, ChevronRight, UserX, UserPlus, Settings2, X, Sun, Moon, ImagePlus, Trash2, Car } from 'lucide-react';
 import type { BoardAction, BoardPayload, BoardPost, BoardRequest } from '@/lib/visitor/types';
-import { VEHICLE_DECISION_LABEL, ppeRowFor, ppeText } from '@/lib/visitor/constants';
+import { DEFAULT_GATE_CHECK, VEHICLE_DECISION_LABEL, gateCheckRowFor, gateCheckText } from '@/lib/visitor/constants';
+import type { GateCheckConfig } from '@/lib/visitor/types';
 import { fileToDataUrl } from '../../../_components/image';
 import { FetchError, ToastView, bangkokTime, hhmm, postJson, getJson, thaiDate, useToast } from '../../../_components/ui';
 
@@ -150,7 +151,7 @@ export default function BoardPage() {
           {tab === 'yesterday' && <p className="text-sm" style={{ color: C.dim }}>ประวัติย้อนหลัง 1 วัน (ดูอย่างเดียว) — รายชื่อที่ยังไม่ได้กด &quot;ออก&quot; จะยังแสดงในแท็บวันนี้ด้วย</p>}
           {data && list.length === 0 && <p className="py-16 text-center text-2xl" style={{ color: C.dim }}>ไม่มีรายการที่อนุมัติสำหรับ{tab === 'today' ? 'วันนี้' : tab === 'tomorrow' ? 'พรุ่งนี้' : 'เมื่อวาน'}</p>}
           {list.map(r => (
-            <RequestCard key={r.id} C={C} r={r} today={data?.today || ''} nowHm={nowHm} busy={busy} canMark={tab === 'today'}
+            <RequestCard key={r.id} C={C} r={r} gate={data?.gate_check || DEFAULT_GATE_CHECK} today={data?.today || ''} nowHm={nowHm} busy={busy} canMark={tab === 'today'}
               collapsed={prefs.collapsed.includes(r.id)} onToggle={() => toggleCollapsed(r.id)} onMark={mark}
               onAdd={(name, detail) => post(`add:${r.id}`, { request_id: r.id, action: 'add_person', name, detail }, `เพิ่ม ${name} และบันทึกมาถึงแล้ว`)}
               onNoShowAll={() => post(`ns:${r.id}`, { request_id: r.id, action: 'no_show_all' }, 'บันทึกว่าไม่มาแล้ว')} />
@@ -206,10 +207,10 @@ function SettingsPanel({ C, prefs, hasCompanyBg, onChange, onPick, onClose }: { 
 }
 
 type CardProps = {
-  C: Palette; r: BoardRequest; today: string; nowHm: string; busy: string; canMark: boolean; collapsed: boolean;
+  C: Palette; r: BoardRequest; gate: GateCheckConfig; today: string; nowHm: string; busy: string; canMark: boolean; collapsed: boolean;
   onToggle: () => void; onMark: (id: string, a: BoardAction) => void; onAdd: (name: string, detail: string) => void; onNoShowAll: () => void;
 };
-function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, onMark, onAdd, onNoShowAll }: CardProps) {
+function RequestCard({ C, r, gate, today, nowHm, busy, canMark, collapsed, onToggle, onMark, onAdd, onNoShowAll }: CardProps) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [detail, setDetail] = useState('');
@@ -221,7 +222,7 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
   const carried = r.arrival_date < today && inside > 0;
   const timePassed = r.arrival_date < today || (r.arrival_date === today && hhmm(r.time_to) <= nowHm);
   const nobodyCame = expected > 0 && inside === 0 && left === 0;
-  const ppe = ppeRowFor(r.purpose, r.work_areas);
+  const ppe = gateCheckRowFor(gate, r.purpose, r.work_areas);
 
   function submitAdd() {
     const n = name.trim();
@@ -245,7 +246,7 @@ function RequestCard({ C, r, today, nowHm, busy, canMark, collapsed, onToggle, o
             {!collapsed && (r.work_areas.length > 0 || r.work_area_detail) && <span className="mt-1 inline-flex items-start gap-1 text-base" style={{ color: C.primary }}><MapPin size={16} className="mt-1 shrink-0" /><span>{[...r.work_areas, r.work_area_detail].filter(Boolean).join(' · ')}</span></span>}
             {!collapsed && r.conditions && <span className="mt-1 flex items-start gap-1 text-base" style={{ color: C.warn }}><ShieldAlert size={16} className="mt-1 shrink-0" /><span>เงื่อนไข: {r.conditions}</span></span>}
             {r.vehicles.length > 0 && <span className="mt-1 flex flex-wrap items-center gap-2 text-base"><Car size={16} style={{ color: C.dim }} />{r.vehicles.map(v => <span key={v.id} className="px-2 py-0.5 rounded-md font-medium" style={{ background: v.decision === 'allowed' ? `${C.positive}33` : v.decision === 'outside' ? `${C.dim}33` : `${C.warn}33`, color: v.decision === 'allowed' ? C.positive : v.decision === 'outside' ? C.dim : C.warn }}>{v.plate}{v.province ? ` ${v.province}` : ''} · {VEHICLE_DECISION_LABEL[v.decision]}</span>)}</span>}
-            {!collapsed && ppe && <span className="mt-1 flex items-center gap-2 text-base"><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${C.positive}33`, color: C.positive }}>ตรวจ PPE</span><span style={{ color: C.dim }}>{ppe.label}:</span><span className="font-medium">{ppeText(ppe)}</span></span>}
+            {!collapsed && ppe && <span className="mt-1 flex flex-wrap items-center gap-2 text-sm sm:text-base"><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${C.positive}33`, color: C.positive }}>ตรวจที่ทางเข้า</span><span style={{ color: C.dim }}>{ppe.label}:</span><span className="font-medium">{gateCheckText(gate, ppe)}</span></span>}
           </span>
         </button>
         <div className="shrink-0 pl-8 sm:pl-0 sm:text-right flex flex-wrap items-baseline gap-x-3 sm:block">

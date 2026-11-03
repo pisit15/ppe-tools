@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { getSupabaseServer } from '@/lib/supabase';
 import { AccessError } from '@/lib/toolsSession';
-import { VISITOR_LIMITS, vehiclePolicyFor } from './constants';
+import { VISITOR_LIMITS, gateCheckConfig, vehiclePolicyFor } from './constants';
 import { addDays, bangkokToday } from './validation';
-import type { BoardPayload, BoardRequest, CreateVisitorRequestInput, VisitorBackground, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons, VisitorVehicleRow } from './types';
+import type { BoardPayload, BoardRequest, CreateVisitorRequestInput, GateCheckConfig, VisitorBackground, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons, VisitorVehicleRow } from './types';
 
 export const db = () => getSupabaseServer();
 export const newToken = (bytes = 24) => randomBytes(bytes).toString('base64url');
@@ -23,13 +23,14 @@ export async function companyName(companyId: string) {
 }
 
 /** Option lists for a company; empty arrays when nothing has been configured yet. */
-export async function companyOptions(companyId: string): Promise<{ areas: string[]; departments: string[]; background: VisitorBackground }> {
-  const { data, error } = await db().from('visitor_company_options').select('areas, departments, form_background, form_background_dim').eq('company_id', companyId).maybeSingle();
+export async function companyOptions(companyId: string): Promise<{ areas: string[]; departments: string[]; background: VisitorBackground; gate_check: GateCheckConfig }> {
+  const { data, error } = await db().from('visitor_company_options').select('areas, departments, form_background, form_background_dim, gate_check').eq('company_id', companyId).maybeSingle();
   if (error) throw error;
-  const row = data as { areas: string[] | null; departments: string[] | null; form_background: string | null; form_background_dim: number | null } | null;
+  const row = data as { areas: string[] | null; departments: string[] | null; form_background: string | null; form_background_dim: number | null; gate_check: unknown } | null;
   return {
     areas: row?.areas || [], departments: row?.departments || [],
     background: row?.form_background ? { url: row.form_background, dim: row.form_background_dim ?? 75 } : null,
+    gate_check: gateCheckConfig(row?.gate_check),
   };
 }
 
@@ -100,5 +101,5 @@ export async function boardPayload(companyId: string): Promise<BoardPayload> {
       persons: r.visitor_persons.map(p => ({ id: p.id, seq: p.seq, name: p.name, detail: p.detail, arrived_at: p.arrived_at, left_at: p.left_at, no_show_at: p.no_show_at, added_by_guard: p.added_by_guard })),
       vehicles: (r.visitor_vehicles || []).map(v => ({ id: v.id, seq: v.seq, plate: v.plate, province: v.province, vehicle_type: v.vehicle_type, decision: v.decision })),
     }));
-  return { company: { id: companyId, name }, today, requests, background: options.background };
+  return { company: { id: companyId, name }, today, requests, background: options.background, gate_check: options.gate_check };
 }

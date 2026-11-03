@@ -28,13 +28,28 @@ export type VisitorCompanyOptionsRow = {
   line_group_id: string | null; // LINE group that receives notifications
   notify_new: boolean;
   notify_decision: boolean;
+  gate_check: GateCheckConfig | null; // null = built-in AMT default
   updated_at: string;
   updated_by: string | null;
 };
 export type VisitorBackground = { url: string; dim: number } | null;
 
+/** "ตรวจที่ทางเข้า โดย รปภ." — per-company matrix. Columns = items the guard checks (PPE, ID card, badge exchange…),
+ *  rows = visitor types; the first row whose rule matches a request is the one highlighted on the form and shown on the board. */
+export type GateCheckAreaMode = 'any' | 'with_area' | 'without_area' | 'areas';
+export type GateCheckRow = {
+  key: string;
+  label: string;
+  en: string;
+  purposes: string[];      // empty = any purpose
+  areaMode: GateCheckAreaMode; // with_area: request names ≥1 work area · without_area: none · areas: one of `areas` chosen
+  areas: string[];
+  checks: boolean[];       // one per config.items
+};
+export type GateCheckConfig = { title: string; items: string[]; rows: GateCheckRow[] };
+
 /** What the public request form receives for a secret link. */
-export type VisitorLinkInfo = { company: { id: string; name: string }; label: string; areas: string[]; departments: string[]; background: VisitorBackground };
+export type VisitorLinkInfo = { company: { id: string; name: string }; label: string; areas: string[]; departments: string[]; background: VisitorBackground; gate_check: GateCheckConfig };
 
 export type VisitorPersonRow = {
   id: string;
@@ -142,7 +157,7 @@ export type BoardRequest = Pick<VisitorRequestRow,
 export type BoardAction = 'arrive' | 'leave' | 'undo_arrive' | 'undo_leave' | 'no_show' | 'undo_no_show';
 export type BoardPost = { person_id: string; action: BoardAction } | { request_id: string; action: 'add_person'; name: string; detail?: string } | { request_id: string; action: 'no_show_all' };
 
-export type BoardPayload = { company: { id: string; name: string }; today: string; requests: BoardRequest[]; background: VisitorBackground };
+export type BoardPayload = { company: { id: string; name: string }; today: string; requests: BoardRequest[]; background: VisitorBackground; gate_check: GateCheckConfig };
 
 /** Public status view by track code — no phone numbers or decision details beyond the note. */
 export type TrackPayload = Pick<VisitorRequestRow,

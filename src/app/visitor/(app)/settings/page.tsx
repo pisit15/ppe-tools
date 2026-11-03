@@ -2,10 +2,11 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Copy, Link2, MonitorPlay, Plus, Ban, ExternalLink, QrCode, MapPin, Save, ImagePlus, Trash2, Image as ImageIcon, Bell, Send, RefreshCw } from 'lucide-react';
+import { Copy, Link2, MonitorPlay, Plus, Ban, ExternalLink, QrCode, MapPin, Save, ImagePlus, Trash2, Image as ImageIcon, Bell, Send, RefreshCw, ClipboardCheck } from 'lucide-react';
+import { GateCheckEditor } from '../../_components/GateCheckEditor';
 import { fileToBoundedDataUrl } from '../../_components/image';
 import { useAuth } from '@/components/AuthProvider';
-import type { LineGroupOption, NotifyLogRow, VisitorCompanyOptionsRow, VisitorLinkRow } from '@/lib/visitor/types';
+import type { GateCheckConfig, LineGroupOption, NotifyLogRow, VisitorCompanyOptionsRow, VisitorLinkRow } from '@/lib/visitor/types';
 import { useQr } from '../../_components/useQr';
 import { FetchError, ToastView, VIZ, cardClass, getJson, inputClass, labelClass, postJson, thaiDateTime, useToast } from '../../_components/ui';
 
@@ -32,6 +33,7 @@ export default function VisitorSettingsPage() {
   const [notifyNew, setNotifyNew] = useState(true);
   const [notifyDecision, setNotifyDecision] = useState(true);
   const [lineDirty, setLineDirty] = useState(false);
+  const [gateCheck, setGateCheck] = useState<GateCheckConfig | null>(null);
   const [lineInfo, setLineInfo] = useState<{ groups: LineGroupOption[]; log: NotifyLogRow[]; sent_this_month_all_companies: number; configured: boolean } | null>(null);
   const boardQr = useQr(company ? `${origin}/visitor/board/${company}` : null, 200);
 
@@ -45,7 +47,7 @@ export default function VisitorSettingsPage() {
     getJson<{ data: VisitorLinkRow[] }>(`/api/visitor/links?company=${encodeURIComponent(company)}`).then(r => setLinks(r.data))
       .catch((e: unknown) => setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'โหลดลิงก์ไม่สำเร็จ' }));
     getJson<{ data: VisitorCompanyOptionsRow }>(`/api/visitor/options?company=${encodeURIComponent(company)}`)
-      .then(r => { setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false); setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false); setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false); })
+      .then(r => { setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false); setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false); setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false); setGateCheck(r.data.gate_check ?? null); })
       .catch((e: unknown) => setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'โหลดรายการพื้นที่ไม่สำเร็จ' }));
     loadLine();
   }, [company, setToast]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -71,7 +73,7 @@ export default function VisitorSettingsPage() {
       const r = await postJson<{ data: VisitorCompanyOptionsRow }>('/api/visitor/options', { company_id: company, areas: split(areasText), departments: split(deptText), ...extra }, 'PUT');
       setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false);
       setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false);
-      setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false);
+      setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false); setGateCheck(r.data.gate_check ?? null);
       setToast({ type: 'success', msg: okMsg || `บันทึกแล้ว: พื้นที่ ${r.data.areas.length} · แผนก ${r.data.departments.length}` });
     } catch (e) { setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'บันทึกไม่สำเร็จ' }); }
     finally { setBusy(false); }
@@ -165,6 +167,11 @@ export default function VisitorSettingsPage() {
           <button type="button" disabled={busy || !optionsDirty || !company} onClick={() => void saveOptions()} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-white text-sm font-medium disabled:opacity-50" style={{ background: VIZ.secondary }}><Save size={16} />บันทึกรายการ</button>
           {optionsDirty && <span className="text-sm text-gray-500">มีการแก้ไขที่ยังไม่บันทึก</span>}
         </div>
+      </section>
+      <section className={cardClass} style={{ borderLeft: `4px solid ${VIZ.accent}` }}>
+        <h2 className="inline-flex items-center gap-2 font-semibold text-lg" style={{ color: VIZ.accent }}><ClipboardCheck size={20} />ตรวจที่ทางเข้า โดย รปภ. (ของบริษัทนี้)</h2>
+        <p className="text-sm text-gray-500 mt-1 mb-3">ตารางนี้แสดงท้ายแบบฟอร์มขอ (ไฮไลต์แถวที่ตรงกับคำขอ) และบนจอ รปภ. เป็นข้อความว่าต้องตรวจอะไรสำหรับคณะนั้น</p>
+        <GateCheckEditor value={gateCheck} areas={split(areasText)} busy={busy} onSave={cfg => saveOptions({ gate_check: cfg }, cfg ? 'บันทึกตารางตรวจที่ทางเข้าแล้ว' : 'กลับไปใช้ตารางค่าเริ่มต้นแล้ว')} />
       </section>
       <section className={cardClass} style={{ borderLeft: `4px solid ${VIZ.positive}` }}>
         <h2 className="inline-flex items-center gap-2 font-semibold text-lg" style={{ color: VIZ.positive }}><Bell size={20} />การแจ้งเตือน LINE (ของบริษัทนี้)</h2>
