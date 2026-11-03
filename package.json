@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "test:first-aid": "node --test tests/first-aid-api.test.cjs tests/first-aid-db.test.cjs tests/first-aid-public-path.test.cjs",
-    "test:ppe": "node --test tests/ppe-requests-db.test.cjs tests/ppe-reservation-pdf.test.cjs tests/ppe-order-calculation.test.cjs tests/ppe-reorder-policy.test.cjs tests/ppe-usage.test.cjs",
+    "test:ppe": "node --test tests/ppe-requests-db.test.cjs tests/ppe-employees-db.test.cjs tests/ppe-reservation-pdf.test.cjs tests/ppe-order-calculation.test.cjs tests/ppe-reorder-policy.test.cjs tests/ppe-usage.test.cjs",
+    "test:ppe:employees": "playwright test --config playwright.ppe-employees.config.cjs",
     "test:ppe:reports": "playwright test --config playwright.ppe-reports.config.cjs",
     "test:ppe:requests": "playwright test --config playwright.ppe-requests.config.cjs",
     "dev": "next dev",

@@ -29,8 +29,9 @@ async function createDb() {
   await db.exec(`grant select on company_users,tools_users,admin_accounts,company_settings to service_role; grant usage on schema public to service_role;`);
   return db;
 }
-async function startFixture(port=4328) {
+async function startFixture(port=4328, options={}) {
   const db=await createDb();
+  if(options.setup) await options.setup(db);
   const server=http.createServer(async(req,res)=>{
     const json=(status,data,headers={})=>{res.writeHead(status,{'content-type':'application/json',...headers});res.end(JSON.stringify(data));};
     try {
@@ -46,6 +47,12 @@ async function startFixture(port=4328) {
         if(url.pathname==='/rest/v1/rpc/ppe_request_batch') {
           return {data:(await tx.query('select ppe_request_batch($1,$2,$3,$4::jsonb,$5) as result',[body.p_actor_table,body.p_actor_id,body.p_company,JSON.stringify(body.p_items),body.p_note])).rows[0].result};
         }
+        const rpcName=url.pathname.startsWith('/rest/v1/rpc/')?url.pathname.split('/')[4]:null;
+        if(rpcName && options.rpc?.includes(rpcName)) {
+          const entries=Object.entries(body);
+          const args=entries.map(([key],i)=>`${ident(key)} => $${i+1}`).join(',');
+          return {data:(await tx.query(`select ${ident(rpcName)}(${args}) as result`,entries.map(([,value])=>value!==null && typeof value==='object'?JSON.stringify(value):value))).rows[0].result};
+        }
         const tableName=url.pathname.split('/')[3]; const table=ident(tableName);
         const params=[], predicates=[];
         for(const [key,value] of url.searchParams) {
@@ -53,6 +60,7 @@ async function startFixture(port=4328) {
           const column=ident(key); const at=value.indexOf('.'); const op=value.slice(0,at), val=value.slice(at+1);
           params.push(val==='true'?true:val==='false'?false:val);
           if(op==='eq')predicates.push(`${column}=$${params.length}`);
+          else if(op==='neq')predicates.push(`${column}<>$${params.length}`);
           else if(op==='ilike')predicates.push(`${column} ilike $${params.length}`);
           else if(op==='gte')predicates.push(`${column}>=$${params.length}`);
           else if(op==='lte')predicates.push(`${column}<=$${params.length}`);

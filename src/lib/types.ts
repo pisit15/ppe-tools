@@ -75,6 +75,27 @@ export type PPEEmployee = {
   department: string | null;
   is_active: boolean;
   created_at: string;
+  updated_at: string;
+  revision: number;
+};
+
+export type PPEEmployeeImpact = {
+  employee: PPEEmployee;
+  requester_accounts: Pick<PPERequester, 'id' | 'username' | 'display_name' | 'is_active'>[];
+  open_request_count: number;
+  borrow_record_count: number;
+};
+
+export type PPEEmployeeChange = {
+  id: string;
+  employee_id: string;
+  company_id: string;
+  action: 'create' | 'update' | 'deactivate' | 'reactivate' | 'department_rename';
+  actor: string;
+  actor_name: string;
+  before_data: PPEEmployee | null;
+  after_data: PPEEmployee;
+  created_at: string;
 };
 
 export type PPEOrderSettings = {
@@ -112,7 +133,7 @@ export type UpdateProductInput = Partial<CreateProductInput>;
 export type CreateTransactionInput = Omit<PPETransaction, 'id' | 'created_at'>;
 export type UpdateTransactionInput = Partial<CreateTransactionInput>;
 
-export type CreateEmployeeInput = Omit<PPEEmployee, 'id' | 'created_at'>;
+export type CreateEmployeeInput = Omit<PPEEmployee, 'id' | 'created_at' | 'updated_at' | 'revision'>;
 export type UpdateEmployeeInput = Partial<CreateEmployeeInput>;
 
 export type DashboardStats = {

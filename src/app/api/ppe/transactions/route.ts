@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, getSupabaseServer } from '@/lib/supabase';
 import type { CreateTransactionInput } from '@/lib/types';
-import { ppeDatabaseError } from '@/lib/ppe-access';
-import { apiError } from '@/lib/toolsSession';
+import { ppeDatabaseError, requirePPEActor } from '@/lib/ppe-access';
+import { AccessError, apiError, assertCompany } from '@/lib/toolsSession';
 
 export async function GET(request: NextRequest) {
   try {
@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const actor = await requirePPEActor(request, true);
     const body = (await request.json()) as CreateTransactionInput;
     const {
       company_id,
@@ -90,8 +91,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let db;
-    try { db = getSupabaseServer(); } catch { db = supabase; }
+    assertCompany(actor, company_id, true);
+    const db = getSupabaseServer();
+    // Previously selected employees may have been deactivated in another session.
+    // Returns remain possible, and existing request receipts keep their own workflow.
+    if (employee_code && ['stock_out', 'borrow'].includes(transaction_type)) {
+      const { data: employee, error: employeeError } = await db.from('ppe_employees')
+        .select('is_active').eq('company_id', company_id).eq('employee_code', employee_code).maybeSingle();
+      if (employeeError) throw employeeError;
+      if (employee?.is_active === false) throw new AccessError('พนักงานนี้ปิดใช้งานแล้ว กรุณาเลือกผู้รับคนอื่น', 409);
+    }
     const { data, error } = await db
       .from('ppe_transactions')
       .insert([
