@@ -89,7 +89,10 @@ export function ItemPicker({ items, state, locationId, value, onPick, autoFocus 
   const hits = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const list = needle ? items.filter(i => `${i.name} ${i.generic} ${i.description}`.toLowerCase().includes(needle)) : items;
-    return list.map(i => ({ item: i, bal: balance(state, i.id, locationId) })).sort((a, b) => (b.bal > 0 ? 1 : 0) - (a.bal > 0 ? 1 : 0) || a.item.name.localeCompare(b.item.name, 'th')).slice(0, 12);
+    // Empty query: the whole register alphabetically (scrollable). Searching: best 30, in-stock first.
+    const scored = list.map(i => ({ item: i, bal: balance(state, i.id, locationId) }));
+    if (!needle) return scored.sort((a, b) => a.item.name.localeCompare(b.item.name, 'th'));
+    return scored.sort((a, b) => (b.bal > 0 ? 1 : 0) - (a.bal > 0 ? 1 : 0) || a.item.name.localeCompare(b.item.name, 'th')).slice(0, 30);
   }, [q, items, state, locationId]);
   const pick = useCallback((item: FaItem) => { onPick(item); setQ(''); setOpen(false); }, [onPick]);
   if (value) {
@@ -107,8 +110,10 @@ export function ItemPicker({ items, state, locationId, value, onPick, autoFocus 
         onChange={e => { setQ(e.target.value); setOpen(true); setCursor(0); }} onFocus={() => setOpen(true)}
         onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setCursor(c => Math.min(hits.length - 1, c + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setCursor(c => Math.max(0, c - 1)); } else if (e.key === 'Enter' && hits[cursor]) { e.preventDefault(); pick(hits[cursor].item); } else if (e.key === 'Escape') setOpen(false); }}
         className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4E79A7] bg-white" />
-      {open && hits.length > 0 && (
-        <ul id="fa-item-hits" role="listbox" className="absolute left-0 right-0 top-full mt-1 z-30 max-h-80 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+      {open && (hits.length > 0 || q.trim()) && (
+        <ul id="fa-item-hits" role="listbox" className="absolute left-0 right-0 top-full mt-1 z-30 max-h-[60vh] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+          {!q.trim() && <li className="px-3 py-1.5 text-[11px] text-gray-400 bg-gray-50">{hits.length} รายการ · พิมพ์เพื่อค้นหา</li>}
+          {hits.length === 0 && <li className="px-3 py-3 text-sm text-gray-500">ไม่พบ “{q}” — เพิ่มยาใหม่ได้ที่หน้า รายการยา</li>}
           {hits.map((h, i) => (
             <li key={h.item.id} role="option" aria-selected={i === cursor}>
               <button type="button" onMouseEnter={() => setCursor(i)} onClick={() => pick(h.item)} className={`w-full flex items-center gap-3 px-3 py-2 text-left ${i === cursor ? 'bg-[#4E79A7]/10' : ''}`}>
