@@ -87,7 +87,7 @@ export default function TakeClient({ token }: { token: string }) {
       <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-2.5 content-start">
         {visible.map(i => { const a = avail(i); const qty = cart[i.id] || 0; const out = a === 0; return (
           <div key={i.id} className={`rounded-xl border bg-white p-2.5 flex flex-col gap-2 ${qty ? 'border-[#246047]' : 'border-gray-200'} ${out ? 'opacity-50' : ''}`} style={qty ? { background: `${FA_GREEN}0D` } : undefined}>
-            <ItemImage item={i} size="100%" rounded={10} className="w-full aspect-[4/3]" />
+            <ItemImage item={i} size="100%" rounded={10} />
             <div><div className="font-semibold text-gray-900 leading-tight text-[15px]">{i.name}</div><div className="text-xs text-gray-500">{i.description ? `${i.description} · ` : ''}เหลือ <b style={{ color: out ? VIZ.accent : VIZ.text }}>{fmtInt(a)}</b> {i.unit}</div></div>
             {out ? <div className="h-10 flex items-center justify-center text-sm font-semibold" style={{ color: VIZ.accent }}>หมด</div>
               : qty ? <div className="flex items-center justify-between"><button type="button" aria-label="ลด" onClick={() => setQty(i.id, qty - 1)} className="h-10 w-10 rounded-lg border border-gray-300 bg-white text-xl" style={{ color: FA_GREEN }}>−</button><b className="text-lg">{qty}</b><button type="button" aria-label="เพิ่ม" disabled={qty >= a} onClick={() => setQty(i.id, qty + 1)} className="h-10 w-10 rounded-lg border border-gray-300 bg-white text-xl disabled:opacity-40" style={{ color: FA_GREEN }}>+</button></div>

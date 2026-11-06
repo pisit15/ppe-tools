@@ -56,12 +56,13 @@ export function Pictogram({ icon, size = 40 }: { icon: FaIcon; size?: number }) 
 }
 /** Item picture if set, else its pictogram in a soft tile. */
 export function ItemImage({ item, size = 40, rounded = 10, className = '' }: { item: Pick<FaItem, 'name' | 'icon' | 'imageUrl'>; size?: number | string; rounded?: number; className?: string }) {
-  const box = { width: size, height: size, borderRadius: rounded } as const;
+  // A string size ("100%") fills the parent's width and stays square; a number is a fixed pixel tile.
+  const box = typeof size === 'number' ? { width: size, height: size, borderRadius: rounded } as const : { width: '100%', aspectRatio: '1 / 1', borderRadius: rounded } as const;
   if (item.imageUrl) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={item.imageUrl} alt={item.name} loading="lazy" className={`object-cover shrink-0 bg-gray-50 ${className}`} style={box} />;
   }
-  return <div className={`flex items-center justify-center shrink-0 ${className}`} style={{ ...box, background: '#F0F3F0' }}><Pictogram icon={item.icon} size={typeof size === 'number' ? Math.round(size * 0.7) : 40} /></div>;
+  return <div className={`flex items-center justify-center shrink-0 ${className}`} style={{ ...box, background: '#F0F3F0' }}><Pictogram icon={item.icon} size={typeof size === 'number' ? Math.round(size * 0.7) : 48} /></div>;
 }
 
 export function StatusBadge({ status, small = false }: { status: ItemStatusKey; small?: boolean }) {

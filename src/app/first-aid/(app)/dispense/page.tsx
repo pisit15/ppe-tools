@@ -91,7 +91,7 @@ export default function DispensePage() {
           <div className="grid grid-cols-3 gap-2">
             {frequent.map(f => { const b = balance(state, f.id, locationId); return (
               <button key={f.id} type="button" disabled={busy || b === 0} onClick={() => void save(f, 1)} className="rounded-xl border border-gray-200 bg-white p-2 text-left hover:bg-gray-50 disabled:opacity-50 min-h-[44px]">
-                <ItemImage item={f} size="100%" rounded={8} className="aspect-square mb-1.5 w-full" />
+                <ItemImage item={f} size="100%" rounded={8} className="mb-1.5" />
                 <div className="text-sm font-semibold text-gray-900 leading-tight truncate">{f.name}</div>
                 <div className="text-xs" style={{ color: b === 0 ? VIZ.accent : VIZ.lightText }}>{b === 0 ? 'หมด' : `${fmtInt(b)} ${f.unit}`}</div>
               </button>); })}
