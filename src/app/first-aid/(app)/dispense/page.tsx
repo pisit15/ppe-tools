@@ -20,22 +20,22 @@ export default function DispensePage() {
   const [date, setDate] = useState(bangkokToday());
   const [log, setLog] = useState<FaEvent[] | null>(null);
   const [month, setMonth] = useState<FaEvent[] | null>(null);
+  const [recent, setRecent] = useState<FaEvent[]>([]);
   useEffect(() => { if (!locationId && locations.length) setLocationId(scope !== 'all' && locations.some(l => l.id === scope) ? scope : locations[0].id); }, [locations, scope, locationId]);
   useEffect(() => { setDept(window.localStorage.getItem(DEPT_KEY) || ''); }, []);
   const loadLog = useCallback(async () => {
-    try { const [day, mon] = await Promise.all([loadHistory(company, date, date), loadHistory(company, `${currentPeriod()}-01`, bangkokToday())]); setLog(day.events); setMonth(mon.events); }
+    try { const [day, mon, past] = await Promise.all([loadHistory(company, date, date), loadHistory(company, `${currentPeriod()}-01`, bangkokToday()), loadHistory(company, `${shiftPeriod(currentPeriod(), -3)}-01`, bangkokToday())]); setLog(day.events); setMonth(mon.events); setRecent(past.events); }
     catch { setLog([]); setMonth([]); }
   }, [company, date]);
   useEffect(() => { if (state) void loadLog(); }, [state, loadLog]);
 
   const frequent = useMemo(() => {
     if (!state) return [];
-    const from = shiftPeriod(currentPeriod(), -2) + '-01';
     const tally = new Map<string, number>();
-    for (const e of state.events) if (e.kind === 'issue' && e.date >= from) tally.set(e.itemId, (tally.get(e.itemId) || 0) + 1);
+    for (const e of recent) if (e.kind === 'issue') tally.set(e.itemId, (tally.get(e.itemId) || 0) + 1);
     const top = [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 9).map(([id]) => state.items.find(i => i.id === id)).filter((i): i is FaItem => !!i);
     return top.length ? top : state.items.slice(0, 9);
-  }, [state]);
+  }, [state, recent]);
 
   async function save(target: FaItem | null = item, quantity = qty) {
     if (!state || !target || !locationId) return;

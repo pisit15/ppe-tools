@@ -46,7 +46,7 @@ export function ImageField({ item, onChanged, compact = false }: { item: FaItem;
         </div>
         <div className="flex gap-2">
           <input value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void fromUrl(); } }} placeholder="หรือวางลิงก์รูป (https://…jpg)" aria-label="ลิงก์รูป" className={inputClass} disabled={!!busy} />
-          <button type="button" className={btnSecondary} disabled={!!busy || !url.trim()} onClick={() => void fromUrl()}><Link2 size={15} />ใช้ลิงก์</button>
+          <button type="button" className={`${btnSecondary} whitespace-nowrap`} disabled={!!busy || !url.trim()} onClick={() => void fromUrl()}><Link2 size={15} />ใช้ลิงก์</button>
         </div>
         {busy && <p className="text-xs text-gray-500">{busy}</p>}
         {err && <p className="text-xs" style={{ color: VIZ.accent }}>{err}</p>}

@@ -42,7 +42,7 @@ export default function ImagesPage() {
           <div key={item.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 sm:p-4 grid gap-3 sm:grid-cols-[minmax(0,260px)_minmax(0,1fr)] items-start">
             <div className="flex items-center gap-3">
               <ItemImage item={item} size={64} rounded={12} />
-              <div className="min-w-0"><div className="font-semibold text-gray-900 truncate">{item.name}</div><div className="text-xs text-gray-500 truncate">{item.generic || item.category} · {item.unit}{uses ? ` · จ่าย ${uses} ครั้ง/3 เดือน` : ''}</div>
+              <div className="min-w-0"><div className="font-semibold text-gray-900 truncate">{item.name}</div><div className="text-xs text-gray-500 truncate">{cleanGeneric(item.generic) || item.category} · {item.unit}{uses ? ` · จ่าย ${uses} ครั้ง/3 เดือน` : ''}</div>
                 <a href={search(item)} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs underline" style={{ color: VIZ.primary }}><ExternalLink size={12} />ค้นหารูป</a></div>
             </div>
             <ImageField compact item={item} onChanged={next => { setPatch(p => ({ ...p, [item.id]: { ...p[item.id], ...next } })); if (next.hasImage !== undefined) setToast({ type: 'success', msg: next.hasImage ? `บันทึกรูป ${item.name} แล้ว` : `ลบรูป ${item.name} แล้ว` }); void refresh(); }} />
