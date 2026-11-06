@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Pencil, Plus, Search } from 'lucide-react';
 import type { FaEvent, FaItem, FaLot } from '@/lib/first-aid/types';
-import { Bar, Chip, Drawer, ItemImage, KIND_LABEL, STATUS_COLOR, Spinner, Stat, StatusBadge, ToastView, VIZ, FA_GREEN, balance, btnPrimary, btnSecondary, daysUntil, expiredLots, expiryDays, fmtInt, itemStatus, loadHistory, pendingLots, personLabel, relativeDays, shiftPeriod, thaiDate, type ItemStatusKey, useFa, useToast, usableLots, currentPeriod, thaiPeriod } from '../_components/fa';
+import { Bar, Chip, Drawer, ItemImage, itemSub, KIND_LABEL, STATUS_COLOR, Spinner, Stat, StatusBadge, ToastView, VIZ, FA_GREEN, balance, btnPrimary, btnSecondary, daysUntil, expiredLots, expiryDays, fmtInt, itemStatus, loadHistory, pendingLots, personLabel, relativeDays, shiftPeriod, thaiDate, type ItemStatusKey, useFa, useToast, usableLots, currentPeriod, thaiPeriod } from '../_components/fa';
 import { DispenseModal, LotExpiryModal } from '../_components/actions';
 import { ItemFormModal } from '../_components/ItemForm';
 
@@ -83,9 +83,9 @@ export default function ItemsPage() {
       </section>
 
       <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed min-w-[760px]">
           <thead><tr className="text-xs text-gray-500 bg-gray-50/80 border-b border-gray-100">
-            <th className="text-left font-medium px-3 py-2">ชื่อยา</th><th className="text-left font-medium px-2 py-2 hidden lg:table-cell">หมวด</th>
+            <th className="text-left font-medium px-3 py-2 w-[34%]">ชื่อยา</th><th className="text-left font-medium px-2 py-2 hidden lg:table-cell">หมวด</th>
             {locations.length > 1 && locations.map(l => <th key={l.id} className="text-right font-medium px-2 py-2 hidden md:table-cell whitespace-nowrap">{l.name}</th>)}
             <th className="text-right font-medium px-2 py-2">คงเหลือ</th><th className="text-right font-medium px-2 py-2 hidden sm:table-cell">ขั้นต่ำ</th><th className="text-left font-medium px-2 py-2 hidden sm:table-cell">หมดอายุเร็วสุด</th><th className="text-left font-medium px-2 py-2">สถานะ</th><th className="px-2 py-2" />
           </tr></thead>
@@ -95,7 +95,7 @@ export default function ItemsPage() {
               const d = st.nearest ? daysUntil(st.nearest.expiry) : null; const expC = d !== null && d < 0 ? VIZ.accent : d !== null && d <= 90 ? VIZ.secondary : VIZ.text;
               return (
                 <tr key={item.id} className={`border-b border-gray-50 cursor-pointer hover:bg-gray-50 ${selected === item.id ? 'bg-[#4E79A7]/5' : ''}`} onClick={() => setSelected(item.id)}>
-                  <td className="px-3 py-2"><div className="flex items-center gap-2.5"><ItemImage item={item} size={38} /><div className="min-w-0"><div className="font-semibold text-gray-900 truncate">{item.name}</div><div className="text-xs text-gray-500 truncate">{item.description || item.generic || item.category} · {item.unit}</div></div></div></td>
+                  <td className="px-3 py-1.5"><div className="flex items-center gap-2.5"><ItemImage item={item} size={34} rounded={8} /><div className="min-w-0"><div className="font-semibold text-gray-900 truncate">{item.name}</div><div className="text-xs text-gray-500 truncate">{itemSub(item)} · {item.unit}</div></div></div></td>
                   <td className="px-2 py-2 text-gray-500 hidden lg:table-cell">{item.category}</td>
                   {locations.length > 1 && locations.map(l => { const b = balance(state, item.id, l.id); return <td key={l.id} className="px-2 py-2 text-right tabular-nums hidden md:table-cell" style={{ color: b === 0 ? VIZ.neutral : VIZ.text }}>{b === 0 ? '—' : fmtInt(b)}</td>; })}
                   <td className="px-2 py-2 text-right tabular-nums"><b style={{ color: st.key === 'out' || st.key === 'expired' ? VIZ.accent : st.key === 'low' ? VIZ.secondary : VIZ.text }}>{fmtInt(st.balance)}</b> <span className="text-xs text-gray-500">{item.unit}</span>{st.expiredQty > 0 && <div className="text-[11px]" style={{ color: VIZ.accent }}>+{fmtInt(st.expiredQty)} หมดอายุ</div>}{st.pendingQty > 0 && <div className="text-[11px] text-gray-500">+{fmtInt(st.pendingQty)} รอวันหมดอายุ</div>}<Bar value={st.balance} max={st.min} color={STATUS_COLOR[st.key === 'pending' ? 'ok' : st.key]} /></td>
@@ -146,7 +146,7 @@ function ItemDetail({ item, onClose, onDispense, onEdit, onLot }: { item: FaItem
   const max = Math.max(1, ...perMonth);
   const avg = Math.round(perMonth.slice(0, 5).reduce((a, b) => a + b, 0) / 5);
   return (
-    <Drawer open={!!item} onClose={onClose} title={<span className="flex items-center gap-3"><ItemImage item={item} size={48} rounded={12} />{item.name}</span>} subtitle={`${item.description || item.generic || ''}${item.description || item.generic ? ' · ' : ''}${item.category} · หน่วย: ${item.unit}`}
+    <Drawer open={!!item} onClose={onClose} title={<span className="flex items-center gap-3"><ItemImage item={item} size={48} rounded={12} />{item.name}</span>} subtitle={`${itemSub(item)} · หน่วย: ${item.unit}`}
       footer={<div className="flex gap-2"><button type="button" className={`${btnPrimary} flex-1`} style={{ background: FA_GREEN }} disabled={st.balance === 0} onClick={onDispense}>จ่าย</button><Link href={`/first-aid/count?mode=receive&item=${item.id}`} className={`${btnSecondary} flex-1`}>รับเข้า</Link><button type="button" className={btnSecondary} onClick={onEdit}><Pencil size={15} />แก้ไข</button></div>}>
       <div className="grid grid-cols-3 gap-2 mb-5">
         <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-500">คงเหลือ</div><div className="text-2xl font-semibold" style={{ color: STATUS_COLOR[st.key] }}>{fmtInt(st.balance)}</div></div>

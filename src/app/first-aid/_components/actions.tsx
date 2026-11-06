@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { FaItem, FaLot } from '@/lib/first-aid/types';
-import { FA_GREEN, ItemImage, Modal, Stepper, VIZ, balance, bangkokToday, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, manage, postTransaction, thaiDate, useFa } from './fa';
+import { FA_GREEN, ItemImage, itemSub, Modal, Stepper, VIZ, balance, bangkokToday, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, manage, postTransaction, thaiDate, useFa } from './fa';
 
 const REASONS = ['ปวดหัว / ไข้', 'ปวดท้อง / ท้องเสีย', 'คลื่นไส้', 'แพ้ / คัน', 'ปวดเมื่อย', 'บาดแผล', 'อื่น ๆ'];
 const WHO_KEY = 'fa.lastWho';
@@ -38,7 +38,7 @@ export function DispenseModal({ item, onClose, onDone, defaultLocation }: { item
   const after = avail - qty; const min = state.thresholds.find(t => t.itemId === item.id && t.locationId === locationId)?.min ?? item.min;
   return (
     <Modal open={!!item} onClose={onClose} title="จ่ายยา" size="sm" footer={<div className="flex gap-2"><button type="button" className={btnSecondary} onClick={onClose}>ยกเลิก</button><button type="button" className={`${btnPrimary} flex-1`} style={{ background: FA_GREEN }} disabled={busy || avail === 0} onClick={() => void save()}>{busy ? 'กำลังบันทึก…' : `บันทึก · จ่าย ${fmtInt(qty)} ${item.unit}`}</button></div>}>
-      <div className="flex items-center gap-3 mb-4"><ItemImage item={item} size={56} rounded={12} /><div className="min-w-0"><div className="font-semibold text-lg text-gray-900 leading-tight">{item.name}</div><div className="text-sm text-gray-500">{item.description || item.generic || item.category}</div></div></div>
+      <div className="flex items-center gap-3 mb-4"><ItemImage item={item} size={56} rounded={12} /><div className="min-w-0"><div className="font-semibold text-lg text-gray-900 leading-tight">{item.name}</div><div className="text-sm text-gray-500">{itemSub(item)}</div></div></div>
       {locations.length > 1 && (
         <div className="mb-3"><label className={labelClass} htmlFor="dm-loc">จ่ายจากจุด</label>
           <select id="dm-loc" className={inputClass} value={locationId} onChange={e => setLocationId(e.target.value)}>{locations.map(l => <option key={l.id} value={l.id}>{l.name} · คงเหลือ {fmtInt(balance(state, item.id, l.id))}</option>)}</select></div>

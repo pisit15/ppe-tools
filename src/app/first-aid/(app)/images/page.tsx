@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import type { FaItem } from '@/lib/first-aid/types';
-import { Chip, FA_GREEN, ItemImage, Spinner, Stat, ToastView, VIZ, currentPeriod, fmtInt, shiftPeriod, useFa, useToast } from '../../_components/fa';
+import { Chip, FA_GREEN, ItemImage, cleanGeneric, Spinner, Stat, ToastView, VIZ, currentPeriod, fmtInt, shiftPeriod, useFa, useToast } from '../../_components/fa';
 import { ImageField } from '../../_components/ItemForm';
 
 export default function ImagesPage() {
@@ -22,7 +22,7 @@ export default function ImagesPage() {
   if (loading || !state) return <Spinner />;
   const done = ranked.filter(r => r.item.hasImage).length;
   const list = ranked.filter(r => (filter === 'all' || (filter === 'done') === r.item.hasImage) && (!q.trim() || `${r.item.name} ${r.item.generic}`.toLowerCase().includes(q.trim().toLowerCase())));
-  const search = (i: FaItem) => `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${i.name} ${i.generic ? i.generic.split('/')[0] : ''} ยา`.trim())}`;
+  const search = (i: FaItem) => `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${i.name} ${cleanGeneric(i.generic).split('/')[0]} ยา`.trim())}`;
   return (
     <div className="space-y-4">
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">

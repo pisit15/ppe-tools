@@ -32,6 +32,9 @@ export async function loadHistory(company: string, from: string, to: string, ext
 export { expiryDays, usableLots, pendingLots, expiredLots, balance, minFor, itemStatus, personLabel, type ItemStatus } from '@/lib/first-aid/model';
 export const KIND_LABEL: Record<FaEvent['kind'], string> = { issue: 'จ่าย', receive: 'รับเข้า', transfer: 'โอน', dispose: 'ตัดทิ้ง' };
 export const fmtInt = (n: number) => n.toLocaleString('th-TH');
+/** Hide the import bookkeeping that the Excel loader appended to `generic` ("… · Excel Sep 2026 แถว 56"). */
+export const cleanGeneric = (s: string) => s.replace(/\s*·?\s*Excel\s+[A-Za-z]+\s+\d{4}\s+แถว\s*\d+\s*$/i, '').trim();
+export const itemSub = (i: { description: string; generic: string; category: string }) => i.description || cleanGeneric(i.generic) || i.category;
 
 // ---------- pictograms + item image ----------
 const ICON_PATHS: Record<Exclude<FaIcon, ''>, (c: string) => ReactNode> = {
@@ -93,7 +96,7 @@ export function ItemPicker({ items, state, locationId, value, onPick, autoFocus 
     return (
       <div className="flex items-center gap-3 rounded-lg border border-gray-300 bg-white px-3 py-2">
         <ItemImage item={value} size={36} />
-        <div className="min-w-0 flex-1"><div className="font-semibold text-gray-900 truncate">{value.name}</div><div className="text-xs text-gray-500 truncate">{value.description || value.generic || value.category} · คงเหลือ {fmtInt(balance(state, value.id, locationId))} {value.unit}</div></div>
+        <div className="min-w-0 flex-1"><div className="font-semibold text-gray-900 truncate">{value.name}</div><div className="text-xs text-gray-500 truncate">{itemSub(value)} · คงเหลือ {fmtInt(balance(state, value.id, locationId))} {value.unit}</div></div>
         <button type="button" className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1" onClick={() => { onPick(null); setOpen(true); }}>เปลี่ยน</button>
       </div>
     );
@@ -110,7 +113,7 @@ export function ItemPicker({ items, state, locationId, value, onPick, autoFocus 
             <li key={h.item.id} role="option" aria-selected={i === cursor}>
               <button type="button" onMouseEnter={() => setCursor(i)} onClick={() => pick(h.item)} className={`w-full flex items-center gap-3 px-3 py-2 text-left ${i === cursor ? 'bg-[#4E79A7]/10' : ''}`}>
                 <ItemImage item={h.item} size={32} rounded={8} />
-                <span className="min-w-0 flex-1"><span className="block font-medium text-gray-900 truncate">{h.item.name}</span><span className="block text-xs text-gray-500 truncate">{h.item.description || h.item.generic || h.item.category}</span></span>
+                <span className="min-w-0 flex-1"><span className="block font-medium text-gray-900 truncate">{h.item.name}</span><span className="block text-xs text-gray-500 truncate">{itemSub(h.item)}</span></span>
                 <span className={`text-sm whitespace-nowrap ${h.bal === 0 ? 'font-medium' : 'text-gray-500'}`} style={h.bal === 0 ? { color: VIZ.accent } : undefined}>{h.bal === 0 ? 'หมด' : `${fmtInt(h.bal)} ${h.item.unit}`}</span>
               </button>
             </li>
