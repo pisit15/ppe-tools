@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>SHE Data Center import bridge</title></head>
+<body>
+<script>
+// One-time migration bridge: Superhuman's CSP blocks fetch() to tools.eashe.org,
+// so the Superhuman tab embeds this page and relays requests via postMessage.
+// Every request still needs a valid x-ohse-ticket (checked server-side).
+(function () {
+  var ORIGIN = 'https://docs.superhuman.com';
+  var ALLOWED = /^\/api\/ohse\/import\/(stage|pending|upload-url|done)$/;
+  window.addEventListener('message', function (e) {
+    if (e.origin !== ORIGIN || !e.data || e.data.kind !== 'ohse-req') return;
+    var d = e.data, reply = function (msg) { e.source.postMessage(Object.assign({ kind: 'ohse-res', id: d.id }, msg), ORIGIN); };
+    var p;
+    if (d.op === 'put') {
+      if (!/^https:\/\/[a-z0-9]+\.supabase\.co\/storage\/v1\/object\/upload\/sign\//.test(d.url)) return reply({ status: 0, error: 'bad url' });
+      p = fetch(d.url, { method: 'PUT', headers: { 'content-type': d.mime || 'application/octet-stream', 'x-upsert': 'false' }, body: d.blob })
+        .then(function (r) { return r.text().then(function (t) { return { status: r.status, body: t.slice(0, 500) }; }); });
+    } else {
+      if (!ALLOWED.test(d.path)) return reply({ status: 0, error: 'bad path' });
+      p = fetch(d.path, { method: d.method || 'GET', headers: { 'content-type': 'application/json', 'x-ohse-ticket': d.ticket }, body: d.body ? JSON.stringify(d.body) : undefined })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, json: j }; }); });
+    }
+    p.then(reply, function (err) { reply({ status: 0, error: String(err) }); });
+  });
+  parent.postMessage({ kind: 'ohse-ready' }, ORIGIN);
+})();
+</script>
+</body></html>
