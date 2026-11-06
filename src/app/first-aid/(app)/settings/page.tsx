@@ -22,6 +22,10 @@ export default function SettingsPage() {
     try { const r = await manage<{ ok: true; url: string; qrSvg: string }>(company, { action: 'rotate-token', locationId: loc.id }); await refresh(); setQr({ loc, url: r.url, svg: r.qrSvg }); }
     catch (e) { setToast({ type: 'error', msg: errMsg(e) }); } finally { setBusy(''); }
   }
+  function posterItems(q: { loc: FaLocation }) {
+    const ids = new Set([...state!.thresholds.filter(t => t.locationId === q.loc.id).map(t => t.itemId), ...state!.lots.filter(l => l.locationId === q.loc.id && l.quantity > 0).map(l => l.itemId)]);
+    return state!.items.filter(i => ids.has(i.id)).sort((a, b) => (b.hasImage ? 1 : 0) - (a.hasImage ? 1 : 0) || a.name.localeCompare(b.name, 'th')).slice(0, 12).map(i => ({ name: i.name, unit: i.unit, icon: i.icon, imageUrl: i.imageUrl, description: i.description }));
+  }
   async function toggleInfirmary(on: boolean) {
     try { await manage(company, { action: 'settings', infirmary: on }); await refresh(); setToast({ type: 'success', msg: 'บันทึกแล้ว' }); } catch (e) { setToast({ type: 'error', msg: errMsg(e) }); }
   }
@@ -61,20 +65,18 @@ export default function SettingsPage() {
 
       <LocationModal open={edit.open} loc={edit.loc} onClose={() => setEdit({ open: false, loc: null })} onSaved={() => { setEdit({ open: false, loc: null }); setToast({ type: 'success', msg: 'บันทึกจุดแล้ว' }); }} />
       <ThresholdsModal loc={thresholdsFor} onClose={() => setThresholdsFor(null)} onSaved={() => { setThresholdsFor(null); setToast({ type: 'success', msg: 'บันทึกขั้นต่ำแล้ว' }); }} />
-      <Modal open={!!qr} onClose={() => setQr(null)} title={`QR หยิบเอง · ${qr?.loc.name || ''}`} size="sm" footer={<div className="flex justify-end gap-2"><button type="button" className={btnSecondary} onClick={() => { if (qr) void navigator.clipboard?.writeText(qr.url); setToast({ type: 'success', msg: 'คัดลอกลิงก์แล้ว' }); }}>คัดลอกลิงก์</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} onClick={() => printPoster(qr)}>พิมพ์ป้าย</button></div>}>
-        {qr && <div className="text-center"><div className="mx-auto w-56" dangerouslySetInnerHTML={{ __html: qr.svg }} /><p className="mt-2 text-xs text-gray-500 break-all">{qr.url}</p><p className="mt-2 text-xs" style={{ color: VIZ.secondary }}>ลิงก์นี้แสดงครั้งเดียว — พิมพ์หรือคัดลอกเก็บไว้ · สร้างใหม่ได้ตลอด (ของเดิมจะใช้ไม่ได้)</p></div>}
+      <Modal open={!!qr} onClose={() => setQr(null)} title={`QR หยิบเอง · ${qr?.loc.name || ''}`} size="sm" footer={<div className="flex justify-end gap-2"><button type="button" className={btnSecondary} onClick={() => { if (qr) void navigator.clipboard?.writeText(qr.url); setToast({ type: 'success', msg: 'คัดลอกลิงก์แล้ว' }); }}>คัดลอกลิงก์</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} onClick={() => { if (qr) openPoster(qr, posterItems(qr), state.company.short); }}>เปิดโปสเตอร์ A4</button></div>}>
+        {qr && <div className="text-center"><div className="mx-auto w-56 [&_svg]:w-full [&_svg]:h-auto" dangerouslySetInnerHTML={{ __html: qr.svg }} /><p className="mt-2 text-xs text-gray-500 break-all">{qr.url}</p><p className="mt-2 text-xs" style={{ color: VIZ.secondary }}>ลิงก์นี้แสดงครั้งเดียว — พิมพ์หรือคัดลอกเก็บไว้ · สร้างใหม่ได้ตลอด (ของเดิมจะใช้ไม่ได้)</p></div>}
       </Modal>
       <ToastView toast={toast} />
     </div>
   );
 }
 
-function printPoster(qr: { loc: FaLocation; url: string; svg: string } | null) {
+function openPoster(qr: { loc: FaLocation; url: string; svg: string } | null, items: { name: string; unit: string; icon: string; imageUrl: string | null; description: string }[], company: string) {
   if (!qr) return;
-  const w = window.open('', '_blank', 'width=720,height=900'); if (!w) return;
-  const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] || c);
-  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>QR ${esc(qr.loc.name)}</title><style>body{font-family:'Noto Sans Thai',Tahoma,sans-serif;margin:0;padding:24px;color:#333}.card{border:3px solid #246047;border-radius:20px;padding:28px;display:flex;gap:28px;align-items:center;max-width:680px}.qr{width:260px;height:260px}.qr svg{width:100%;height:100%}h1{margin:0;font-size:30px;line-height:1.15}.k{color:#246047;font-weight:700;font-size:14px;letter-spacing:.5px}.s{font-size:19px;font-weight:600;margin-top:10px}ol{margin:6px 0 0;padding-left:22px;font-size:16px;line-height:1.7}.f{font-size:13px;color:#666;margin-top:14px}@media print{body{padding:0}}</style></head><body><div class="card"><div class="qr">${qr.svg}</div><div><div class="k">${esc(qr.loc.type.toUpperCase())}</div><h1>${esc(qr.loc.name)}</h1>${qr.loc.area ? `<div style="color:#666">${esc(qr.loc.area)}</div>` : ''}<div class="s">หยิบของแล้ว สแกนบันทึก</div><ol><li>สแกน QR</li><li>แตะ + ที่ของที่หยิบ</li><li>กดบันทึก (ใช้เวลา 20 วินาที)</li></ol><div class="f">ของหมด / หมดอายุ → ติ๊ก “แจ้ง จป.” ในหน้าสแกน</div></div></div><script>setTimeout(()=>window.print(),300)</script></body></html>`);
-  w.document.close();
+  window.sessionStorage.setItem('fa.poster', JSON.stringify({ loc: qr.loc, url: qr.url, svg: qr.svg, items, company, at: Date.now() }));
+  window.open('/first-aid/settings/poster', '_blank');
 }
 
 function LocationModal({ open, loc, onClose, onSaved }: { open: boolean; loc: FaLocation | null; onClose: () => void; onSaved: () => void }) {
