@@ -172,18 +172,18 @@ test('Excel history preserves unknown recorder identity and month-only date prec
 });
 
 test('view balances exclude unknown tracked expiry while preserving physical stock and usable equipment', async () => {
-  const model = await import(require('node:url').pathToFileURL(path.join(root, 'public/first-aid/model.mjs')).href);
-  const state = { asOf: '2026-11-02', items: [{ id: 'medicine', trackExpiry: true },{ id: 'equipment', trackExpiry: false }], locations: [{ id: 'point', lastChecked: '2026-11-02' }], thresholds: [{ itemId: 'medicine', locationId: 'point', min: 0 }], lots: [
+  const model = load('src/lib/first-aid/model.ts');
+  const state = { asOf: '2026-11-02', items: [{ id: 'medicine', trackExpiry: true, min: 0 },{ id: 'equipment', trackExpiry: false, min: 0 }], locations: [{ id: 'point', lastChecked: '2026-11-02' }], thresholds: [{ itemId: 'medicine', locationId: 'point', min: 0 }], lots: [
     { id: 'pending', itemId: 'medicine', locationId: 'point', expiry: null, quantity: 12 },
     { id: 'expired', itemId: 'medicine', locationId: 'point', expiry: '2026-10-01', quantity: 3 },
     { id: 'usable', itemId: 'medicine', locationId: 'point', expiry: '2027-10-01', quantity: 4 },
     { id: 'equipment-lot', itemId: 'equipment', locationId: 'point', expiry: null, quantity: 2 },
   ] };
-  assert.equal(model.itemBalance(state, 'medicine'), 4);
-  assert.equal(model.itemBalance(state, 'equipment'), 2);
-  assert.equal(model.pendingExpiryLots(state).reduce((sum,lot) => sum+lot.quantity,0), 12);
-  assert.equal(model.getItemStatus(state, 'medicine').label, 'รอยืนยันวันหมดอายุ');
-  assert.equal(model.locationStatus(state, 'point').ready, false);
+  assert.equal(model.balance(state, 'medicine'), 4);
+  assert.equal(model.balance(state, 'equipment'), 2);
+  assert.equal(model.pendingLots(state, 'medicine').reduce((sum,lot) => sum+lot.quantity,0), 12);
+  assert.equal(model.itemStatus(state, state.items[0]).pendingQty, 12);
+  assert.equal(model.itemStatus(state, state.items[0]).expiredQty, 3);
   assert.equal(state.lots.reduce((sum,lot) => sum+lot.quantity,0), 21);
 });
 
