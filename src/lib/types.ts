@@ -311,3 +311,5 @@ export type SdsExtraction = Partial<Pick<ChemSubstance,
 export type * from './visitor/types';
 // Equipment inspection module (tables insp_*): see src/lib/inspect/types.ts
 export type * from './inspect/types';
+// SHE Data Center (tables ohse_*): see src/lib/ohse/types.ts
+export type * from './ohse/types';

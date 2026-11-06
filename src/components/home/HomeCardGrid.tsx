@@ -1,11 +1,11 @@
 'use client';
 
-import { Shield, FlaskConical, ClipboardCheck, Search, Lock, ArrowRight, Briefcase, ShoppingCart, Users, ScanLine, HeartPulse } from 'lucide-react';
+import { Shield, FlaskConical, ClipboardCheck, Search, Lock, ArrowRight, Briefcase, ShoppingCart, Users, ScanLine, HeartPulse, FolderOpen } from 'lucide-react';
 import Link from 'next/link';
 import type { Project } from '@/lib/companies';
 import { useHomeCards } from './useHomeCards';
 
-const icons = { heart: HeartPulse, shield: Shield, flask: FlaskConical, clipboard: ClipboardCheck, search: Search, briefcase: Briefcase, cart: ShoppingCart, users: Users, scan: ScanLine };
+const icons = { heart: HeartPulse, shield: Shield, flask: FlaskConical, clipboard: ClipboardCheck, search: Search, briefcase: Briefcase, cart: ShoppingCart, users: Users, scan: ScanLine, folder: FolderOpen };
 
 function ProjectCard({ project }: { project: Project }) {
   const Icon = icons[project.icon as keyof typeof icons] || Shield;

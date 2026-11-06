@@ -84,6 +84,15 @@ export const PROJECTS: Project[] = [
     ready: true,
   },
   {
+    id: 'ohse',
+    name: 'SHE Data Center',
+    description: 'ศูนย์รวมเอกสาร SHE — ประกาศ นโยบาย Procedure WI แบบฟอร์ม ผลตรวจวัด ใบอนุญาต พนักงานค้นและเปิดอ่านผ่าน LINE ได้',
+    icon: 'folder',
+    color: 'from-sky-600 to-blue-700',
+    href: '/ohse',
+    ready: true,
+  },
+  {
     id: 'visitor',
     name: 'Visitor Access',
     description: 'ขออนุญาตบุคคลภายนอกเข้าพื้นที่ คัดกรอง-อนุมัติโดยทีม SHE และจอรายชื่อสำหรับป้อม รปภ',
