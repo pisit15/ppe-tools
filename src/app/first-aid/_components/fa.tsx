@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { VIZ, getJson, postJson } from '@/app/inspect/_components/ui';
 import type { FaEvent, FaIcon, FaItem, FaState } from '@/lib/first-aid/types';
 import { balance } from '@/lib/first-aid/model';
+import { SYMPTOMS, cleanGeneric, itemGroup, matchesSymptom } from '@/lib/first-aid/browse';
 
 export { VIZ, PAGE_BG, thaiDate, thaiPeriod, thaiDateTime, bangkokToday, currentPeriod, shiftPeriod, daysUntil, relativeDays, getJson, postJson, errMsg, useToast, ToastView, inputClass, selectCompact, labelClass, cardClass, btnPrimary, btnSecondary, btnGhost, Spinner, EmptyState, Drawer, Modal, ConfirmButton, SectionTitle } from '@/app/inspect/_components/ui';
 
@@ -32,8 +33,7 @@ export async function loadHistory(company: string, from: string, to: string, ext
 export { expiryDays, usableLots, pendingLots, expiredLots, balance, minFor, itemStatus, personLabel, type ItemStatus } from '@/lib/first-aid/model';
 export const KIND_LABEL: Record<FaEvent['kind'], string> = { issue: 'จ่าย', receive: 'รับเข้า', transfer: 'โอน', dispose: 'ตัดทิ้ง' };
 export const fmtInt = (n: number) => n.toLocaleString('th-TH');
-/** Hide the import bookkeeping that the Excel loader appended to `generic` ("… · Excel Sep 2026 แถว 56"). */
-export const cleanGeneric = (s: string) => s.replace(/\s*·?\s*Excel\s+[A-Za-z]+\s+\d{4}\s+แถว\s*\d+\s*$/i, '').trim();
+export { cleanGeneric } from '@/lib/first-aid/browse';
 export const itemSub = (i: { description: string; generic: string; category: string }) => i.description || cleanGeneric(i.generic) || i.category;
 
 // ---------- pictograms + item image ----------
@@ -81,19 +81,23 @@ export function Stepper({ value, onChange, min = 1, max = 100000, size = 40 }: {
   );
 }
 
-/** Search-as-you-type picker for medicines (no native select for 100+ items). */
-export function ItemPicker({ items, state, locationId, value, onPick, autoFocus = false, placeholder = 'พิมพ์ชื่อยา / ชื่อสามัญ' }: { items: FaItem[]; state: FaState; locationId: string; value: FaItem | null; onPick: (item: FaItem | null) => void; autoFocus?: boolean; placeholder?: string }) {
-  const [q, setQ] = useState(''); const [open, setOpen] = useState(false); const [cursor, setCursor] = useState(0);
+/** Search-as-you-type picker for medicines. With nothing typed it offers symptom / group chips and a picture grid, for people who do not know the name. */
+export function ItemPicker({ items, state, locationId, value, onPick, autoFocus = false, placeholder = 'พิมพ์ชื่อยา / ชื่อสามัญ หรือเลือกจากอาการด้านล่าง' }: { items: FaItem[]; state: FaState; locationId: string; value: FaItem | null; onPick: (item: FaItem | null) => void; autoFocus?: boolean; placeholder?: string }) {
+  const [q, setQ] = useState(''); const [open, setOpen] = useState(false); const [cursor, setCursor] = useState(0); const [tag, setTag] = useState('');
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => { const h = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); }; window.addEventListener('mousedown', h); return () => window.removeEventListener('mousedown', h); }, []);
+  const groups = useMemo(() => { const m = new Map<string, number>(); items.forEach(i => m.set(itemGroup(i), (m.get(itemGroup(i)) || 0) + 1)); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [items]);
+  const symptoms = useMemo(() => SYMPTOMS.filter(t => items.some(i => matchesSymptom(t, i))), [items]);
+  const needle = q.trim().toLowerCase();
   const hits = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const list = needle ? items.filter(i => `${i.name} ${i.generic} ${i.description}`.toLowerCase().includes(needle)) : items;
-    // Empty query: the whole register alphabetically (scrollable). Searching: best 30, in-stock first.
+    let list = items;
+    if (needle) list = items.filter(i => `${i.name} ${i.generic} ${i.description}`.toLowerCase().includes(needle));
+    else if (tag.startsWith('s:')) { const t = SYMPTOMS.find(x => x.id === tag.slice(2)); list = t ? items.filter(i => matchesSymptom(t, i)) : items; }
+    else if (tag.startsWith('g:')) list = items.filter(i => itemGroup(i) === tag.slice(2));
     const scored = list.map(i => ({ item: i, bal: balance(state, i.id, locationId) }));
-    if (!needle) return scored.sort((a, b) => a.item.name.localeCompare(b.item.name, 'th'));
+    if (!needle) return scored.sort((a, b) => (b.bal > 0 ? 1 : 0) - (a.bal > 0 ? 1 : 0) || a.item.name.localeCompare(b.item.name, 'th'));
     return scored.sort((a, b) => (b.bal > 0 ? 1 : 0) - (a.bal > 0 ? 1 : 0) || a.item.name.localeCompare(b.item.name, 'th')).slice(0, 30);
-  }, [q, items, state, locationId]);
+  }, [needle, tag, items, state, locationId]);
   const pick = useCallback((item: FaItem) => { onPick(item); setQ(''); setOpen(false); }, [onPick]);
   if (value) {
     return (
@@ -104,26 +108,35 @@ export function ItemPicker({ items, state, locationId, value, onPick, autoFocus 
       </div>
     );
   }
+  const chip = (id: string, label: string, n?: number) => <button key={id} type="button" onMouseDown={e => e.preventDefault()} onClick={() => { setTag(t => (t === id ? '' : id)); setCursor(0); }} className={`shrink-0 rounded-full border px-2.5 py-1 text-xs ${tag === id ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>{label}{n !== undefined ? ` ${n}` : ''}</button>;
   return (
     <div ref={box} className="relative">
       <input autoFocus={autoFocus} value={q} placeholder={placeholder} aria-label="ค้นหายา" role="combobox" aria-expanded={open} aria-controls="fa-item-hits"
         onChange={e => { setQ(e.target.value); setOpen(true); setCursor(0); }} onFocus={() => setOpen(true)}
         onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setCursor(c => Math.min(hits.length - 1, c + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setCursor(c => Math.max(0, c - 1)); } else if (e.key === 'Enter' && hits[cursor]) { e.preventDefault(); pick(hits[cursor].item); } else if (e.key === 'Escape') setOpen(false); }}
         className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4E79A7] bg-white" />
-      {open && (hits.length > 0 || q.trim()) && (
-        <ul id="fa-item-hits" role="listbox" className="absolute left-0 right-0 top-full mt-1 z-30 max-h-[60vh] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
-          {!q.trim() && <li className="px-3 py-1.5 text-[11px] text-gray-400 bg-gray-50">{hits.length} รายการ · พิมพ์เพื่อค้นหา</li>}
-          {hits.length === 0 && <li className="px-3 py-3 text-sm text-gray-500">ไม่พบ “{q}” — เพิ่มยาใหม่ได้ที่หน้า รายการยา</li>}
-          {hits.map((h, i) => (
-            <li key={h.item.id} role="option" aria-selected={i === cursor}>
-              <button type="button" onMouseEnter={() => setCursor(i)} onClick={() => pick(h.item)} className={`w-full flex items-center gap-3 px-3 py-2 text-left ${i === cursor ? 'bg-[#4E79A7]/10' : ''}`}>
-                <ItemImage item={h.item} size={32} rounded={8} />
-                <span className="min-w-0 flex-1"><span className="block font-medium text-gray-900 truncate">{h.item.name}</span><span className="block text-xs text-gray-500 truncate">{itemSub(h.item)}</span></span>
-                <span className={`text-sm whitespace-nowrap ${h.bal === 0 ? 'font-medium' : 'text-gray-500'}`} style={h.bal === 0 ? { color: VIZ.accent } : undefined}>{h.bal === 0 ? 'หมด' : `${fmtInt(h.bal)} ${h.item.unit}`}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden" style={{ minWidth: 320 }}>
+          {!needle && (
+            <div className="px-2.5 pt-2 pb-1.5 border-b border-gray-100 space-y-1.5">
+              <div className="flex flex-wrap gap-1">{chip('', 'ทั้งหมด', items.length)}{symptoms.map(t => chip(`s:${t.id}`, t.label))}</div>
+              <div className="flex gap-1 overflow-x-auto pb-0.5">{groups.map(([g, n]) => chip(`g:${g}`, g, n))}</div>
+            </div>
+          )}
+          <ul id="fa-item-hits" role="listbox" className="max-h-[50vh] overflow-y-auto">
+            {hits.length === 0 && <li className="px-3 py-3 text-sm text-gray-500">{needle ? `ไม่พบ “${q}” — ลองเลือกจากอาการ หรือเพิ่มยาใหม่ที่หน้า รายการยา` : 'ไม่มีรายการในกลุ่มนี้'}</li>}
+            {hits.map((h, i) => (
+              <li key={h.item.id} role="option" aria-selected={i === cursor}>
+                <button type="button" onMouseEnter={() => setCursor(i)} onClick={() => pick(h.item)} className={`w-full flex items-center gap-3 px-3 py-2 text-left ${i === cursor ? 'bg-[#4E79A7]/10' : ''}`}>
+                  <ItemImage item={h.item} size={44} rounded={8} />
+                  <span className="min-w-0 flex-1"><span className="block font-medium text-gray-900 truncate">{h.item.name}</span><span className="block text-xs text-gray-500 truncate">{itemSub(h.item)}</span></span>
+                  <span className={`text-sm whitespace-nowrap ${h.bal === 0 ? 'font-medium' : 'text-gray-500'}`} style={h.bal === 0 ? { color: VIZ.accent } : undefined}>{h.bal === 0 ? 'หมด' : `${fmtInt(h.bal)} ${h.item.unit}`}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {!needle && <div className="px-3 py-1.5 text-[11px] text-gray-400 bg-gray-50 border-t border-gray-100">{hits.length} รายการ · พิมพ์ชื่อเพื่อค้นหา หรือกดอาการด้านบน</div>}
+        </div>
       )}
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { FaItem, FaPublicState } from '@/lib/first-aid/types';
+import { SYMPTOMS, matchesSymptom } from '@/lib/first-aid/browse';
 import { FA_GREEN, ItemImage, Stepper, VIZ, balance, bangkokToday, errMsg, fmtInt, getJson, postJson, thaiDateTime } from '../../_components/fa';
 
 const WHO_KEY = 'fa.take.who';
@@ -27,8 +28,8 @@ export default function TakeClient({ token }: { token: string }) {
   }, [token]);
   const location = state?.locations[0];
   const items = useMemo(() => (state?.items || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'th')), [state]);
-  const cats = useMemo(() => Array.from(new Set(items.map(i => i.category))), [items]);
-  const visible = items.filter(i => (cat === 'all' || i.category === cat) && (!q.trim() || `${i.name} ${i.generic} ${i.description}`.toLowerCase().includes(q.trim().toLowerCase())));
+  const tags = useMemo(() => SYMPTOMS.filter(t => items.some(i => matchesSymptom(t, i))), [items]);
+  const visible = items.filter(i => { const t = tags.find(x => x.id === cat); return (cat === 'all' || !t || matchesSymptom(t, i)) && (!q.trim() || `${i.name} ${i.generic} ${i.description}`.toLowerCase().includes(q.trim().toLowerCase())); });
   const cartLines = Object.entries(cart).map(([id, qty]) => ({ item: items.find(i => i.id === id)!, qty })).filter(l => l.item && l.qty > 0);
   const totalQty = cartLines.reduce((s, l) => s + l.qty, 0);
   const setQty = (id: string, qty: number) => setCart(c => { const n = { ...c }; if (qty <= 0) delete n[id]; else n[id] = qty; return n; });
@@ -82,7 +83,7 @@ export default function TakeClient({ token }: { token: string }) {
     <Shell>
       <header className="text-white px-4 pt-4 pb-3" style={{ background: FA_GREEN }}><div className="text-xs opacity-80">{state.company.short} · {location.type}</div><div className="text-xl font-semibold leading-tight">{location.name}</div><div className="text-xs opacity-80 mt-1">หยิบแล้วบันทึกตรงนี้ ไม่ต้อง login · ใช้เวลา 20 วินาที</div></header>
       <div className="px-3 pt-3 pb-1"><input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="ค้นหา หรือเลือกจากรายการ" aria-label="ค้นหา" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base text-gray-900 placeholder:text-gray-400" /></div>
-      {cats.length > 1 && <div className="flex gap-1.5 overflow-x-auto px-3 pb-1">{['all', ...cats].map(c => <button key={c} type="button" onClick={() => setCat(c)} className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm ${cat === c ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300 text-gray-700'}`}>{c === 'all' ? `ทั้งหมด ${items.length}` : c}</button>)}</div>}
+      {tags.length > 1 && <div className="flex gap-1.5 overflow-x-auto px-3 pb-1">{[{ id: 'all', label: `ทั้งหมด ${items.length}` }, ...tags].map(t => <button key={t.id} type="button" onClick={() => setCat(t.id)} className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm ${cat === t.id ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300 text-gray-700'}`}>{t.label}</button>)}</div>}
       <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-2.5 content-start">
         {visible.map(i => { const a = avail(i); const qty = cart[i.id] || 0; const out = a === 0; return (
           <div key={i.id} className={`rounded-xl border bg-white p-2.5 flex flex-col gap-2 ${qty ? 'border-[#246047]' : 'border-gray-200'} ${out ? 'opacity-50' : ''}`} style={qty ? { background: `${FA_GREEN}0D` } : undefined}>
