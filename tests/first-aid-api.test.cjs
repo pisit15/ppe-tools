@@ -195,7 +195,11 @@ test('public state exposes only the token point stock and no employee directory,
   assert.deepEqual(state.inspections, []);
   assert.deepEqual(state.visits, []);
   assert.equal(state.session, undefined);
-  assert.equal(db.calls.some(row => ['company_employees', 'ppe_employees', 'fa_documents', 'fa_movements', 'fa_visits'].includes(row.table)), false);
+  assert.equal(db.calls.some(row => ['fa_documents', 'fa_movements', 'fa_visits'].includes(row.table)), false);
+  // Employee registers may be read for department names only (chips on the QR page), never names or codes.
+  assert.equal(db.calls.filter(row => ['company_employees', 'ppe_employees'].includes(row.table)).every(row => row.columns === 'department'), true);
+  assert.deepEqual(state.departments, ['Office']);
+  assert.equal(JSON.stringify(state).includes('Test Employee'), false);
   assert.equal(JSON.stringify(state).includes('public_token_hash'), false);
   assert.equal(state.permissions.canManage, false);
 });

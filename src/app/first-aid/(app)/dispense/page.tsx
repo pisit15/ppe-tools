@@ -76,7 +76,7 @@ export default function DispensePage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div><label className={labelClass} htmlFor="dp-who">ผู้รับ <span className="font-normal text-gray-400">(ไม่บังคับ)</span></label><input id="dp-who" className={inputClass} value={who} onChange={e => setWho(e.target.value)} placeholder="ชื่อ หรือรหัส" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void save(); } }} /></div>
-                <div><label className={labelClass} htmlFor="dp-dept">แผนก</label><input id="dp-dept" className={inputClass} value={dept} onChange={e => setDept(e.target.value)} placeholder="เช่น ผลิต" /></div>
+                <div><label className={labelClass} htmlFor="dp-dept">แผนก</label><input id="dp-dept" list="fa-depts" className={inputClass} value={dept} onChange={e => setDept(e.target.value)} placeholder="เช่น ผลิต" /><datalist id="fa-depts">{state.departments.map(d => <option key={d} value={d} />)}</datalist></div>
               </div>
               <div className="flex flex-wrap gap-1.5">{REASONS.map(r => <button key={r} type="button" onClick={() => setNote(n => (n === r ? '' : r))} className={`rounded-full border px-3 py-1 text-sm ${note === r ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={note === r ? { background: FA_GREEN } : undefined}>{r}</button>)}</div>
               <input className={inputClass} value={note} onChange={e => setNote(e.target.value)} placeholder="อาการ / หมายเหตุ (ไม่บังคับ)" aria-label="หมายเหตุ" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void save(); } }} />

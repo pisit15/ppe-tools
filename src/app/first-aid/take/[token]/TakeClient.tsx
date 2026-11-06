@@ -6,7 +6,7 @@ import { SYMPTOMS, matchesSymptom } from '@/lib/first-aid/browse';
 import { FA_GREEN, ItemImage, Stepper, VIZ, balance, bangkokToday, errMsg, fmtInt, getJson, postJson, thaiDateTime } from '../../_components/fa';
 
 const WHO_KEY = 'fa.take.who';
-const DEPTS = ['ผลิต', 'QC', 'คลัง', 'ซ่อมบำรุง', 'สำนักงาน', 'ผู้รับเหมา', 'อื่น ๆ'];
+const DEFAULT_DEPTS = ['ผลิต', 'QC', 'คลัง', 'ซ่อมบำรุง', 'สำนักงาน'];
 const REASONS = ['บาดแผลเล็ก', 'ปวดหัว / ไข้', 'ปวดท้อง', 'แพ้ / คัน', 'หยิบให้เพื่อน', 'เติมกล่องประจำทีม'];
 const MAX_LINES = 6;
 
@@ -27,6 +27,8 @@ export default function TakeClient({ token }: { token: string }) {
     try { const v = JSON.parse(window.localStorage.getItem(WHO_KEY) || '{}') as { who?: string; dept?: string }; setWho(v.who || ''); setDept(v.dept || ''); } catch { /* ignore */ }
   }, [token]);
   const location = state?.locations[0];
+  const depts = useMemo(() => { const base = state?.departments?.length ? state.departments : DEFAULT_DEPTS; return [...base.filter(d => d !== 'ผู้รับเหมา'), 'ผู้รับเหมา']; }, [state]);
+  const [deptOther, setDeptOther] = useState(false);
   const items = useMemo(() => (state?.items || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'th')), [state]);
   const tags = useMemo(() => SYMPTOMS.filter(t => items.some(i => matchesSymptom(t, i))), [items]);
   const visible = items.filter(i => { const t = tags.find(x => x.id === cat); return (cat === 'all' || !t || matchesSymptom(t, i)) && (!q.trim() || `${i.name} ${i.generic} ${i.description}`.toLowerCase().includes(q.trim().toLowerCase())); });
@@ -70,7 +72,8 @@ export default function TakeClient({ token }: { token: string }) {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <div className="rounded-xl border border-gray-200 bg-white px-3 divide-y divide-gray-100">{cartLines.map(l => <div key={l.item.id} className="flex items-center gap-3 py-2.5"><ItemImage item={l.item} size={40} /><div className="flex-1 min-w-0"><div className="font-semibold text-gray-900 truncate">{l.item.name}</div><div className="text-xs text-gray-500">{l.item.unit} · เหลือ {fmtInt(avail(l.item))}</div></div><Stepper value={l.qty} onChange={n => setQty(l.item.id, n)} min={0} max={avail(l.item)} size={40} /></div>)}</div>
         <div className="space-y-2"><label className="block text-sm font-medium text-gray-800" htmlFor="tk-who">ชื่อผู้หยิบ <span className="font-normal text-gray-400">(ไม่บังคับ · จำไว้ในเครื่องนี้)</span></label><input id="tk-who" value={who} onChange={e => setWho(e.target.value)} className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base text-gray-900" placeholder="ชื่อ-นามสกุล หรือรหัสพนักงาน" />
-          <div className="flex gap-1.5 overflow-x-auto pb-1">{DEPTS.map(d => <button key={d} type="button" onClick={() => setDept(x => (x === d ? '' : d))} className={`shrink-0 rounded-full border px-3.5 py-2 text-sm ${dept === d ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={dept === d ? { background: FA_GREEN } : undefined}>{d}</button>)}</div></div>
+          <div className="flex flex-wrap gap-1.5">{depts.map(d => <button key={d} type="button" onClick={() => { setDeptOther(false); setDept(x => (x === d ? '' : d)); }} className={`rounded-full border px-3.5 py-2 text-sm ${dept === d && !deptOther ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={dept === d && !deptOther ? { background: FA_GREEN } : undefined}>{d}</button>)}<button type="button" onClick={() => { setDeptOther(o => !o); if (!deptOther) setDept(''); }} className={`rounded-full border px-3.5 py-2 text-sm ${deptOther ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={deptOther ? { background: FA_GREEN } : undefined}>อื่น ๆ</button></div>
+          {deptOther && <input value={dept} onChange={e => setDept(e.target.value)} className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base text-gray-900" placeholder="พิมพ์ชื่อแผนก / บริษัท" aria-label="แผนกอื่น" autoFocus />}</div>
         <div className="space-y-2"><div className="text-sm font-medium text-gray-800">หยิบไปทำอะไร <span className="font-normal text-gray-400">(ไม่บังคับ)</span></div><div className="flex flex-wrap gap-1.5">{REASONS.map(r => <button key={r} type="button" onClick={() => setReason(x => (x === r ? '' : r))} className={`rounded-full border px-3.5 py-2 text-sm ${reason === r ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={reason === r ? { background: FA_GREEN } : undefined}>{r}</button>)}</div></div>
         <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={issue} onChange={e => setIssue(e.target.checked)} />ของในตู้มีปัญหา (หมด / หมดอายุ / ชำรุด) — แจ้ง จป.</label>
         {issue && <input value={issueText} onChange={e => setIssueText(e.target.value)} className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base text-gray-900" placeholder="เช่น ผ้าก๊อซหมด / เบตาดีนหมดอายุ" aria-label="รายละเอียดปัญหา" />}

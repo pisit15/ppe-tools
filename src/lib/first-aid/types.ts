@@ -40,12 +40,12 @@ export type FaUsageSummary = { monthUsesByLocation: { locationId: string; count:
 export type FaState = {
   schemaVersion: number; asOf: string; company: { id: string; name: string; short: string; infirmary: boolean };
   locations: FaLocation[]; archivedLocations: FaLocation[]; items: FaItem[]; archivedItems: FaItem[]; thresholds: FaThreshold[]; lots: FaLot[];
-  events: FaEvent[]; inspections: FaInspection[]; visits: FaVisit[]; employees: FirstAidEmployee[];
+  events: FaEvent[]; inspections: FaInspection[]; visits: FaVisit[]; employees: FirstAidEmployee[]; departments: string[];
   session: { id: string; name: string; identityMethod: string }; permissions: FirstAidPermissions; usageSummary: FaUsageSummary; historyLimit: number; historyHasMore: boolean;
 };
 export type FaPublicState = {
   schemaVersion: number; asOf: string; company: { name: string; short: string; infirmary: boolean };
-  locations: FaLocation[]; items: FaItem[]; lots: FaLot[]; thresholds: FaThreshold[]; permissions: FirstAidPermissions;
+  locations: FaLocation[]; items: FaItem[]; lots: FaLot[]; thresholds: FaThreshold[]; departments: string[]; permissions: FirstAidPermissions;
 };
 
 /** One row of a stock take (ตรวจนับ). `counted` null = not counted (no change). */

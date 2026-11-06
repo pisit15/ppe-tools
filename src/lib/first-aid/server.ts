@@ -82,6 +82,17 @@ export async function companyEmployees(db: DB, companyId: string): Promise<First
   return result.sort((a, b) => a.name.localeCompare(b.name, 'th'));
 }
 
+/** Department names only (no people) — from the company's employee registers, for the chips on the QR page. */
+export async function companyDepartments(db: DB, companyId: string): Promise<string[]> {
+  const [a, b] = await Promise.all([
+    db.from('company_employees').select('department').eq('company_id', companyId).eq('is_active', true).limit(2000),
+    db.from('ppe_employees').select('department').eq('company_id', companyId).eq('is_active', true).limit(2000),
+  ]);
+  const names = new Map<string, number>();
+  for (const row of [...(check(a) || []), ...(check(b) || [])] as Row[]) { const d = String(row.department || '').trim(); if (d) names.set(d, (names.get(d) || 0) + 1); }
+  return [...names.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'th')).map(([d]) => d).slice(0, 40);
+}
+
 export function mapLocation(row: Row) {
   const type = String(row.type || 'ตู้ปฐมพยาบาล');
   return { id: row.id, name: row.name, type, area: row.area || '', issueMode: row.issue_mode, lastChecked: row.last_checked, inspectionIssue: row.inspection_issue, hasPublicLink: !!row.public_token_hash, icon: type.includes('กระเป๋า') ? 'briefcase-medical' : type.includes('คลัง') ? 'package' : 'building', isRegister: type === FA_REGISTER_TYPE };
@@ -153,6 +164,7 @@ export async function loadFirstAidState(companyId: string, actor: ToolsActor) {
     actor.isAdmin ? db.from('fa_visits').select('id,date,person,service,note,time_in,time_out').eq('company_id', companyId).order('created_at', { ascending: false }).limit(200).then(check) : Promise.resolve([]),
     companyEmployees(db, companyId), db.rpc('fa_usage_summary', { p_company_id: companyId }),
   ]);
+  const departments = await companyDepartments(db, companyId);
   const movements: Row[] = (check(movementResult) || []).slice(0, 500);
   const documentIds = [...new Set(movements.map(row => row.document_id))]; const documents: Row[] = [];
   for (let offset = 0; offset < documentIds.length; offset += 100) documents.push(...check(await db.from('fa_documents').select(DOCUMENT_COLUMNS).eq('company_id', companyId).in('id', documentIds.slice(offset, offset + 100))) || []);
@@ -161,7 +173,7 @@ export async function loadFirstAidState(companyId: string, actor: ToolsActor) {
   return {
     schemaVersion: 4, asOf: bangkokDate(), company, locations: locations.filter(row => row.active).map(mapLocation), archivedLocations: locations.filter(row => !row.active).map(mapLocation), items: activeItems, archivedItems, thresholds: thresholds.map(mapThreshold), lots: lots.map(mapLot),
     events: movements.filter(row => byId.has(row.document_id)).map(row => mapEvent(row, byId.get(row.document_id)!)),
-    inspections: (check(inspectionResult) || []).map(mapInspection), visits: (visits || []).map(mapVisit), employees,
+    inspections: (check(inspectionResult) || []).map(mapInspection), visits: (visits || []).map(mapVisit), employees, departments,
     session: { id: `${actor.accountTable}:${actor.id}`, name: actor.displayName, identityMethod: 'authenticated_session' },
     permissions: { canManage: true, canClinical: actor.isAdmin, public: false }, usageSummary: check(usageResult), historyLimit: 500, historyHasMore: (movementResult.data?.length || 0) > 500,
   };
@@ -262,14 +274,14 @@ async function publicLocation(db: DB, token: string): Promise<Row> {
 
 export async function loadPublicFirstAidState(token: string) {
   const db = getSupabaseServer(); const location = await publicLocation(db, token); const companyId: string = location.company_id;
-  const [company, lots, thresholds] = await Promise.all([
+  const [company, lots, thresholds, departments] = await Promise.all([
     companyInfo(db, companyId), allRows(db, 'fa_lots', 'id,item_id,location_id,code,expiry,quantity', companyId, { location_id: location.id }),
-    allRows(db, 'fa_location_items', 'id,item_id,location_id,min', companyId, { location_id: location.id }),
+    allRows(db, 'fa_location_items', 'id,item_id,location_id,min', companyId, { location_id: location.id }), companyDepartments(db, companyId),
   ]);
   const ids = [...new Set([...lots.map(row => row.item_id), ...thresholds.map(row => row.item_id)])];
   const items: Row[] = [];
   for (let offset = 0; offset < ids.length; offset += 100) items.push(...check(await db.from('fa_items').select(ITEM_COLUMNS).eq('company_id', companyId).eq('active', true).in('id', ids.slice(offset, offset + 100))) || []);
-  return { schemaVersion: 4, asOf: bangkokDate(), company: { name: company.name, short: company.short, infirmary: false }, locations: [mapLocation({ ...location, public_token_hash: null })], items: await mapItems(db, items), lots: lots.map(mapLot), thresholds: thresholds.map(mapThreshold), events: [], inspections: [], visits: [], employees: [], permissions: { canManage: false, canClinical: false, public: true } };
+  return { schemaVersion: 4, asOf: bangkokDate(), company: { name: company.name, short: company.short, infirmary: false }, locations: [mapLocation({ ...location, public_token_hash: null })], items: await mapItems(db, items), lots: lots.map(mapLot), thresholds: thresholds.map(mapThreshold), departments, events: [], inspections: [], visits: [], employees: [], permissions: { canManage: false, canClinical: false, public: true } };
 }
 
 export async function postPublicFirstAidTransaction(request: NextRequest, token: string) {
