@@ -3,9 +3,9 @@
 /** Strip import bookkeeping appended to `generic` ("… · Excel Sep 2026 แถว 56", "… · รอยืนยันล็อต…"). */
 export const cleanGeneric = (s: string) => s.split(' · ')[0].replace(/\s*Excel\s+[A-Za-z]+\s+\d{4}\s+แถว\s*\d+\s*$/i, '').trim();
 
-/** "ยารับประทาน / ยาเม็ด" → group label used for browsing. */
+/** "ยารับประทาน / ยาเม็ด (Simethicone)" → "ยารับประทาน": the broad group used for browsing chips. */
 export function itemGroup(item: { generic: string; category: string }) {
-  const g = cleanGeneric(item.generic);
+  const g = cleanGeneric(item.generic).split(' / ')[0].replace(/\s*\(.*$/, '').trim();
   return g || item.category || 'อื่น ๆ';
 }
 
