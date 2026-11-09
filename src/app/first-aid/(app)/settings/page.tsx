@@ -81,10 +81,10 @@ function openPoster(qr: { loc: FaLocation; url: string; svg: string } | null, it
 
 function LocationModal({ open, loc, onClose, onSaved }: { open: boolean; loc: FaLocation | null; onClose: () => void; onSaved: () => void }) {
   const { company, refresh } = useFa();
-  const [form, setForm] = useState({ name: '', type: TYPES[0], area: '', issueMode: 'controlled' as 'controlled' | 'self_service', requireRequester: false });
+  const [form, setForm] = useState({ name: '', type: TYPES[0], area: '', issueMode: 'controlled' as 'controlled' | 'self_service', requireRequester: true });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const createId = useMemo(() => crypto.randomUUID(), []);
-  useEffect(() => { if (open) { setErr(''); setForm(loc ? { name: loc.name, type: loc.type, area: loc.area, issueMode: loc.issueMode, requireRequester: loc.requireRequester } : { name: '', type: TYPES[0], area: '', issueMode: 'controlled', requireRequester: false }); } }, [open, loc]);
+  useEffect(() => { if (open) { setErr(''); setForm(loc ? { name: loc.name, type: loc.type, area: loc.area, issueMode: loc.issueMode, requireRequester: loc.requireRequester } : { name: '', type: TYPES[0], area: '', issueMode: 'controlled', requireRequester: true }); } }, [open, loc]);
   async function save() {
     if (!form.name.trim()) { setErr('กรุณาระบุชื่อจุด'); return; }
     setBusy(true); setErr('');
