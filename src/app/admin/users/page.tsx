@@ -473,8 +473,8 @@ function UserModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h3 className="font-bold text-gray-900">
             {isEdit ? `แก้ไขผู้ใช้ — ${editUser!.username}` : 'เพิ่มผู้ใช้ใหม่'}
           </h3>
@@ -483,7 +483,7 @@ function UserModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 overflow-y-auto min-h-0 flex-1">
           <div>
             <div className="flex items-center justify-between mb-1.5"><label className="block text-sm font-semibold text-gray-700">บริษัทที่ใช้งานได้ {isEdit && <span className="font-normal text-gray-400">(ติ๊กเพิ่ม = สร้างบัญชีในบริษัทนั้นด้วยรหัสผ่านเดิม)</span>}</label><span className="text-xs text-gray-500">{companyIds.length} บริษัท</span></div>
             <div className="max-h-40 overflow-y-auto rounded-xl border border-gray-300 p-2 grid grid-cols-2 gap-1">
@@ -576,7 +576,7 @@ function UserModal({
           {isEdit && <label className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={applyAll} onChange={e => setApplyAll(e.target.checked)} className="w-4 h-4" /><span className="text-sm text-gray-700">ใช้การแก้ไขนี้ (ชื่อแสดง / ระบบ / รหัสผ่าน / สถานะ) กับทุกบริษัทของ “{editUser!.username}”</span></label>}
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-2">
+        <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-2 shrink-0 bg-white">
           {isEdit && (
             confirmDelete ? (
               <div className="flex items-center gap-2 mr-auto">
