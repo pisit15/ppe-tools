@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase, getSupabaseServer } from '@/lib/supabase';
 import { verifyAdminToken, tokenFromRequest } from '@/lib/adminToken';
 import bcrypt from 'bcryptjs';
+import { MODULE_IDS } from '@/lib/companies';
 
 // Admin-only CRUD for company_users.
 // Requires a valid admin token (issued at admin login) in the
@@ -9,7 +10,7 @@ import bcrypt from 'bcryptjs';
 
 const SAFE_COLUMNS = 'id, company_id, username, display_name, is_active, allowed_modules, created_at, updated_at';
 
-const VALID_MODULES = ['ppe', 'she', 'chemical', 'first-aid'];
+const VALID_MODULES: string[] = MODULE_IDS;
 
 // null = ทุกระบบ; array = เฉพาะระบบที่ระบุ (ต้องมีอย่างน้อย 1)
 function sanitizeModules(input: unknown): string[] | null | 'invalid' {
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
     if (!verifyAdminToken(tokenFromRequest(request.headers))) return unauthorized();
     const body = (await request.json()) as {
       company_id?: string;
+      company_ids?: string[];
       username?: string;
       password?: string;
       display_name?: string;
@@ -79,7 +81,10 @@ export async function POST(request: NextRequest) {
       allowed_modules?: string[] | null;
     };
 
-    const companyId = (body.company_id || '').trim();
+    // One person may need several companies: same username + the SAME password hash on every row,
+    // which is what lets them switch company inside the app without logging in again.
+    const companyIds = [...new Set((Array.isArray(body.company_ids) && body.company_ids.length ? body.company_ids : [body.company_id || '']).map(c => String(c).trim()).filter(Boolean))];
+    const companyId = companyIds[0] || '';
     const username = (body.username || '').trim();
     const password = body.password || '';
 
@@ -105,29 +110,31 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    if (await usernameTaken(db, companyId, username)) {
+    const taken: string[] = [];
+    for (const c of companyIds) if (await usernameTaken(db, c, username)) taken.push(c);
+    const toCreate = companyIds.filter(c => !taken.includes(c));
+    if (!toCreate.length) {
       return NextResponse.json(
-        { error: `ชื่อผู้ใช้ "${username}" มีอยู่แล้วในบริษัทนี้` },
+        { error: `ชื่อผู้ใช้ "${username}" มีอยู่แล้วใน${taken.length > 1 ? 'ทุกบริษัทที่เลือก' : 'บริษัทนี้'}` },
         { status: 409 }
       );
     }
 
+    const hash = bcrypt.hashSync(password, 10);
     const { data, error } = await db
       .from('company_users')
-      .insert([
-        {
-          company_id: companyId,
-          username,
-          password: bcrypt.hashSync(password, 10),
-          display_name: (body.display_name || '').trim(),
-          is_active: body.is_active !== false,
-          allowed_modules: modules,
-        },
-      ])
+      .insert(toCreate.map(c => ({
+        company_id: c,
+        username,
+        password: hash,
+        display_name: (body.display_name || '').trim(),
+        is_active: body.is_active !== false,
+        allowed_modules: modules,
+      })))
       .select(SAFE_COLUMNS);
 
     if (error) throw error;
-    return NextResponse.json({ data: data[0] }, { status: 201 });
+    return NextResponse.json({ data: data[0], created: data, skipped: taken }, { status: 201 });
   } catch (error) {
     console.error('Error creating user:', error);
     return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
@@ -145,6 +152,10 @@ export async function PATCH(request: NextRequest) {
       display_name?: string;
       is_active?: boolean;
       allowed_modules?: string[] | null;
+      /** Apply display name / modules / active / password to every row with this username (all companies). */
+      apply_all?: boolean;
+      /** Companies this username should exist in (missing rows are created with the same password hash). */
+      company_ids?: string[];
     };
 
     if (!body.id) {
@@ -209,7 +220,36 @@ export async function PATCH(request: NextRequest) {
       .select(SAFE_COLUMNS);
 
     if (error) throw error;
-    return NextResponse.json({ data: data[0] });
+
+    let applied = 1;
+    if (body.apply_all || (Array.isArray(body.company_ids) && body.company_ids.length)) {
+      // Shared fields for every row of this person (never company_id/username — those are per row).
+      const shared: Record<string, unknown> = { updated_at: updates.updated_at };
+      for (const key of ['display_name', 'is_active', 'allowed_modules', 'password'] as const) if (key in updates) shared[key] = updates[key];
+      const { data: siblings, error: sibErr } = await db.from('company_users').select('id, company_id, password').ilike('username', newUsername);
+      if (sibErr) throw sibErr;
+      const rows = (siblings || []) as { id: number; company_id: string; password: string }[];
+      const others = rows.filter(r => r.id !== body.id);
+      if (body.apply_all && others.length && Object.keys(shared).length > 1) {
+        const { error: upErr } = await db.from('company_users').update(shared).in('id', others.map(r => r.id));
+        if (upErr) throw upErr;
+      }
+      applied = rows.length;
+      if (Array.isArray(body.company_ids)) {
+        const have = new Set(rows.map(r => r.company_id));
+        const missing = body.company_ids.map(c => String(c).trim()).filter(c => c && !have.has(c));
+        if (missing.length) {
+          // Reuse the row's current hash so all rows stay switchable.
+          const { data: me } = await db.from('company_users').select('password, display_name, is_active, allowed_modules').eq('id', body.id).single();
+          if (me) {
+            const { error: insErr } = await db.from('company_users').insert(missing.map(c => ({ company_id: c, username: newUsername, password: me.password, display_name: me.display_name, is_active: me.is_active, allowed_modules: me.allowed_modules })));
+            if (insErr) throw insErr;
+            applied += missing.length;
+          }
+        }
+      }
+    }
+    return NextResponse.json({ data: data[0], applied });
   } catch (error) {
     console.error('Error updating user:', error);
     return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });

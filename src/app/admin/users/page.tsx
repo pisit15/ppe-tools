@@ -1,5 +1,7 @@
 'use client';
 
+import { MODULE_IDS, MODULE_LABELS } from '@/lib/companies';
+
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
@@ -261,7 +263,7 @@ export default function AdminUsersPage() {
                         <span className="flex flex-wrap gap-1 justify-center">
                           {u.allowed_modules.map(m => (
                             <span key={m} className="px-2 py-1 rounded-md text-xs font-semibold" style={{ backgroundColor: `${VIZ.primary}15`, color: VIZ.primary }}>
-                              {m === 'ppe' ? 'PPE' : m === 'she' ? 'SHE' : m === 'chemical' ? 'CHEM' : m}
+                              {({ ppe: 'PPE', she: 'SHE', chemical: 'CHEM', 'first-aid': 'First Aid', permit: 'Permit', procurement: 'PR', inspect: 'Inspect', ohse: 'Data Center', visitor: 'Visitor' } as Record<string, string>)[m] || m}
                             </span>
                           ))}
                         </span>
@@ -372,22 +374,18 @@ function UserModal({
   const isEdit = modal.mode === 'edit';
   const editUser = isEdit ? modal.user : null;
 
-  const [companyId, setCompanyId] = useState(editUser?.company_id || companies[0]?.company_id || '');
+  const companyId = editUser?.company_id || companies[0]?.company_id || '';
+  // Create: one account row per ticked company (same password hash → the person can switch company in the app).
+  const [companyIds, setCompanyIds] = useState<string[]>(editUser ? [editUser.company_id] : companies[0] ? [companies[0].company_id] : []);
   const [username, setUsername] = useState(editUser?.username || '');
   const [displayName, setDisplayName] = useState(editUser?.display_name || '');
   const [password, setPassword] = useState('');
   const [isActive, setIsActive] = useState(editUser ? editUser.is_active : true);
-  // null (ทุกระบบ) = ติ๊กทั้งคู่
-  const [modPpe, setModPpe] = useState(
-    editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('ppe') : true
-  );
-  const [modShe, setModShe] = useState(
-    editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('she') : true
-  );
-  const [modChem, setModChem] = useState(
-    editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('chemical') : true
-  );
-  const [modFirstAid, setModFirstAid] = useState(editUser ? !editUser.allowed_modules || editUser.allowed_modules.includes('first-aid') : true);
+  // null (ทุกระบบ) = ติ๊กทั้งหมด
+  const [mods, setMods] = useState<Set<string>>(() => new Set(editUser && editUser.allowed_modules && editUser.allowed_modules.length ? editUser.allowed_modules : MODULE_IDS));
+  const toggleMod = (id: string) => setMods(m => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // Edit: push this change to every company row of the same username (default on — it is the same person).
+  const [applyAll, setApplyAll] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -416,8 +414,12 @@ function UserModal({
       onError('กรุณาตั้งรหัสผ่าน');
       return;
     }
-    if (!modPpe && !modShe && !modChem && !modFirstAid) {
+    if (mods.size === 0) {
       onError('ต้องเลือกระบบที่เข้าได้อย่างน้อย 1 ระบบ');
+      return;
+    }
+    if (!isEdit && companyIds.length === 0) {
+      onError('เลือกบริษัทอย่างน้อย 1 บริษัท');
       return;
     }
     setSaving(true);
@@ -426,20 +428,12 @@ function UserModal({
         method: isEdit ? 'PATCH' : 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
-          ...(isEdit ? { id: editUser!.id } : {}),
-          company_id: companyId,
+          ...(isEdit ? { id: editUser!.id, apply_all: applyAll, company_ids: companyIds } : { company_ids: companyIds }),
+          company_id: isEdit ? companyId : companyIds[0],
           username: username.trim(),
           display_name: displayName,
           is_active: isActive,
-          allowed_modules:
-            modPpe && modShe && modChem && modFirstAid
-              ? null
-              : [
-                  ...(modPpe ? ['ppe'] : []),
-                  ...(modShe ? ['she'] : []),
-                  ...(modChem ? ['chemical'] : []),
-                  ...(modFirstAid ? ['first-aid'] : []),
-                ],
+          allowed_modules: MODULE_IDS.every(id => mods.has(id)) ? null : MODULE_IDS.filter(id => mods.has(id)),
           ...(password ? { password } : {}),
         }),
       });
@@ -448,7 +442,7 @@ function UserModal({
         onError(data.error || 'บันทึกไม่สำเร็จ');
         return;
       }
-      onSaved(isEdit ? 'บันทึกการแก้ไขแล้ว' : `เพิ่มผู้ใช้ "${username.trim()}" แล้ว`);
+      onSaved(isEdit ? `บันทึกการแก้ไขแล้ว${data.applied > 1 ? ` (${data.applied} บริษัท)` : ''}` : `เพิ่มผู้ใช้ "${username.trim()}" แล้ว ${Array.isArray(data.created) ? data.created.length : 1} บริษัท${Array.isArray(data.skipped) && data.skipped.length ? ` · ข้าม ${data.skipped.join(', ')} (มีอยู่แล้ว)` : ''}`);
     } catch {
       onError('เกิดข้อผิดพลาดในการเชื่อมต่อ');
     } finally {
@@ -491,18 +485,14 @@ function UserModal({
 
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">บริษัท</label>
-            <select
-              value={companyId}
-              onChange={e => setCompanyId(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-gray-900 bg-white"
-            >
-              {companies.map(c => (
-                <option key={c.company_id} value={c.company_id}>
-                  {c.company_name}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between mb-1.5"><label className="block text-sm font-semibold text-gray-700">บริษัทที่ใช้งานได้ {isEdit && <span className="font-normal text-gray-400">(ติ๊กเพิ่ม = สร้างบัญชีในบริษัทนั้นด้วยรหัสผ่านเดิม)</span>}</label><span className="text-xs text-gray-500">{companyIds.length} บริษัท</span></div>
+            <div className="max-h-40 overflow-y-auto rounded-xl border border-gray-300 p-2 grid grid-cols-2 gap-1">
+              {companies.map(c => {
+                const on = companyIds.includes(c.company_id); const locked = isEdit && c.company_id === editUser!.company_id;
+                return <label key={c.company_id} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer ${on ? 'bg-blue-50 text-gray-900' : 'text-gray-700 hover:bg-gray-50'}`}><input type="checkbox" className="w-4 h-4" checked={on} disabled={locked} onChange={e => setCompanyIds(ids => (e.target.checked ? [...ids, c.company_id] : ids.filter(x => x !== c.company_id)))} />{c.company_name}</label>;
+              })}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">คนเดียวหลายบริษัท: ใช้ชื่อผู้ใช้และรหัสผ่านเดียวกัน สลับบริษัทได้ในแอปโดยไม่ต้องเข้าสู่ระบบใหม่</p>
           </div>
 
           <div>
@@ -567,37 +557,11 @@ function UserModal({
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">ระบบที่เข้าได้</label>
-            <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={modPpe}
-                  onChange={e => setModPpe(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm text-gray-700">PPE Inventory</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={modShe}
-                  onChange={e => setModShe(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm text-gray-700">SHE Workforce</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={modChem}
-                  onChange={e => setModChem(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm text-gray-700">Chemical</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={modFirstAid} onChange={e => setModFirstAid(e.target.checked)} className="w-4 h-4" /><span className="text-sm text-gray-700">First Aid</span></label>
+            <div className="flex items-center justify-between mb-1.5"><label className="block text-sm font-semibold text-gray-700">ระบบที่เข้าได้</label><span className="flex gap-2 text-xs"><button type="button" className="underline text-gray-500" onClick={() => setMods(new Set(MODULE_IDS))}>ทั้งหมด</button><button type="button" className="underline text-gray-500" onClick={() => setMods(new Set())}>ไม่เลือก</button></span></div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {MODULE_IDS.map(id => <label key={id} className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={mods.has(id)} onChange={() => toggleMod(id)} className="w-4 h-4" /><span className="text-sm text-gray-700">{MODULE_LABELS[id]}</span></label>)}
             </div>
+            <p className="text-xs text-gray-400 mt-1">ติ๊กครบทุกระบบ = เข้าได้ทุกเครื่องมือรวมที่เพิ่มในอนาคต</p>
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -609,6 +573,7 @@ function UserModal({
             />
             <span className="text-sm text-gray-700">เปิดใช้งานบัญชีนี้</span>
           </label>
+          {isEdit && <label className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={applyAll} onChange={e => setApplyAll(e.target.checked)} className="w-4 h-4" /><span className="text-sm text-gray-700">ใช้การแก้ไขนี้ (ชื่อแสดง / ระบบ / รหัสผ่าน / สถานะ) กับทุกบริษัทของ “{editUser!.username}”</span></label>}
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-2">

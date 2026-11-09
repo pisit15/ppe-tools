@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireToolsActor, assertSameOrigin, apiError, TOOLS_COOKIE, TOOLS_COOKIE_OPTIONS } from '@/lib/toolsSession';
 import { issueAdminToken } from '@/lib/adminToken';
+import { linkedCompanies } from '@/lib/accountCompanies';
 
 export async function GET(request: NextRequest) {
   try {
     const a = await requireToolsActor(request, true);
+    const companies = await linkedCompanies(a).catch(() => []);
     return NextResponse.json({ user: {
       id: a.id, username: a.username, companyId: a.companyId,
       companyName: a.isAdmin ? 'EA SHE Admin' : String(a.row.company_name || a.companyId.toUpperCase()),
@@ -12,6 +14,7 @@ export async function GET(request: NextRequest) {
       role: a.isAdmin ? 'admin' : 'user', token: a.isAdmin ? issueAdminToken(a.username) : undefined,
       allowedModules: a.accountTable === 'ppe_requesters' ? ['ppe'] : a.isAdmin ? null : ((a.row.allowed_modules as string[] | null) ?? null),
       ppeRole: a.accountTable === 'ppe_requesters' ? 'requester' : 'manager',
+      companies,
     } });
   } catch (e) { return apiError(e); }
 }

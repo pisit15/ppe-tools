@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { ArrowLeft, BarChart3, ChevronDown, ClipboardCheck, Image as ImageIcon, List, LogOut, PlusCircle, Settings2 } from 'lucide-react';
 import { useAuth, type LoginCompanyOption } from '@/components/AuthProvider';
 import ModuleAccessDenied from '@/components/ModuleAccessDenied';
+import { CompanySwitcher } from '@/components/CompanySwitcher';
 import type { FaState } from '@/lib/first-aid/types';
 import { FA_GREEN, FaContext, PAGE_BG, VIZ, btnPrimary, errMsg, getJson, inputClass, labelClass } from '../_components/fa';
 
@@ -87,6 +88,7 @@ export default function FirstAidLayout({ children }: { children: React.ReactNode
                   </select>
                 </label>
               )}
+              {!isAdmin && <CompanySwitcher />}
               {isAdmin && (
                 <div className="relative">
                   <button type="button" onClick={() => setMenuOpen(o => !o)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><span className="max-w-[120px] truncate">{companyName}</span><ChevronDown size={14} /></button>

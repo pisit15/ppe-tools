@@ -103,14 +103,21 @@ export const PROJECTS: Project[] = [
   },
 ];
 
-// Module-level access control
-export type ModuleId = 'ppe' | 'she' | 'chemical' | 'first-aid';
+// Module-level access control (allowed_modules on company_users / tools_users rows)
+export type ModuleId = 'ppe' | 'she' | 'chemical' | 'first-aid' | 'permit' | 'procurement' | 'inspect' | 'ohse' | 'visitor';
 export const MODULE_LABELS: Record<ModuleId, string> = {
   'first-aid': 'First Aid & Medicine Control',
   ppe: 'PPE Inventory',
   she: 'SHE Workforce',
   chemical: 'Chemical Management',
+  permit: 'Work Permit',
+  procurement: 'PR & Supplier Price',
+  inspect: 'Equipment Inspection',
+  ohse: 'SHE Data Center',
+  visitor: 'Visitor Access',
 };
+/** Every id an admin can tick for a user, in display order. */
+export const MODULE_IDS: ModuleId[] = ['first-aid', 'ppe', 'chemical', 'she', 'permit', 'inspect', 'visitor', 'procurement', 'ohse'];
 
 // User type returned from auth
 export type AuthUser = {
@@ -126,6 +133,8 @@ export type AuthUser = {
   token?: string; // admin API token, present only for admin logins
   // null/undefined = ทุกระบบ (default เดิม); ['ppe'] = เข้าได้เฉพาะ PPE Inventory
   allowedModules?: string[] | null;
+  // Other companies the same person can switch to (same username + same password hash in the same account table)
+  companies?: { companyId: string; companyName: string }[];
 };
 
 export function canAccessModule(user: AuthUser | null, moduleId: ModuleId): boolean {

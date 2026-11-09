@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronDown, FolderOpen, LogOut } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
+import { CompanySwitcher } from '@/components/CompanySwitcher';
 import SHELoginPage from '@/components/SHELoginPage';
 import { CompanyContext, PAGE_BG, VIZ, getJson, type CompanyOption } from '@/app/inspect/_components/ui';
 
@@ -57,7 +58,7 @@ export default function OhseLayout({ children }: { children: React.ReactNode }) 
                   )}
                 </div>
               ) : (
-                <span className="hidden md:block text-right"><span className="block font-medium">{user.nickname || user.displayName}</span><span className="block text-xs text-gray-500">ทีม SHE · {user.companyName}</span></span>
+                <><CompanySwitcher /><span className="hidden md:block text-right"><span className="block font-medium">{user.nickname || user.displayName}</span><span className="block text-xs text-gray-500">ทีม SHE · {user.companyName}</span></span></>
               )}
               <Link href="/" className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-gray-600 hover:bg-gray-100"><ArrowLeft size={15} /><span className="hidden sm:inline">หน้าหลัก</span></Link>
               <button type="button" onClick={logout} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-gray-600 hover:bg-gray-100" aria-label="ออกจากระบบ"><LogOut size={15} /></button>

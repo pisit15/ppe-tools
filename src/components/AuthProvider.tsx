@@ -17,6 +17,8 @@ type AuthContextType = {
   isLoading: boolean;
   login: (username: string, password: string, companyId?: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
+  /** Move the session to another company of the same person (see /api/auth/switch). */
+  switchCompany: (companyId: string) => Promise<{ success: boolean; error?: string }>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -98,6 +100,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const switchCompany = useCallback(async (companyId: string) => {
+    try {
+      const res = await fetch('/api/auth/switch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ company_id: companyId }) });
+      const data = await res.json();
+      if (res.ok && data.user) { setUser(data.user as AuthUser); return { success: true }; }
+      return { success: false, error: data.error || 'สลับบริษัทไม่สำเร็จ' };
+    } catch { return { success: false, error: 'เกิดข้อผิดพลาดในการเชื่อมต่อ' }; }
+  }, []);
+
   if (!loaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -107,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, switchCompany }}>
       {children}
     </AuthContext.Provider>
   );

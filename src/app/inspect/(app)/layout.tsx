@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ArrowLeft, ChevronDown, ClipboardList, Eye, EyeOff, LayoutDashboard, ListChecks, ListPlus, LogOut, Map as MapIcon, QrCode, Settings2 } from 'lucide-react';
 import { useAuth, type LoginCompanyOption } from '@/components/AuthProvider';
+import { CompanySwitcher } from '@/components/CompanySwitcher';
 import { CompanyContext, PAGE_BG, VIZ, btnPrimary, cardClass, getJson, inputClass, labelClass, type CompanyOption } from '../_components/ui';
 
 const NAV = [
@@ -76,7 +77,7 @@ export default function InspectLayout({ children }: { children: React.ReactNode 
                   )}
                 </div>
               ) : (
-                <span className="hidden md:block text-right"><span className="block font-medium">{user.nickname || user.displayName}</span><span className="block text-xs text-gray-500">ทีม SHE · {user.companyName}</span></span>
+                <><CompanySwitcher /><span className="hidden md:block text-right"><span className="block font-medium">{user.nickname || user.displayName}</span><span className="block text-xs text-gray-500">ทีม SHE · {user.companyName}</span></span></>
               )}
               <button type="button" onClick={() => void logout()} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs bg-white hover:bg-gray-50"><LogOut size={14} /><span className="hidden sm:inline">ออกจากระบบ</span></button>
             </div>

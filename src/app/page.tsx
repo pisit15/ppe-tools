@@ -6,6 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { HomeCardGrid } from '@/components/home/HomeCardGrid';
 import { HomeCardsManager } from '@/components/home/HomeCardsManager';
+import { CompanySwitcher } from '@/components/CompanySwitcher';
 
 export default function HomePage() {
   const { user, logout } = useAuth();
@@ -34,6 +35,7 @@ export default function HomePage() {
                 <p className="text-sm text-white font-medium">{user.displayName}</p>
                 <p className="text-xs text-blue-300">{user.companyName}</p>
               </div>
+              <CompanySwitcher dark />
               {isAdmin && (
                 <Link
                   href="/admin"
