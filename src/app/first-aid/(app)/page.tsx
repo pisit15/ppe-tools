@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Pencil, Plus, Search } from 'lucide-react';
 import type { FaEvent, FaItem, FaLot } from '@/lib/first-aid/types';
-import { Bar, Chip, Drawer, ItemImage, itemSub, KIND_LABEL, STATUS_COLOR, Spinner, Stat, StatusBadge, ToastView, VIZ, FA_GREEN, balance, btnPrimary, btnSecondary, daysUntil, expiredLots, expiryDays, fmtInt, itemStatus, loadHistory, pendingLots, personLabel, relativeDays, shiftPeriod, thaiDate, type ItemStatusKey, useFa, useToast, usableLots, currentPeriod, thaiPeriod } from '../_components/fa';
+import { Bar, Chip, Drawer, ItemImage, itemSub, KIND_LABEL, STATUS_COLOR, STATUS_LABEL, Spinner, Stat, StatusBadge, ToastView, VIZ, FA_GREEN, balance, btnPrimary, btnSecondary, daysUntil, expiredLots, expiryDays, fmtInt, itemStatus, loadHistory, pendingLots, personLabel, relativeDays, shiftPeriod, thaiDate, type ItemStatusKey, useFa, useToast, usableLots, currentPeriod, thaiPeriod } from '../_components/fa';
 import { DispenseModal, LotExpiryModal } from '../_components/actions';
 import { ItemFormModal } from '../_components/ItemForm';
 
@@ -31,12 +31,12 @@ export default function ItemsPage() {
     return state.items.map(item => ({ item, st: itemStatus(state, item, scope), near: usableLots(state, item.id, scope).some(l => l.expiry && (expiryDays(l.expiry, state.asOf) ?? 999) <= 90) }));
   }, [state, scope]);
   const counts = useMemo(() => {
-    const c: Record<Filter, number> = { all: rows.length, ok: 0, low: 0, out: 0, expired: 0, pending: 0, near: 0 };
+    const c: Record<Filter, number> = { all: rows.length, ok: 0, low: 0, out: 0, expired: 0, pending: 0, open_expired: 0, near: 0 };
     for (const r of rows) { c[r.st.key] += 1; if (r.near) c.near += 1; }
     return c;
   }, [rows]);
   const categories = useMemo(() => { const m = new Map<string, number>(); rows.forEach(r => m.set(r.item.category, (m.get(r.item.category) || 0) + 1)); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [rows]);
-  const ORDER: Record<ItemStatusKey, number> = { expired: 0, out: 1, low: 2, pending: 3, ok: 4 };
+  const ORDER: Record<ItemStatusKey, number> = { open_expired: 0, expired: 0, out: 1, low: 2, pending: 3, ok: 4 };
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows.filter(r => (cat === 'all' || r.item.category === cat) && (filter === 'all' || (filter === 'near' ? r.near : r.st.key === filter)) && (!needle || `${r.item.name} ${r.item.generic} ${r.item.description}`.toLowerCase().includes(needle)))
@@ -50,7 +50,7 @@ export default function ItemsPage() {
   function exportCsv() {
     if (!state) return;
     const header = ['ชื่อยา', 'ชื่อสามัญ', 'หมวด', 'หน่วย', ...locations.map(l => l.name), 'รวม', 'ขั้นต่ำ', 'หมดอายุเร็วสุด', 'สถานะ'];
-    const lines = filtered.map(r => [r.item.name, r.item.generic, r.item.category, r.item.unit, ...locations.map(l => balance(state, r.item.id, l.id)), r.st.balance, r.st.min, r.st.nearest?.expiry || '', ({ ok: 'เพียงพอ', low: 'ต้องเติม', out: 'หมด', expired: 'หมดอายุ', pending: 'รอวันหมดอายุ' })[r.st.key]]);
+    const lines = filtered.map(r => [r.item.name, r.item.generic, r.item.category, r.item.unit, ...locations.map(l => balance(state, r.item.id, l.id)), r.st.balance, r.st.min, r.st.nearest?.expiry || '', STATUS_LABEL[r.st.key]]);
     const csv = '﻿' + [header, ...lines].map(r => r.map(v => `"${String(v ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })); a.download = `first-aid-stock-${company}-${state.asOf}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
@@ -74,7 +74,7 @@ export default function ItemsPage() {
           <Chip active={cat === 'all'} onClick={() => setCat('all')}>ทั้งหมด {counts.all}</Chip>
           {categories.map(([c, n]) => <Chip key={c} active={cat === c} onClick={() => setCat(c)}>{c} {n}</Chip>)}
           <span className="w-px bg-gray-300 mx-1 self-stretch" aria-hidden="true" />
-          {(['low', 'out', 'expired', 'near', 'pending'] as Filter[]).map(f => <Chip key={f} active={filter === f} onClick={() => setFilter(filter === f ? 'all' : f)} color={f === 'near' ? VIZ.secondary : STATUS_COLOR[f as ItemStatusKey]}>{{ low: 'ต้องเติม', out: 'หมด', expired: 'หมดอายุ', near: 'ใกล้หมดอายุ', pending: 'รอวันหมดอายุ' }[f as Exclude<Filter, 'all' | 'ok'>]} {counts[f]}</Chip>)}
+          {(['low', 'out', 'expired', 'open_expired', 'near', 'pending'] as Filter[]).map(f => <Chip key={f} active={filter === f} onClick={() => setFilter(filter === f ? 'all' : f)} color={f === 'near' ? VIZ.secondary : STATUS_COLOR[f as ItemStatusKey]}>{{ low: 'ต้องเติม', out: 'หมด', expired: 'หมดอายุ', open_expired: 'ขวดเปิดเกินกำหนด', near: 'ใกล้หมดอายุ', pending: 'รอวันหมดอายุ' }[f as Exclude<Filter, 'all' | 'ok'>]} {counts[f]}</Chip>)}
         </div>
         <div className="flex-1" />
         <button type="button" className={btnSecondary} onClick={exportCsv}><Download size={15} />CSV</button>
@@ -98,7 +98,7 @@ export default function ItemsPage() {
                   <td className="px-3 py-1.5"><div className="flex items-center gap-2.5"><ItemImage item={item} size={34} rounded={8} /><div className="min-w-0"><div className="font-semibold text-gray-900 truncate">{item.name}</div><div className="text-xs text-gray-500 truncate">{itemSub(item)} · {item.unit}</div></div></div></td>
                   <td className="px-2 py-2 text-gray-500 hidden lg:table-cell">{item.category}</td>
                   {locations.length > 1 && locations.map(l => { const b = balance(state, item.id, l.id); return <td key={l.id} className="px-2 py-2 text-right tabular-nums hidden md:table-cell" style={{ color: b === 0 ? VIZ.neutral : VIZ.text }}>{b === 0 ? '—' : fmtInt(b)}</td>; })}
-                  <td className="px-2 py-2 text-right tabular-nums"><b style={{ color: st.key === 'out' || st.key === 'expired' ? VIZ.accent : st.key === 'low' ? VIZ.secondary : VIZ.text }}>{fmtInt(st.balance)}</b> <span className="text-xs text-gray-500">{item.unit}</span>{st.expiredQty > 0 && <div className="text-[11px]" style={{ color: VIZ.accent }}>+{fmtInt(st.expiredQty)} หมดอายุ</div>}{st.pendingQty > 0 && <div className="text-[11px] text-gray-500">+{fmtInt(st.pendingQty)} รอวันหมดอายุ</div>}<Bar value={st.balance} max={st.min} color={STATUS_COLOR[st.key === 'pending' ? 'ok' : st.key]} /></td>
+                  <td className="px-2 py-2 text-right tabular-nums"><b style={{ color: st.key === 'out' || st.key === 'expired' ? VIZ.accent : st.key === 'low' ? VIZ.secondary : VIZ.text }}>{fmtInt(st.balance)}</b> <span className="text-xs text-gray-500">{item.unit}</span>{st.expiredQty > 0 && <div className="text-[11px]" style={{ color: VIZ.accent }}>+{fmtInt(st.expiredQty)} หมดอายุ</div>}{st.pendingQty > 0 && <div className="text-[11px] text-gray-500">+{fmtInt(st.pendingQty)} รอวันหมดอายุ</div>}{st.opened && <div className="text-[11px]" style={{ color: st.opened.expired ? VIZ.accent : VIZ.lightText }}>{st.opened.expired ? 'ขวดที่เปิดเกินกำหนด' : 'เปิดใช้อยู่'}{st.opened.until ? ` · ถึง ${thaiDate(st.opened.until, { short: true })}` : ''}</div>}<Bar value={st.balance} max={st.min} color={STATUS_COLOR[st.key === 'pending' ? 'ok' : st.key]} /></td>
                   <td className="px-2 py-2 text-right tabular-nums text-gray-500 hidden sm:table-cell">{st.min || '—'}</td>
                   <td className="px-2 py-2 hidden sm:table-cell whitespace-nowrap" style={{ color: expC }}>{!item.trackExpiry ? <span className="text-gray-400">ไม่ติดตาม</span> : st.nearest ? <>{thaiDate(st.nearest.expiry)} {d !== null && d <= 90 && <span className="text-xs">· {relativeDays(st.nearest.expiry)}</span>}</> : st.pendingQty > 0 ? <span className="text-gray-400">ยังไม่ระบุ</span> : <span className="text-gray-400">—</span>}</td>
                   <td className="px-2 py-2"><StatusBadge status={st.key} /></td>

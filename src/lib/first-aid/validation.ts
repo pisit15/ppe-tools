@@ -62,8 +62,10 @@ export function parseTransaction(value: unknown, today = bangkokDate()): Transac
   if (date > today) throw new FirstAidInputError('ไม่อนุญาตให้ทำรายการล่วงหน้า');
   if (!Array.isArray(body.lines) || !body.lines.length || body.lines.length > 8) throw new FirstAidInputError('ระบุรายการ 1–8 รายการต่อเอกสาร');
   const lines: TransactionLine[] = body.lines.map(value => {
-    const line = record(value); allowedKeys(line, ['itemId', 'quantity', 'lotId']);
-    return { itemId: uuid(line.itemId), quantity: integer(line.quantity, 'จำนวน', 1), ...(line.lotId ? { lotId: uuid(line.lotId, 'รหัสล็อต') } : {}) };
+    const line = record(value); allowedKeys(line, ['itemId', 'quantity', 'lotId', 'usage']);
+    if (line.usage != null && line.usage !== 'use' && line.usage !== 'open') throw new FirstAidInputError('รูปแบบการใช้ไม่ถูกต้อง');
+    if (line.usage === 'open' && line.quantity !== 1) throw new FirstAidInputError('เปิดใช้ได้ครั้งละ 1 ชิ้น');
+    return { itemId: uuid(line.itemId), quantity: integer(line.quantity, 'จำนวน', 1), ...(line.lotId ? { lotId: uuid(line.lotId, 'รหัสล็อต') } : {}), ...(line.usage ? { usage: line.usage as 'use' | 'open' } : {}) };
   });
   const input: TransactionInput = {
     idempotencyKey: uuid(body.idempotencyKey, 'รหัสป้องกันรายการซ้ำ'), kind: body.kind as TransactionInput['kind'], locationId: uuid(body.locationId, 'รหัสจุดปฐมพยาบาล'), date, lines,

@@ -4,8 +4,8 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FaEvent, FaItem } from '@/lib/first-aid/types';
-import { FA_GREEN, ItemImage, KIND_LABEL, Spinner, ToastView, VIZ, balance, bangkokToday, btnSecondary, currentPeriod, errMsg, fmtInt, loadHistory, personLabel, postTransaction, shiftPeriod, thaiDate, thaiDateTime, useFa, useToast } from '../../_components/fa';
-import { PickBoard, TicketPanel, rememberQty, type Cart } from '../../_components/PickBoard';
+import { FA_GREEN, ItemImage, KIND_LABEL, Spinner, ToastView, VIZ, balance, bangkokToday, openedContainers, btnSecondary, currentPeriod, errMsg, fmtInt, loadHistory, personLabel, postTransaction, shiftPeriod, thaiDate, thaiDateTime, useFa, useToast } from '../../_components/fa';
+import { PickBoard, TicketPanel, cartLines, rememberQty, toTransactionLines, type Cart } from '../../_components/PickBoard';
 
 const DEPT_KEY = 'fa.lastDept';
 
@@ -32,15 +32,16 @@ export default function DispensePage() {
 
   const frequent = useMemo(() => { const t = new Map<string, number>(); for (const e of recent) if (e.kind === 'issue') t.set(e.itemId, (t.get(e.itemId) || 0) + 1); return [...t.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id); }, [recent]);
   const avail = useCallback((i: FaItem) => (state ? balance(state, i.id, locationId) : 0), [state, locationId]);
+  const opened = useCallback((i: FaItem) => (state ? openedContainers(state, i.id, locationId)[0] || null : null), [state, locationId]);
   const setQty = (id: string, qty: number) => { setErr(''); setCart(c => { const n = { ...c }; if (qty <= 0) delete n[id]; else n[id] = qty; return n; }); };
 
   async function save() {
     if (!state || !loc) return;
-    const lines = state.items.filter(i => (cart[i.id] || 0) > 0).map(i => ({ itemId: i.id, quantity: cart[i.id] }));
+    const picked = cartLines(state.items, cart); const lines = toTransactionLines(picked);
     if (!lines.length) return;
     if (loc.requireRequester && !who.trim()) { setErr('จุดนี้ต้องระบุชื่อผู้เบิกยา'); return; }
-    const short = state.items.find(i => (cart[i.id] || 0) > avail(i));
-    if (short) { setErr(`${short.name}: คงเหลือ ${fmtInt(avail(short))} ${short.unit}`); return; }
+    const short = picked.find(l => l.usage !== 'use' && l.qty > avail(l.item));
+    if (short) { setErr(`${short.item.name}: คงเหลือ ${fmtInt(avail(short.item))} ${short.item.unit}`); return; }
     setBusy(true); setErr('');
     const noteText = [reason, note.trim()].filter(Boolean).join(' · ').slice(0, 500);
     try {
@@ -70,11 +71,11 @@ export default function DispensePage() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
         <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 sm:p-4 min-w-0">
-          <PickBoard items={state.items} avail={avail} cart={cart} onChange={setQty} frequent={frequent} />
+          <PickBoard items={state.items} avail={avail} opened={opened} cart={cart} onChange={setQty} frequent={frequent} />
         </section>
         <aside className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 lg:sticky lg:top-20">
           <h2 className="font-semibold text-gray-900 mb-3">ใบจ่ายยา</h2>
-          <TicketPanel items={state.items} cart={cart} avail={avail} onQty={setQty} who={who} setWho={setWho} dept={dept} setDept={setDept} departments={state.departments} reason={reason} setReason={setReason} requireName={loc.requireRequester} onSubmit={() => void save()} busy={busy} err={err} submitLabel="บันทึกการจ่าย" hint={<>ผู้บันทึก {state.session.name} · เวลาเก็บอัตโนมัติ · จ่ายจากล็อตที่หมดอายุก่อน</>}>
+          <TicketPanel items={state.items} cart={cart} avail={avail} onQty={setQty} who={who} setWho={setWho} dept={dept} setDept={setDept} departments={state.departments} reason={reason} setReason={setReason} requireName={loc.requireRequester} onSubmit={() => void save()} busy={busy} err={err} submitLabel="บันทึกการจ่าย" hint={<>ผู้บันทึก {state.session.name} · เวลาเก็บอัตโนมัติ · จ่ายจากล็อตที่หมดอายุก่อน · ยาแบ่งใช้ (ล้างตา ยานวด) กด “ใช้ 1 ครั้ง” ไม่ตัดสต๊อก</>}>
             <input value={note} onChange={e => setNote(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900" placeholder="หมายเหตุเพิ่มเติม (ไม่บังคับ)" aria-label="หมายเหตุ" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void save(); } }} />
           </TicketPanel>
         </aside>
@@ -91,7 +92,7 @@ export default function DispensePage() {
             <tbody>{visibleLog.map(e => { const it = state.items.find(i => i.id === e.itemId); return (
               <tr key={e.id} className="border-t border-gray-50"><td className="px-3 py-2 text-gray-500 whitespace-nowrap">{e.recordingMode === 'legacy' ? '—' : thaiDateTime(e.recordedAt).split(' ').pop()}</td>
                 <td className="px-2 py-2"><div className="flex items-center gap-2">{it && <ItemImage item={it} size={28} rounded={6} />}<span className={e.kind === 'issue' ? 'font-medium text-gray-900' : 'text-gray-600'}>{e.kind !== 'issue' && <span className="text-xs mr-1" style={{ color: e.kind === 'receive' ? VIZ.positive : VIZ.accent }}>{KIND_LABEL[e.kind]}</span>}{it?.name || '?'}</span></div></td>
-                <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">{fmtInt(e.quantity)} {it?.unit}</td>
+                <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap">{e.usage === 'use' ? `ใช้ ${fmtInt(e.quantity)} ครั้ง` : e.usage === 'open' ? `เปิดใหม่ ${fmtInt(e.quantity)} ${it?.unit}` : `${fmtInt(e.quantity)} ${it?.unit}`}</td>
                 <td className="px-2 py-2 hidden sm:table-cell">{personLabel(e.requester) || <span className="text-gray-400">—{e.recordingMode === 'self_service' ? ' (QR)' : ''}</span>}</td>
                 <td className="px-2 py-2 text-gray-500 hidden md:table-cell truncate max-w-[260px]">{e.note}</td>
                 <td className="px-2 py-2 text-gray-500 hidden md:table-cell">{e.recordingMode === 'self_service' ? 'หยิบเอง (QR)' : e.recordedBy.name}</td></tr>); })}

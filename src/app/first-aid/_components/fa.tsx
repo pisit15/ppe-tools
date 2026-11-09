@@ -9,10 +9,10 @@ import { SYMPTOMS, cleanGeneric, itemGroup, matchesSymptom } from '@/lib/first-a
 export { VIZ, PAGE_BG, thaiDate, thaiPeriod, thaiDateTime, bangkokToday, currentPeriod, shiftPeriod, daysUntil, relativeDays, getJson, postJson, errMsg, useToast, ToastView, inputClass, selectCompact, labelClass, cardClass, btnPrimary, btnSecondary, btnGhost, Spinner, EmptyState, Drawer, Modal, ConfirmButton, SectionTitle } from '@/app/inspect/_components/ui';
 
 export const FA_GREEN = '#246047';
-export const STATUS_COLOR = { ok: VIZ.positive, low: VIZ.secondary, out: VIZ.accent, expired: VIZ.accent, pending: VIZ.lightText } as const;
+export const STATUS_COLOR = { ok: VIZ.positive, low: VIZ.secondary, out: VIZ.accent, expired: VIZ.accent, pending: VIZ.lightText, open_expired: VIZ.accent } as const;
 export type { ItemStatusKey } from '@/lib/first-aid/model';
 type ItemStatusKey = keyof typeof STATUS_COLOR;
-export const STATUS_LABEL: Record<ItemStatusKey, string> = { ok: 'เพียงพอ', low: 'ต้องเติม', out: 'หมด', expired: 'หมดอายุ', pending: 'รอวันหมดอายุ' };
+export const STATUS_LABEL: Record<ItemStatusKey, string> = { ok: 'เพียงพอ', low: 'ต้องเติม', out: 'หมด', expired: 'หมดอายุ', pending: 'รอวันหมดอายุ', open_expired: 'ขวดที่เปิดเกินกำหนด' };
 
 // ---------- state context ----------
 type FaCtx = { state: FaState | null; loading: boolean; error: string; refresh: () => Promise<void>; company: string; setCompany: (id: string) => void; companies: { company_id: string; company_name: string }[]; isAdmin: boolean; scope: string; setScope: (id: string) => void };
@@ -30,7 +30,7 @@ export async function loadHistory(company: string, from: string, to: string, ext
   return getJson<{ from: string; to: string; events: FaEvent[]; truncated: boolean }>(`/api/first-aid/history?${q}`);
 }
 
-export { expiryDays, usableLots, pendingLots, expiredLots, balance, minFor, itemStatus, personLabel, type ItemStatus } from '@/lib/first-aid/model';
+export { expiryDays, usableLots, pendingLots, expiredLots, balance, minFor, itemStatus, personLabel, openedContainers, addDays, type ItemStatus, type OpenedInfo } from '@/lib/first-aid/model';
 export const KIND_LABEL: Record<FaEvent['kind'], string> = { issue: 'จ่าย', receive: 'รับเข้า', transfer: 'โอน', dispose: 'ตัดทิ้ง' };
 export const fmtInt = (n: number) => n.toLocaleString('th-TH');
 export { cleanGeneric } from '@/lib/first-aid/browse';

@@ -1,7 +1,9 @@
 export type FirstAidMode = 'controlled' | 'self_service';
 export type TransactionKind = 'issue' | 'receive' | 'transfer' | 'dispose';
 export type PersonSnapshot = { id?: string | null; code?: string; name: string; department: string; identityMethod?: 'self_declared' };
-export type TransactionLine = { itemId: string; quantity: number; lotId?: string };
+/** `usage` only for shared-use items: 'use' = one use from the opened container (no stock change), 'open' = take a new container out of stock. */
+export type MovementUsage = 'stock' | 'use' | 'open';
+export type TransactionLine = { itemId: string; quantity: number; lotId?: string; usage?: Exclude<MovementUsage, 'stock'> };
 export type TransactionInput = {
   idempotencyKey: string; kind: TransactionKind; locationId: string; destinationId?: string;
   date: string; lines: TransactionLine[]; expiry?: string | null; lotCode?: string;
@@ -18,6 +20,10 @@ export const FA_ANON_NAME = 'ไม่ระบุ';
 export const FA_ANON_DEPARTMENT = 'ไม่ระบุ';
 
 export type FaIcon = '' | 'pill' | 'bottle' | 'sachet' | 'plaster' | 'gauze' | 'mask' | 'glove' | 'device' | 'cream' | 'other';
+export const DISPENSE_MODES: { id: DispenseMode; label: string; hint: string }[] = [
+  { id: 'unit', label: 'เบิกทั้งชิ้น', hint: 'จ่ายเป็นเม็ด / ซอง / ชิ้น ตัดสต๊อกตามจำนวน' },
+  { id: 'shared', label: 'แบ่งใช้จากขวด/หลอดเดียว', hint: 'เช่น ยาล้างตา ยานวด เบตาดีน — บันทึก “ใช้ 1 ครั้ง” ไม่ตัดสต๊อก ตัดเมื่อ “เปิดขวดใหม่”' },
+];
 export const FA_ICONS: { id: Exclude<FaIcon, ''>; label: string }[] = [
   { id: 'pill', label: 'ยาเม็ด / แคปซูล' }, { id: 'bottle', label: 'ยาน้ำ / ขวด' }, { id: 'sachet', label: 'ซอง' }, { id: 'cream', label: 'ครีม / หลอด' },
   { id: 'plaster', label: 'พลาสเตอร์' }, { id: 'gauze', label: 'ผ้าก๊อซ / ผ้าพัน' }, { id: 'mask', label: 'หน้ากาก' }, { id: 'glove', label: 'ถุงมือ' }, { id: 'device', label: 'อุปกรณ์' }, { id: 'other', label: 'อื่น ๆ' },
@@ -25,14 +31,16 @@ export const FA_ICONS: { id: Exclude<FaIcon, ''>; label: string }[] = [
 
 // ---- Shapes returned by /api/first-aid/state (normalized at the API boundary) ----
 export type FaLocation = { id: string; name: string; type: string; area: string; issueMode: FirstAidMode; lastChecked: string | null; inspectionIssue: boolean; hasPublicLink: boolean; requireRequester: boolean; icon: string; isRegister: boolean };
-export type FaItem = { id: string; name: string; generic: string; description: string; category: string; unit: string; min: number; trackExpiry: boolean; icon: FaIcon; imageUrl: string | null; hasImage: boolean; imageSource: string };
+export type DispenseMode = 'unit' | 'shared';
+export type FaItem = { id: string; name: string; generic: string; description: string; category: string; unit: string; min: number; trackExpiry: boolean; icon: FaIcon; imageUrl: string | null; hasImage: boolean; imageSource: string; dispenseMode: DispenseMode; openLifeDays: number | null };
 export type FaLot = { id: string; itemId: string; locationId: string; code: string; expiry: string | null; quantity: number };
-export type FaThreshold = { itemId: string; locationId: string; min: number };
+/** One item at one point: minimum, plus the shared container currently opened there (if any). */
+export type FaThreshold = { itemId: string; locationId: string; min: number; openedAt: string | null; openedLotCode: string; openedExpiry: string | null };
 export type FaInspection = { id: string; locationId: string; date: string; notes: string; hasIssue: boolean; ready: boolean; lowItems: string[]; expiredLots: string[] };
 export type FaVisit = { id: string; date: string; person: string; service: string; note: string; timeIn: string; timeOut: string };
 export type FaAllocation = { lotId: string; code: string; expiry: string | null; quantity: number };
 export type FaEvent = {
-  id: string; documentId: string; date: string; datePrecision: 'day' | 'month'; kind: TransactionKind; itemId: string; locationId: string; destinationId?: string; quantity: number;
+  id: string; documentId: string; date: string; datePrecision: 'day' | 'month'; kind: TransactionKind; itemId: string; locationId: string; destinationId?: string; quantity: number; usage: MovementUsage;
   allocations: FaAllocation[]; requester: PersonSnapshot | null; recipientPerson: PersonSnapshot | null; recipient: string; onBehalf: boolean; note: string;
   recordedBy: { id: string; name: string; identityMethod: 'legacy_import' | 'self_declared' | 'authenticated_session' }; recordingMode: 'legacy' | 'staff' | 'self_service'; recordedAt: string;
 };

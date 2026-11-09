@@ -11,13 +11,14 @@ type DB = ReturnType<typeof getSupabaseServer>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
 const LOCATION_COLUMNS = 'id,company_id,name,type,area,issue_mode,last_checked,inspection_issue,active,public_token_hash,require_requester';
-const ITEM_COLUMNS = 'id,company_id,name,generic,category,unit,min,track_expiry,active,description,icon,image_path,image_source';
+const ITEM_COLUMNS = 'id,company_id,name,generic,category,unit,min,track_expiry,active,description,icon,image_path,image_source,dispense_mode,open_life_days';
+const THRESHOLD_COLUMNS = 'id,item_id,location_id,min,opened_at,opened_lot_code,opened_expiry';
 export const FA_IMAGE_BUCKET = 'first-aid-images';
 const IMAGE_URL_SECONDS = 60 * 60;
 /** Pseudo-location holding imported company-wide history; hidden from pickers. */
 export const FA_REGISTER_TYPE = 'ทะเบียนประวัติ';
 const DOCUMENT_COLUMNS = 'id,company_id,kind,location_id,destination_id,date,actor_key,actor_name,recording_mode,requester,recipient_person,on_behalf,note,created_at';
-const MOVEMENT_COLUMNS = 'id,company_id,document_id,item_id,location_id,destination_id,quantity,allocations,created_at';
+const MOVEMENT_COLUMNS = 'id,company_id,document_id,item_id,location_id,destination_id,quantity,allocations,usage,created_at';
 
 export const firstAidJson = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'private, no-store, max-age=0', 'Pragma': 'no-cache', 'X-Content-Type-Options': 'nosniff' } });
 
@@ -112,7 +113,7 @@ export function guessIcon(row: { name?: string; category?: string; unit?: string
   return 'other';
 }
 function mapItem(row: Row, imageUrl: string | null = null): FaItem {
-  return { id: row.id, name: row.name, generic: row.generic || '', description: row.description || '', category: row.category, unit: row.unit, min: row.min, trackExpiry: row.track_expiry, icon: (row.icon as FaIcon) || guessIcon(row), imageUrl, hasImage: !!row.image_path, imageSource: row.image_source || '' };
+  return { id: row.id, name: row.name, generic: row.generic || '', description: row.description || '', category: row.category, unit: row.unit, min: row.min, trackExpiry: row.track_expiry, icon: (row.icon as FaIcon) || guessIcon(row), imageUrl, hasImage: !!row.image_path, imageSource: row.image_source || '', dispenseMode: row.dispense_mode === 'shared' ? 'shared' : 'unit', openLifeDays: row.open_life_days ?? null };
 }
 /** Signed read URLs for every item picture (private bucket), in one storage call. */
 async function itemImageUrls(db: DB, rows: Row[]): Promise<Map<string, string>> {
@@ -128,7 +129,7 @@ async function mapItems(db: DB, rows: Row[]): Promise<FaItem[]> {
   return rows.map(row => mapItem(row, row.image_path ? urls.get(row.image_path) || null : null));
 }
 function mapLot(row: Row) { return { id: row.id, itemId: row.item_id, locationId: row.location_id, code: row.code, expiry: row.expiry, quantity: row.quantity }; }
-function mapThreshold(row: Row) { return { itemId: row.item_id, locationId: row.location_id, min: row.min }; }
+function mapThreshold(row: Row) { return { itemId: row.item_id, locationId: row.location_id, min: row.min, openedAt: row.opened_at ?? null, openedLotCode: row.opened_lot_code || '', openedExpiry: row.opened_expiry ?? null }; }
 function mapInspection(row: Row) { return { id: row.id, locationId: row.location_id, date: row.date, notes: row.notes || '', hasIssue: row.has_issue, ready: row.ready ?? !row.has_issue, lowItems: row.low_items || [], expiredLots: row.expired_lots || [] }; }
 function mapVisit(row: Row) { return { id: row.id, date: row.date, person: row.person, service: row.service, note: row.note || '', timeIn: row.time_in || '', timeOut: row.time_out || '' }; }
 
@@ -136,7 +137,7 @@ export function mapEvent(movement: Row, document: Row) {
   const imported = String(document.actor_key || '').startsWith('excel-import:');
   return {
     id: movement.id, documentId: document.id, date: document.date, datePrecision: String(document.actor_key || '').startsWith('excel-import:month:') ? 'month' : 'day', kind: document.kind, itemId: movement.item_id,
-    locationId: movement.location_id, destinationId: movement.destination_id || undefined, quantity: movement.quantity,
+    locationId: movement.location_id, destinationId: movement.destination_id || undefined, quantity: movement.quantity, usage: movement.usage === 'use' || movement.usage === 'open' ? movement.usage : 'stock',
     allocations: movement.allocations || [], requester: document.kind === 'issue' ? document.requester || null : null, recipientPerson: document.kind === 'issue' ? document.recipient_person || null : null,
     recipient: document.recipient_person?.name || '', onBehalf: !!document.on_behalf, note: document.note || '',
     recordedBy: { id: document.actor_key, name: document.actor_name, identityMethod: imported ? 'legacy_import' : document.recording_mode === 'self_service' ? 'self_declared' : 'authenticated_session' },
@@ -157,7 +158,7 @@ export async function loadFirstAidState(companyId: string, actor: ToolsActor) {
   const db = getSupabaseServer();
   const [company, locations, items, thresholds, lots, movementResult, inspectionResult, visits, employees, usageResult] = await Promise.all([
     companyInfo(db, companyId), allRows(db, 'fa_locations', LOCATION_COLUMNS, companyId),
-    allRows(db, 'fa_items', ITEM_COLUMNS, companyId), allRows(db, 'fa_location_items', 'id,item_id,location_id,min', companyId),
+    allRows(db, 'fa_items', ITEM_COLUMNS, companyId), allRows(db, 'fa_location_items', THRESHOLD_COLUMNS, companyId),
     allRows(db, 'fa_lots', 'id,item_id,location_id,code,expiry,quantity', companyId),
     db.from('fa_movements').select(MOVEMENT_COLUMNS).eq('company_id', companyId).order('created_at', { ascending: false }).limit(501),
     db.from('fa_inspections').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(200),
@@ -249,7 +250,7 @@ async function splitLinesByLot(db: DB, companyId: string, locationId: string, li
   const items: Row[] = check(await db.from('fa_items').select('id,track_expiry').eq('company_id', companyId).in('id', itemIds)) || [];
   const lots: Row[] = check(await db.from('fa_lots').select('id,item_id,expiry,quantity,created_at').eq('company_id', companyId).eq('location_id', locationId).in('item_id', itemIds).gt('quantity', 0)) || [];
   for (const line of lines) {
-    if (line.lotId) { out.push(line); continue; }
+    if (line.lotId || line.usage) { out.push(line); continue; }
     const tracked = items.find(row => row.id === line.itemId)?.track_expiry !== false;
     const usable = lots.filter(lot => lot.item_id === line.itemId && (lot.expiry ? lot.expiry >= today : !tracked))
       .sort((a, b) => String(a.expiry || '9999-12-31').localeCompare(String(b.expiry || '9999-12-31')) || String(a.created_at).localeCompare(String(b.created_at)));
@@ -282,7 +283,7 @@ export async function loadPublicFirstAidState(token: string) {
   const db = getSupabaseServer(); const location = await publicLocation(db, token); const companyId: string = location.company_id;
   const [company, lots, thresholds, departments] = await Promise.all([
     companyInfo(db, companyId), allRows(db, 'fa_lots', 'id,item_id,location_id,code,expiry,quantity', companyId, { location_id: location.id }),
-    allRows(db, 'fa_location_items', 'id,item_id,location_id,min', companyId, { location_id: location.id }), companyDepartments(db, companyId),
+    allRows(db, 'fa_location_items', THRESHOLD_COLUMNS, companyId, { location_id: location.id }), companyDepartments(db, companyId),
   ]);
   const ids = [...new Set([...lots.map(row => row.item_id), ...thresholds.map(row => row.item_id)])];
   const items: Row[] = [];
@@ -324,7 +325,7 @@ async function createMasterRow(db: DB, table: 'fa_items' | 'fa_locations' | 'fa_
 export async function manageFirstAid(request: NextRequest) {
   const { actor, companyId } = await firstAidActor(request, true); const db = getSupabaseServer();
   const body = record(await readJsonBody(request)); const action = text(body.action, 'การดำเนินการ', 40);
-  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
+  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location', 'close-opened'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
   if (action === 'visit' && !actor.isAdmin) throw new AccessError('เฉพาะผู้ดูแลที่มีสิทธิ์ข้อมูลบริการห้องพยาบาล');
   // Authenticated writes initialize only their selected company's configuration.
   check(await db.from('fa_company_settings').upsert({ company_id: companyId }, { onConflict: 'company_id', ignoreDuplicates: true }));
@@ -338,11 +339,14 @@ export async function manageFirstAid(request: NextRequest) {
     return { ok: true, id: row.id };
   }
   if (action === 'item') {
-    allowedKeys(body, ['action', 'id', 'createId', 'name', 'generic', 'category', 'unit', 'min', 'trackExpiry', 'description', 'icon']);
+    allowedKeys(body, ['action', 'id', 'createId', 'name', 'generic', 'category', 'unit', 'min', 'trackExpiry', 'description', 'icon', 'dispenseMode', 'openLifeDays']);
+    const dispenseMode = body.dispenseMode == null ? 'unit' : text(body.dispenseMode, 'วิธีจ่าย', 10);
+    if (dispenseMode !== 'unit' && dispenseMode !== 'shared') throw new FirstAidInputError('วิธีจ่ายไม่ถูกต้อง');
+    const openLifeDays = dispenseMode === 'shared' && body.openLifeDays != null && body.openLifeDays !== 0 ? integer(body.openLifeDays, 'อายุหลังเปิด (วัน)', 1, 3650) : null;
     if (body.id && body.createId) throw new FirstAidInputError('เลือกแก้ไขหรือสร้างรายการอย่างใดอย่างหนึ่ง');
     const icon = text(body.icon, 'ไอคอน', 20, false);
     if (icon && !FA_ICONS.some(entry => entry.id === icon)) throw new FirstAidInputError('ไอคอนไม่ถูกต้อง');
-    const values = { name: text(body.name, 'ชื่อรายการ'), generic: text(body.generic, 'รายละเอียด', 200, false), category: text(body.category, 'หมวดหมู่', 80), unit: text(body.unit, 'หน่วยนับ', 40), min: integer(body.min ?? 0, 'จำนวนขั้นต่ำ'), track_expiry: bool(body.trackExpiry, true), description: text(body.description, 'คำอธิบายสั้น', 160, false), icon };
+    const values = { name: text(body.name, 'ชื่อรายการ'), generic: text(body.generic, 'รายละเอียด', 200, false), category: text(body.category, 'หมวดหมู่', 80), unit: text(body.unit, 'หน่วยนับ', 40), min: integer(body.min ?? 0, 'จำนวนขั้นต่ำ'), track_expiry: bool(body.trackExpiry, true), description: text(body.description, 'คำอธิบายสั้น', 160, false), icon, dispense_mode: dispenseMode, open_life_days: openLifeDays };
     const id = body.id ? await scopedRow(db, 'fa_items', companyId, body.id) : null;
     if (id) {
       const existing = checkOne(await db.from('fa_items').select('track_expiry,unit').eq('company_id', companyId).eq('id', id).single());
@@ -360,6 +364,13 @@ export async function manageFirstAid(request: NextRequest) {
     }
     const row = id ? checkOne(await db.from('fa_items').update(values).eq('company_id', companyId).eq('id', id).select('id').single()) : await createMasterRow(db, 'fa_items', companyId, body.createId, values);
     return { ok: true, id: row.id };
+  }
+  if (action === 'close-opened') {
+    // The opened shared container was finished or discarded: clear it so the next "open" starts a fresh shelf life.
+    allowedKeys(body, ['action', 'locationId', 'itemId']);
+    const locationId = await scopedRow(db, 'fa_locations', companyId, body.locationId); const itemId = await scopedRow(db, 'fa_items', companyId, body.itemId);
+    check(await db.from('fa_location_items').update({ opened_at: null, opened_lot_code: '', opened_expiry: null }).eq('company_id', companyId).eq('location_id', locationId).eq('item_id', itemId));
+    return { ok: true };
   }
   if (action === 'thresholds') {
     allowedKeys(body, ['action', 'locationId', 'thresholds']); const locationId = await scopedRow(db, 'fa_locations', companyId, body.locationId);

@@ -321,3 +321,24 @@ test('request size bounds apply without Content-Length and errors do not expose 
   assert.equal(JSON.stringify(await response.json()).includes('secret'), false);
   assert.match(response.headers.get('cache-control'), /no-store/);
 });
+
+test('shared-use items: uses never deduct stock, opened container follows the shorter of label expiry and open life', () => {
+  const model = load('src/lib/first-aid/model.ts');
+  const eyewash = { id: 'eyewash', name: 'ยาล้างตา', generic: '', description: '', category: 'ยา', unit: 'ขวด', min: 1, trackExpiry: true, icon: 'bottle', imageUrl: null, hasImage: false, imageSource: '', dispenseMode: 'shared', openLifeDays: 28 };
+  const state = { asOf: '2026-11-09', items: [eyewash], lots: [{ id: 'l1', itemId: 'eyewash', locationId: 'p1', code: 'A', expiry: '2027-06-30', quantity: 2 }],
+    thresholds: [{ itemId: 'eyewash', locationId: 'p1', min: 1, openedAt: '2026-10-01', openedLotCode: 'A', openedExpiry: '2027-06-30' }] };
+  const [opened] = model.openedContainers(state, 'eyewash', 'p1');
+  assert.equal(opened.until, '2026-10-29'); // 28 days after opening beats the label expiry
+  assert.equal(opened.expired, true);
+  assert.equal(model.itemStatus(state, eyewash, 'p1').key, 'open_expired');
+  assert.equal(model.balance(state, 'eyewash', 'p1'), 2); // spares untouched
+  // Fresh bottle with no spares and min 0 is still usable.
+  const fresh = { ...state, items: [{ ...eyewash, min: 0 }], lots: [], thresholds: [{ ...state.thresholds[0], min: 0, openedAt: '2026-11-01' }] };
+  assert.equal(model.itemStatus(fresh, fresh.items[0], 'p1').key, 'ok');
+  // Payload validation: usage is only 'use' | 'open', and 'open' is always a single container.
+  const base = { idempotencyKey: randomUUID(), kind: 'issue', locationId: randomUUID(), date: '2026-11-09', requester: { name: 'x', department: 'y' } };
+  const parsed = validation.parseTransaction({ ...base, lines: [{ itemId: randomUUID(), quantity: 3, usage: 'use' }] }, '2026-11-09');
+  assert.equal(parsed.lines[0].usage, 'use');
+  assert.throws(() => validation.parseTransaction({ ...base, lines: [{ itemId: randomUUID(), quantity: 2, usage: 'open' }] }, '2026-11-09'), /ครั้งละ 1/);
+  assert.throws(() => validation.parseTransaction({ ...base, lines: [{ itemId: randomUUID(), quantity: 1, usage: 'refill' }] }, '2026-11-09'), /รูปแบบการใช้/);
+});

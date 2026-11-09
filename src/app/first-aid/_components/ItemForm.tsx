@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Link2, Trash2 } from 'lucide-react';
 import { compressImage } from '@/app/inspect/_components/photo';
-import { FA_ICONS, type FaIcon, type FaItem } from '@/lib/first-aid/types';
+import { DISPENSE_MODES, FA_ICONS, type DispenseMode, type FaIcon, type FaItem } from '@/lib/first-aid/types';
 import { FA_GREEN, ItemImage, Modal, Pictogram, VIZ, btnPrimary, btnSecondary, errMsg, inputClass, labelClass, manage, useFa } from './fa';
 
 type ImageResult = { ok: true; imageUrl: string | null; hasImage: boolean; imageSource: string };
@@ -73,20 +73,20 @@ export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean;
   const { company, state, refresh } = useFa();
   const categories = useMemo(() => Array.from(new Set((state?.items || []).map(i => i.category))).sort((a, b) => a.localeCompare(b, 'th')), [state]);
   const units = useMemo(() => Array.from(new Set((state?.items || []).map(i => i.unit))).sort((a, b) => a.localeCompare(b, 'th')), [state]);
-  const [form, setForm] = useState({ name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '' as FaIcon });
+  const [form, setForm] = useState({ name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '' as FaIcon, dispenseMode: 'unit' as DispenseMode, openLifeDays: '' });
   const [saving, setSaving] = useState(false); const [err, setErr] = useState('');
   const [draft, setDraft] = useState<FaItem | null>(item);
   const createId = useMemo(() => (typeof crypto !== 'undefined' ? crypto.randomUUID() : ''), []);
   useEffect(() => {
     if (!open) return;
     setDraft(item); setErr('');
-    setForm(item ? { name: item.name, generic: item.generic, description: item.description, category: item.category, unit: item.unit, min: item.min, trackExpiry: item.trackExpiry, icon: item.icon } : { name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '' });
+    setForm(item ? { name: item.name, generic: item.generic, description: item.description, category: item.category, unit: item.unit, min: item.min, trackExpiry: item.trackExpiry, icon: item.icon, dispenseMode: item.dispenseMode, openLifeDays: item.openLifeDays ? String(item.openLifeDays) : '' } : { name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '', dispenseMode: 'unit', openLifeDays: '' });
   }, [open, item]);
   async function save() {
     if (!form.name.trim()) { setErr('กรุณาระบุชื่อยา'); return; }
     setSaving(true); setErr('');
     try {
-      const r = await manage<{ ok: true; id: string }>(company, { action: 'item', ...(item ? { id: item.id } : { createId }), name: form.name.trim(), generic: form.generic.trim(), description: form.description.trim(), category: form.category.trim() || 'ยา', unit: form.unit.trim() || 'ชิ้น', min: Number(form.min) || 0, trackExpiry: form.trackExpiry, icon: form.icon });
+      const r = await manage<{ ok: true; id: string }>(company, { action: 'item', ...(item ? { id: item.id } : { createId }), name: form.name.trim(), generic: form.generic.trim(), description: form.description.trim(), category: form.category.trim() || 'ยา', unit: form.unit.trim() || 'ชิ้น', min: Number(form.min) || 0, trackExpiry: form.trackExpiry, icon: form.icon, dispenseMode: form.dispenseMode, openLifeDays: form.dispenseMode === 'shared' && form.openLifeDays ? Number(form.openLifeDays) : null });
       await refresh(); onSaved(r.id);
     } catch (e) { setErr(errMsg(e)); } finally { setSaving(false); }
   }
@@ -105,6 +105,11 @@ export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean;
           </div>
           {locked && <p className="text-xs text-gray-500">รายการนี้มีสต็อก/ประวัติแล้ว จึงเปลี่ยนหน่วยไม่ได้</p>}
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.trackExpiry} onChange={e => setForm(f => ({ ...f, trackExpiry: e.target.checked }))} className="h-4 w-4" />ติดตามวันหมดอายุ (ปิดสำหรับอุปกรณ์ เช่น กรรไกร ปรอท)</label>
+          <div>
+            <span className={labelClass}>วิธีจ่าย</span>
+            <div className="grid gap-1.5">{DISPENSE_MODES.map(m => <label key={m.id} className="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer" style={{ borderColor: form.dispenseMode === m.id ? FA_GREEN : '#E5E7EB', background: form.dispenseMode === m.id ? `${FA_GREEN}0D` : '#fff' }}><input type="radio" name="if-mode" className="mt-1 h-4 w-4" checked={form.dispenseMode === m.id} onChange={() => setForm(f => ({ ...f, dispenseMode: m.id }))} /><span><b className="text-gray-900">{m.label}</b><span className="block text-xs text-gray-500">{m.hint}</span></span></label>)}</div>
+            {form.dispenseMode === 'shared' && <div className="mt-2 flex items-center gap-2 text-sm"><label htmlFor="if-life" className="text-gray-700">อายุหลังเปิดขวด</label><input id="if-life" type="number" min={1} max={3650} className={`${inputClass} w-24`} value={form.openLifeDays} onChange={e => setForm(f => ({ ...f, openLifeDays: e.target.value }))} placeholder="เช่น 28" /><span className="text-gray-500">วัน <span className="text-xs text-gray-400">(เว้นว่าง = ใช้วันหมดอายุบนฉลากอย่างเดียว · ยาล้างตาส่วนใหญ่ 28 วัน)</span></span></div>}
+          </div>
           <div><span className={labelClass}>ไอคอนสำรอง (ใช้เมื่อไม่มีรูป · เว้นว่าง = ระบบเลือกให้)</span><IconPicker value={form.icon} onChange={v => setForm(f => ({ ...f, icon: f.icon === v ? '' : v }))} /></div>
           {err && <p className="text-sm" style={{ color: VIZ.accent }}>{err}</p>}
         </div>
