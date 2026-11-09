@@ -41,6 +41,7 @@ export default function DispensePage() {
     if (!state || !target || !locationId) return;
     const avail = balance(state, target.id, locationId);
     if (quantity > avail) { setErr(`คงเหลือที่จุดนี้ ${fmtInt(avail)} ${target.unit}`); return; }
+    if (locations.find(l => l.id === locationId)?.requireRequester && !who.trim()) { setErr('จุดนี้ต้องระบุชื่อผู้เบิกยา'); return; }
     setBusy(true); setErr('');
     try {
       await postTransaction(company, { idempotencyKey: crypto.randomUUID(), kind: 'issue', locationId, date: bangkokToday(), lines: [{ itemId: target.id, quantity }], note: note.trim(), ...(who.trim() ? { requesterId: 'manual', requesterPerson: { name: who.trim(), department: dept.trim() } } : {}) });
@@ -75,7 +76,7 @@ export default function DispensePage() {
                 <div className="text-xs" style={{ color: avail === 0 ? VIZ.accent : VIZ.lightText }}>{avail === 0 ? 'จุดนี้ไม่มีของพร้อมจ่าย' : `คงเหลือ ${fmtInt(avail)} → ${fmtInt(avail - qty)}`}</div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div><label className={labelClass} htmlFor="dp-who">ผู้รับ <span className="font-normal text-gray-400">(ไม่บังคับ)</span></label><input id="dp-who" className={inputClass} value={who} onChange={e => setWho(e.target.value)} placeholder="ชื่อ หรือรหัส" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void save(); } }} /></div>
+                <div><label className={labelClass} htmlFor="dp-who">ผู้เบิกยา {loc?.requireRequester ? <span style={{ color: VIZ.accent }}>*</span> : <span className="font-normal text-gray-400">(ไม่บังคับ)</span>}</label><input id="dp-who" className={inputClass} value={who} onChange={e => setWho(e.target.value)} placeholder="ชื่อ หรือรหัส" onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void save(); } }} /></div>
                 <div><label className={labelClass} htmlFor="dp-dept">แผนก</label><input id="dp-dept" list="fa-depts" className={inputClass} value={dept} onChange={e => setDept(e.target.value)} placeholder="เช่น ผลิต" /><datalist id="fa-depts">{state.departments.map(d => <option key={d} value={d} />)}</datalist></div>
               </div>
               <div className="flex flex-wrap gap-1.5">{REASONS.map(r => <button key={r} type="button" onClick={() => setNote(n => (n === r ? '' : r))} className={`rounded-full border px-3 py-1 text-sm ${note === r ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={note === r ? { background: FA_GREEN } : undefined}>{r}</button>)}</div>
@@ -113,7 +114,7 @@ export default function DispensePage() {
           </div>
           {log === null ? <Spinner /> : log.filter(e => locations.length <= 1 || !loc || e.locationId === loc.id).length === 0 ? <p className="px-4 py-10 text-center text-sm text-gray-500">ยังไม่มีรายการ{isToday ? 'วันนี้' : ''}</p> : (
             <div className="overflow-x-auto"><table className="w-full text-sm">
-              <thead><tr className="text-xs text-gray-500 bg-gray-50/80"><th className="text-left font-medium px-3 py-2">เวลา</th><th className="text-left font-medium px-2 py-2">ยา</th><th className="text-right font-medium px-2 py-2">จำนวน</th><th className="text-left font-medium px-2 py-2 hidden sm:table-cell">ผู้รับ</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">หมายเหตุ</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">ผู้บันทึก</th></tr></thead>
+              <thead><tr className="text-xs text-gray-500 bg-gray-50/80"><th className="text-left font-medium px-3 py-2">เวลา</th><th className="text-left font-medium px-2 py-2">ยา</th><th className="text-right font-medium px-2 py-2">จำนวน</th><th className="text-left font-medium px-2 py-2 hidden sm:table-cell">ผู้เบิกยา</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">หมายเหตุ</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">ผู้บันทึก</th></tr></thead>
               <tbody>{log.filter(e => locations.length <= 1 || !loc || e.locationId === loc.id).map(e => { const it = state.items.find(i => i.id === e.itemId); return (
                 <tr key={e.id} className="border-t border-gray-50"><td className="px-3 py-2 text-gray-500 whitespace-nowrap">{e.recordingMode === 'legacy' ? '—' : thaiDateTime(e.recordedAt).split(' ').pop()}</td>
                   <td className="px-2 py-2"><div className="flex items-center gap-2">{it && <ItemImage item={it} size={28} rounded={6} />}<span className={e.kind === 'issue' ? 'font-medium text-gray-900' : 'text-gray-600'}>{e.kind !== 'issue' && <span className="text-xs mr-1" style={{ color: e.kind === 'receive' ? VIZ.positive : VIZ.accent }}>{KIND_LABEL[e.kind]}</span>}{it?.name || '?'}</span></div></td>

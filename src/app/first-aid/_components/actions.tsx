@@ -28,6 +28,7 @@ export function DispenseModal({ item, onClose, onDone, defaultLocation }: { item
   async function save() {
     if (!item) return;
     if (qty > avail) { setErr(`คงเหลือที่จุดนี้ ${fmtInt(avail)} ${item.unit}`); return; }
+    if (locations.find(l => l.id === locationId)?.requireRequester && !who.trim()) { setErr('จุดนี้ต้องระบุชื่อผู้เบิกยา'); return; }
     setBusy(true); setErr('');
     try {
       await postTransaction(company, { idempotencyKey: crypto.randomUUID(), kind: 'issue', locationId, date: bangkokToday(), lines: [{ itemId: item.id, quantity: qty }], note: note.trim(), ...(who.trim() ? { requesterId: 'manual', requesterPerson: { name: who.trim(), department: dept.trim() } } : {}) });
@@ -49,7 +50,7 @@ export function DispenseModal({ item, onClose, onDone, defaultLocation }: { item
       </div>
       <div className="flex flex-wrap gap-1.5 mb-3">{[1, 2, 4, 6, 10].map(n => <button key={n} type="button" onClick={() => setQty(Math.min(n, Math.max(1, avail)))} className={`rounded-full border px-3 py-1 text-sm ${qty === n ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={qty === n ? { background: FA_GREEN } : undefined}>{n}</button>)}</div>
       <div className="grid grid-cols-2 gap-2 mb-2">
-        <div><label className={labelClass} htmlFor="dm-who">ผู้รับ <span className="font-normal text-gray-400">(ไม่บังคับ)</span></label><input id="dm-who" className={inputClass} value={who} onChange={e => setWho(e.target.value)} placeholder="ชื่อ หรือรหัส" /></div>
+        <div><label className={labelClass} htmlFor="dm-who">ผู้เบิกยา {locations.find(l => l.id === locationId)?.requireRequester ? <span style={{ color: VIZ.accent }}>*</span> : <span className="font-normal text-gray-400">(ไม่บังคับ)</span>}</label><input id="dm-who" className={inputClass} value={who} onChange={e => setWho(e.target.value)} placeholder="ชื่อ หรือรหัส" /></div>
         <div><label className={labelClass} htmlFor="dm-dept">แผนก</label><input id="dm-dept" list="fa-depts" className={inputClass} value={dept} onChange={e => setDept(e.target.value)} placeholder="เช่น ผลิต" /><datalist id="fa-depts">{state.departments.map(d => <option key={d} value={d} />)}</datalist></div>
       </div>
       <div className="flex flex-wrap gap-1.5 mb-3">{REASONS.map(r => <button key={r} type="button" onClick={() => setNote(n => (n === r ? '' : r))} className={`rounded-full border px-3 py-1 text-sm ${note === r ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={note === r ? { background: FA_GREEN } : undefined}>{r}</button>)}</div>

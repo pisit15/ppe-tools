@@ -10,7 +10,7 @@ type DB = ReturnType<typeof getSupabaseServer>;
 // Database JSON is normalized at the API boundary; no database record is returned wholesale.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
-const LOCATION_COLUMNS = 'id,company_id,name,type,area,issue_mode,last_checked,inspection_issue,active,public_token_hash';
+const LOCATION_COLUMNS = 'id,company_id,name,type,area,issue_mode,last_checked,inspection_issue,active,public_token_hash,require_requester';
 const ITEM_COLUMNS = 'id,company_id,name,generic,category,unit,min,track_expiry,active,description,icon,image_path,image_source';
 export const FA_IMAGE_BUCKET = 'first-aid-images';
 const IMAGE_URL_SECONDS = 60 * 60;
@@ -95,7 +95,7 @@ export async function companyDepartments(db: DB, companyId: string): Promise<str
 
 export function mapLocation(row: Row) {
   const type = String(row.type || 'ตู้ปฐมพยาบาล');
-  return { id: row.id, name: row.name, type, area: row.area || '', issueMode: row.issue_mode, lastChecked: row.last_checked, inspectionIssue: row.inspection_issue, hasPublicLink: !!row.public_token_hash, icon: type.includes('กระเป๋า') ? 'briefcase-medical' : type.includes('คลัง') ? 'package' : 'building', isRegister: type === FA_REGISTER_TYPE };
+  return { id: row.id, name: row.name, type, area: row.area || '', issueMode: row.issue_mode, lastChecked: row.last_checked, inspectionIssue: row.inspection_issue, hasPublicLink: !!row.public_token_hash, requireRequester: !!row.require_requester, icon: type.includes('กระเป๋า') ? 'briefcase-medical' : type.includes('คลัง') ? 'package' : 'building', isRegister: type === FA_REGISTER_TYPE };
 }
 /** Fallback pictogram when no picture was set: from unit/category/name. */
 export function guessIcon(row: { name?: string; category?: string; unit?: string }): FaIcon {
@@ -220,6 +220,11 @@ async function transactionPayload(db: DB, companyId: string, input: TransactionI
   return { kind: input.kind, locationId: input.locationId, destinationId: input.destinationId || null, date: input.date, lines: input.lines, expiry: input.expiry || null, lotCode: input.lotCode || '', requester: requester || null, recipientPerson: recipientPerson || null, onBehalf: !!input.onBehalf, note: input.note || '', mode: publicRequest ? 'self_service' : 'staff' };
 }
 
+async function assertRequesterRule(db: DB, companyId: string, locationId: string, requester: PersonSnapshot | null) {
+  const row = check(await db.from('fa_locations').select('require_requester').eq('company_id', companyId).eq('id', locationId).maybeSingle()) as Row | null;
+  if (row?.require_requester && (!requester || requester.name === FA_ANON_NAME)) throw new FirstAidInputError('จุดนี้ต้องระบุชื่อผู้เบิกยา');
+}
+
 function transactionReceipt(result: Row) {
   if (!result?.document || !Array.isArray(result.movements)) throw new Error('Invalid transaction response');
   return { documentId: result.document.id, events: result.movements.map((movement: Row) => mapEvent(movement, result.document)) };
@@ -229,6 +234,7 @@ export async function postFirstAidTransaction(request: NextRequest) {
   const { actor, companyId } = await firstAidActor(request, true);
   const input = parseTransaction(await readJsonBody(request)); const db = getSupabaseServer();
   const payload = await transactionPayload(db, companyId, input);
+  if (input.kind === 'issue') await assertRequesterRule(db, companyId, input.locationId, payload.requester);
   const data = check(await db.rpc('fa_post_transaction', { p_company_id: companyId, p_actor_key: `${actor.accountTable}:${actor.id}`, p_actor_name: actor.displayName, p_idempotency_key: input.idempotencyKey, p_payload: payload, p_public_token_hash: null }));
   return transactionReceipt(data);
 }
@@ -291,6 +297,7 @@ export async function postPublicFirstAidTransaction(request: NextRequest, token:
   if (input.kind !== 'issue' || input.locationId !== location.id) throw new FirstAidInputError('ลิงก์นี้ใช้บันทึกการหยิบใช้ได้เฉพาะจุดที่ระบุ', 403);
   input.lines = await splitLinesByLot(db, location.company_id, location.id, input.lines);
   const payload = await transactionPayload(db, location.company_id, input, true);
+  if (location.require_requester && (!payload.requester || payload.requester.name === FA_ANON_NAME)) throw new FirstAidInputError('จุดนี้ต้องระบุชื่อผู้เบิกยา');
   const data = check(await db.rpc('fa_post_transaction', { p_company_id: location.company_id, p_actor_key: 'self_declared', p_actor_name: payload.requester?.name || '', p_idempotency_key: input.idempotencyKey, p_payload: payload, p_public_token_hash: tokenHash(token) }));
   return transactionReceipt(data);
 }
@@ -322,10 +329,10 @@ export async function manageFirstAid(request: NextRequest) {
   // Authenticated writes initialize only their selected company's configuration.
   check(await db.from('fa_company_settings').upsert({ company_id: companyId }, { onConflict: 'company_id', ignoreDuplicates: true }));
   if (action === 'location') {
-    allowedKeys(body, ['action', 'id', 'createId', 'name', 'type', 'area', 'issueMode']);
+    allowedKeys(body, ['action', 'id', 'createId', 'name', 'type', 'area', 'issueMode', 'requireRequester']);
     if (body.id && body.createId) throw new FirstAidInputError('เลือกแก้ไขหรือสร้างรายการอย่างใดอย่างหนึ่ง');
     if (!['controlled', 'self_service'].includes(String(body.issueMode))) throw new FirstAidInputError('วิธีบันทึกการเบิกไม่ถูกต้อง');
-    const values = { name: text(body.name, 'ชื่อจุดปฐมพยาบาล'), type: text(body.type, 'ประเภทจุด', 80), area: text(body.area, 'พื้นที่', 200, false), issue_mode: body.issueMode };
+    const values = { name: text(body.name, 'ชื่อจุดปฐมพยาบาล'), type: text(body.type, 'ประเภทจุด', 80), area: text(body.area, 'พื้นที่', 200, false), issue_mode: body.issueMode, require_requester: bool(body.requireRequester, false) };
     const id = body.id ? await scopedRow(db, 'fa_locations', companyId, body.id) : null;
     const row = id ? checkOne(await db.from('fa_locations').update(values).eq('company_id', companyId).eq('id', id).select('id').single()) : await createMasterRow(db, 'fa_locations', companyId, body.createId, values);
     return { ok: true, id: row.id };

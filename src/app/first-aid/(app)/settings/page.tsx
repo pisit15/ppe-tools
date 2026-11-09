@@ -36,7 +36,7 @@ export default function SettingsPage() {
         <div className="grid gap-3 md:grid-cols-2">
           {locations.map(loc => { const assigned = state.thresholds.filter(t => t.locationId === loc.id).length; const stocked = new Set(state.lots.filter(l => l.locationId === loc.id && l.quantity > 0).map(l => l.itemId)).size; return (
             <div key={loc.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-2">
-              <div className="flex items-start justify-between gap-2"><div><div className="font-semibold text-gray-900">{loc.name}</div><div className="text-xs text-gray-500">{loc.type}{loc.area ? ` · ${loc.area}` : ''}</div></div><span className="text-xs rounded-md px-2 py-0.5" style={{ background: loc.issueMode === 'self_service' ? `${VIZ.primary}1A` : '#F3F4F6', color: loc.issueMode === 'self_service' ? VIZ.primary : VIZ.lightText }}>{loc.issueMode === 'self_service' ? 'หยิบเองผ่าน QR' : 'เจ้าหน้าที่จ่าย'}</span></div>
+              <div className="flex items-start justify-between gap-2"><div><div className="font-semibold text-gray-900">{loc.name}</div><div className="text-xs text-gray-500">{loc.type}{loc.area ? ` · ${loc.area}` : ''}</div></div><span className="text-xs rounded-md px-2 py-0.5" style={{ background: loc.issueMode === 'self_service' ? `${VIZ.primary}1A` : '#F3F4F6', color: loc.issueMode === 'self_service' ? VIZ.primary : VIZ.lightText }}>{loc.issueMode === 'self_service' ? 'หยิบเองผ่าน QR' : 'เจ้าหน้าที่จ่าย'}{loc.requireRequester ? ' · ต้องระบุชื่อ' : ''}</span></div>
               <div className="text-xs text-gray-500">รายการประจำจุด {assigned} · มีของ {stocked} รายการ · ตรวจล่าสุด {loc.lastChecked ? thaiDate(loc.lastChecked) : 'ยังไม่เคย'}{loc.inspectionIssue && <span style={{ color: VIZ.accent }}> · มีปัญหาค้าง</span>}</div>
               <div className="flex flex-wrap gap-2 pt-1">
                 <button type="button" className={btnSecondary} onClick={() => setEdit({ open: true, loc })}>แก้ไข</button>
@@ -81,14 +81,14 @@ function openPoster(qr: { loc: FaLocation; url: string; svg: string } | null, it
 
 function LocationModal({ open, loc, onClose, onSaved }: { open: boolean; loc: FaLocation | null; onClose: () => void; onSaved: () => void }) {
   const { company, refresh } = useFa();
-  const [form, setForm] = useState({ name: '', type: TYPES[0], area: '', issueMode: 'controlled' as 'controlled' | 'self_service' });
+  const [form, setForm] = useState({ name: '', type: TYPES[0], area: '', issueMode: 'controlled' as 'controlled' | 'self_service', requireRequester: false });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const createId = useMemo(() => crypto.randomUUID(), []);
-  useEffect(() => { if (open) { setErr(''); setForm(loc ? { name: loc.name, type: loc.type, area: loc.area, issueMode: loc.issueMode } : { name: '', type: TYPES[0], area: '', issueMode: 'controlled' }); } }, [open, loc]);
+  useEffect(() => { if (open) { setErr(''); setForm(loc ? { name: loc.name, type: loc.type, area: loc.area, issueMode: loc.issueMode, requireRequester: loc.requireRequester } : { name: '', type: TYPES[0], area: '', issueMode: 'controlled', requireRequester: false }); } }, [open, loc]);
   async function save() {
     if (!form.name.trim()) { setErr('กรุณาระบุชื่อจุด'); return; }
     setBusy(true); setErr('');
-    try { await manage(company, { action: 'location', ...(loc ? { id: loc.id } : { createId }), name: form.name.trim(), type: form.type.trim() || TYPES[0], area: form.area.trim(), issueMode: form.issueMode }); await refresh(); onSaved(); }
+    try { await manage(company, { action: 'location', ...(loc ? { id: loc.id } : { createId }), name: form.name.trim(), type: form.type.trim() || TYPES[0], area: form.area.trim(), issueMode: form.issueMode, requireRequester: form.requireRequester }); await refresh(); onSaved(); }
     catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   }
   return (
@@ -99,6 +99,7 @@ function LocationModal({ open, loc, onClose, onSaved }: { open: boolean; loc: Fa
         <div><span className={labelClass}>ใครบันทึกการจ่าย</span>
           <label className="flex items-start gap-2 text-sm rounded-lg border border-gray-200 p-2.5 mb-2"><input type="radio" name="mode" className="mt-1" checked={form.issueMode === 'controlled'} onChange={() => setForm(f => ({ ...f, issueMode: 'controlled' }))} /><span><b>เจ้าหน้าที่จ่าย</b><span className="block text-xs text-gray-500">พยาบาล/จป. บันทึกจากหน้า จ่ายวันนี้ (ห้องพยาบาล)</span></span></label>
           <label className="flex items-start gap-2 text-sm rounded-lg border border-gray-200 p-2.5"><input type="radio" name="mode" className="mt-1" checked={form.issueMode === 'self_service'} onChange={() => setForm(f => ({ ...f, issueMode: 'self_service' }))} /><span><b>หยิบเองผ่าน QR</b><span className="block text-xs text-gray-500">พนักงานสแกน QR หน้าตู้ แตะของที่หยิบ บันทึกเอง ไม่ต้อง login (ตู้ยาตามพื้นที่)</span></span></label></div>
+        <label className="flex items-start gap-2 text-sm rounded-lg border border-gray-200 p-2.5"><input type="checkbox" className="mt-1 h-4 w-4" checked={form.requireRequester} onChange={e => setForm(f => ({ ...f, requireRequester: e.target.checked }))} /><span><b>บังคับระบุชื่อผู้เบิกยา</b><span className="block text-xs text-gray-500">เปิด = บันทึกไม่ได้ถ้าไม่กรอกชื่อ (ทั้งหน้าจ่ายและหน้า QR) · ปิด = ไม่กรอกก็ได้ แต่ระบบยังเก็บเวลา จุด และผู้บันทึกเสมอ</span></span></label>
         {err && <p className="text-sm" style={{ color: VIZ.accent }}>{err}</p>}
       </div>
     </Modal>

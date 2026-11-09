@@ -24,7 +24,7 @@ export const FA_ICONS: { id: Exclude<FaIcon, ''>; label: string }[] = [
 ];
 
 // ---- Shapes returned by /api/first-aid/state (normalized at the API boundary) ----
-export type FaLocation = { id: string; name: string; type: string; area: string; issueMode: FirstAidMode; lastChecked: string | null; inspectionIssue: boolean; hasPublicLink: boolean; icon: string; isRegister: boolean };
+export type FaLocation = { id: string; name: string; type: string; area: string; issueMode: FirstAidMode; lastChecked: string | null; inspectionIssue: boolean; hasPublicLink: boolean; requireRequester: boolean; icon: string; isRegister: boolean };
 export type FaItem = { id: string; name: string; generic: string; description: string; category: string; unit: string; min: number; trackExpiry: boolean; icon: FaIcon; imageUrl: string | null; hasImage: boolean; imageSource: string };
 export type FaLot = { id: string; itemId: string; locationId: string; code: string; expiry: string | null; quantity: number };
 export type FaThreshold = { itemId: string; locationId: string; min: number };
