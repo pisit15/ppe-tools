@@ -1,4 +1,4 @@
-import { checkRegisteredProduct, type ProductLegalInput } from '@/lib/chemical/legal/product';
+import { checkRegisteredProduct, summarizeParts, type ProductLegalInput } from '@/lib/chemical/legal/product';
 import type { LegalCheck } from '@/lib/chemical/legal/types';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
@@ -40,9 +40,9 @@ export async function GET(request: NextRequest) {
       }
       const cache = new Map<string, LegalCheck>();
       const register = data.map(row => {
-        const { parts: _parts, general: _general, ...composition } = checkRegisteredProduct(catalog, row, cache);
-        void _parts; void _general;
-        return { ...row, ...composition, has_sds: !!(row.sds_file_path || row.sds_url), valid_cas: normalizeCas(row.cas_no) };
+        const { parts, general: _general, ...composition } = checkRegisteredProduct(catalog, row, cache);
+        void _general;
+        return { ...row, ...composition, parts: summarizeParts(parts), has_sds: !!(row.sds_file_path || row.sds_url), valid_cas: normalizeCas(row.cas_no) };
       });
       return NextResponse.json({ ...summary, register });
     }

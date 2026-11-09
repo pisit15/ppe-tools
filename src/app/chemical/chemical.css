@@ -19,4 +19,8 @@
 .legal-table th, .legal-table td { padding: .8rem; text-align: left; vertical-align: top; border-bottom: 1px solid #e5e7eb; }
 .legal-table th { background: #f9fafb; font-weight: 600; }
 .legal-table tr:hover td { background: #faf5ff; }
+.legal-table tr.legal-row-parent td { border-bottom: none; }
+.legal-table tr.legal-row-part td { background: #fafafa; padding-top: .45rem; padding-bottom: .45rem; border-bottom: 1px dashed #e5e7eb; }
+.legal-table tr.legal-row-part:last-child td, .legal-table tr.legal-row-part + tr:not(.legal-row-part) { border-bottom: 1px solid #e5e7eb; }
+.legal-table tr.legal-row-part-hit td { background: #f3e8ff; }
 .legal-card summary:focus-visible, .legal-btn:focus-visible { outline: 3px solid #9333ea; outline-offset: 3px; }

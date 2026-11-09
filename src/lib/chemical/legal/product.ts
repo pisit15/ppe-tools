@@ -10,6 +10,11 @@ export type ProductLegalPart = {
   concentration: string | null; basis: string | null; source_page: string | null;
   missingReason: string | null; check: LegalCheck | null;
 };
+/** Compact per-part summary for the register table: no entries, only counts. */
+export type RegisterLegalPart = Pick<ProductLegalPart, 'key' | 'name' | 'kind' | 'cas' | 'concentration' | 'missingReason'> & { counts: LegalCheck['counts'] | null };
+export function summarizeParts(parts: ProductLegalPart[]): RegisterLegalPart[] {
+  return parts.map(p => ({ key: p.key, name: p.name, kind: p.kind, cas: p.cas, concentration: p.concentration, missingReason: p.missingReason, counts: p.check?.counts || null }));
+}
 export type ProductLegalCheck = {
   parts: ProductLegalPart[]; general: LegalEntry[]; counts: LegalCheck['counts']; checked_cas_count: number;
   missing_cas_count: number; component_count: number; incomplete: boolean;

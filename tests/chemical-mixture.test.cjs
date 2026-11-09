@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const ts=require('typescript');
 require.extensions['.ts']=(m,file)=>m._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);
 const {validateComponents,validateProductType}=require('../src/lib/chemical/components.ts');
-const {checkRegisteredProduct}=require('../src/lib/chemical/legal/product.ts');
+const {checkRegisteredProduct,summarizeParts}=require('../src/lib/chemical/legal/product.ts');
 const {checkLegalCatalog,hasVerifiedLegalMatch}=require('../src/lib/chemical/legal/engine.ts');
 const {extractSds,normalizeSdsExtraction}=require('../src/lib/chemical/sds-extraction.ts');
 const {createDb}=require('./chemical-db-fixture.cjs');
@@ -66,4 +66,14 @@ test('database enforces ingredient schema/checksum, defaults existing rows and p
    await assert.rejects(db.query("select public.chem_valid_components('[]'::jsonb)"),/permission denied/);
   }
  }finally{await db.close();}
+});
+
+test('register summary keeps one row per part with counts only, so the register page can show components and category hits',()=>{
+ const mixed={...product,components:[...components,{...components[0],name:'Trade secret',cas_no:null,cas_status:'confidential',concentration_text:'<1%'}]};
+ const parts=summarizeParts(checkRegisteredProduct(catalog,mixed).parts);
+ assert.equal(parts.length,6);
+ assert.deepEqual(Object.keys(parts[0]).sort(),['cas','concentration','counts','key','kind','missingReason','name']);
+ assert.deepEqual(parts[0].counts,checkLegalCatalog(catalog,components[0].cas_no).counts);
+ assert.equal(parts[5].counts,null);assert.equal(parts[5].cas,null);assert.equal(parts[5].concentration,'<1%');
+ assert.ok(!('check' in parts[0]));
 });
