@@ -20,6 +20,10 @@ export function categoryHit(counts: LegalCheck['counts'] | null | undefined, c: 
   if (!counts) return null;
   return counts[c]?.verified > 0 ? 'verified' : counts[c]?.pending > 0 ? 'pending' : null;
 }
+/** Mixtures or unclassified products with no SDS section 3 components recorded: legal results may cover only the product-level CAS. */
+export function needsComponents(row: Pick<RegisterRow, 'component_count' | 'product_type'>): boolean {
+  return row.component_count === 0 && row.product_type !== 'single';
+}
 export function rowMatchesCategories(row: Pick<RegisterRow, 'counts'>, selected: LegalCategory[], mode: 'all' | 'any'): boolean {
   if (!selected.length) return true;
   const test = (c: LegalCategory) => categoryHit(row.counts, c) !== null;
@@ -44,6 +48,7 @@ function PartCell({ part, c, active }: { part: RegisterLegalPart; c: LegalCatego
 export default function RegisterTable({ rows, isAll }: { rows: RegisterRow[]; isAll: boolean }) {
   const [search, setSearch] = useState('');
   const [onlyMatched, setOnlyMatched] = useState(false);
+  const [onlyMissing, setOnlyMissing] = useState(false);
   const [selected, setSelected] = useState<LegalCategory[]>([]);
   const [mode, setMode] = useState<'all' | 'any'>('all');
   const [showAllColumns, setShowAllColumns] = useState(false);
@@ -52,7 +57,8 @@ export default function RegisterTable({ rows, isAll }: { rows: RegisterRow[]; is
 
   const searched = useMemo(() => rows.filter(r => [r.name, r.cas_no || '', r.company_id, ...(r.components || []).flatMap(c => [c.name, c.cas_no || ''])].join(' ').toLowerCase().includes(search.toLowerCase())), [rows, search]);
   const perCategory = useMemo(() => Object.fromEntries(LEGAL_CATEGORIES.map(c => [c, searched.filter(r => categoryHit(r.counts, c) !== null).length])) as Record<LegalCategory, number>, [searched]);
-  const visible = searched.filter(r => (!onlyMatched || hasVerifiedLegalMatch(r.counts)) && rowMatchesCategories(r, selected, mode));
+  const missingCount = useMemo(() => searched.filter(needsComponents).length, [searched]);
+  const visible = searched.filter(r => (!onlyMatched || hasVerifiedLegalMatch(r.counts)) && (!onlyMissing || needsComponents(r)) && rowMatchesCategories(r, selected, mode));
   const toggle = (c: LegalCategory) => setSelected(s => s.includes(c) ? s.filter(x => x !== c) : [...s, c]);
   const columns: LegalCategory[] = selected.length && !showAllColumns ? LEGAL_CATEGORIES.filter(c => selected.includes(c)) : [...LEGAL_CATEGORIES];
   const componentParts = (row: RegisterRow) => (row.parts || []).filter(p => p.kind === 'component');
@@ -73,7 +79,11 @@ export default function RegisterTable({ rows, isAll }: { rows: RegisterRow[]; is
           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm min-h-9 ${selected.includes(c) ? 'bg-purple-700 border-purple-700 text-white' : 'bg-white border-gray-300 text-gray-800 hover:border-purple-400'}`}>
           {CATEGORY_LABELS[c]}<span className={`text-xs rounded-full px-1.5 py-0.5 ${selected.includes(c) ? 'bg-white/20' : 'bg-gray-100 text-gray-600'}`}>{perCategory[c]}</span>
         </button>)}
-        {selected.length > 0 && <button type="button" className="text-sm text-purple-700 underline ml-1 min-h-9" onClick={() => setSelected([])}>ล้างตัวกรอง</button>}
+        {missingCount > 0 && <button type="button" aria-pressed={onlyMissing} onClick={() => setOnlyMissing(v => !v)} title="สารผสม / ยังไม่ระบุประเภท ที่ยังไม่ได้บันทึกองค์ประกอบจาก SDS ข้อ 3"
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm min-h-9 ${onlyMissing ? 'bg-amber-600 border-amber-600 text-white' : 'bg-white border-amber-300 text-amber-900 hover:border-amber-500'}`}>
+          ยังไม่มีองค์ประกอบ<span className={`text-xs rounded-full px-1.5 py-0.5 ${onlyMissing ? 'bg-white/20' : 'bg-amber-50 text-amber-800'}`}>{missingCount}</span>
+        </button>}
+        {(selected.length > 0 || onlyMissing) && <button type="button" className="text-sm text-purple-700 underline ml-1 min-h-9" onClick={() => { setSelected([]); setOnlyMissing(false); }}>ล้างตัวกรอง</button>}
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-3 text-sm">
         {selected.length > 1 && <div role="radiogroup" aria-label="เงื่อนไขการจับคู่หมวด" className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
@@ -98,7 +108,9 @@ export default function RegisterTable({ rows, isAll }: { rows: RegisterRow[]; is
             <td><strong>{row.name}</strong><p className="text-gray-600 mt-1">{row.cas_no || (row.product_type === 'mixture' ? 'ดู CAS แยกตามองค์ประกอบ' : 'ยังไม่มี CAS')}{isAll ? ` · ${row.company_id.toUpperCase()}` : ''}</p>
               {(row.product_type === 'mixture' || row.component_count > 0) && <p className="text-xs text-purple-800 mt-1">{row.product_type === 'mixture' ? 'สารผสม · ' : ''}ค้นหาได้ {row.checked_cas_count} CAS · ผลรวมด้านขวานับทุกองค์ประกอบ</p>}
               {all.length > 0 && <button type="button" aria-expanded={opened} onClick={() => toggleRow(row.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-purple-800 rounded-md border border-purple-200 bg-purple-50 px-2 py-1 hover:bg-purple-100 min-h-8">{opened ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{row.component_count} องค์ประกอบ{selected.length ? ` · เข้าข่าย ${hits.length}` : ''}</button>}
-              {row.incomplete && <p className="text-xs text-amber-800 mt-1">ข้อมูลองค์ประกอบ / CAS ยังไม่ครบ</p>}{row.has_sds && <SdsLink id={row.id} name={row.name} compact />}</td>
+              {needsComponents(row)
+                ? <p className="mt-1 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 inline-block">ยังไม่ได้บันทึกองค์ประกอบจาก SDS{row.checked_cas_count ? ' — ผลด้านขวามาจาก CAS ระดับผลิตภัณฑ์เท่านั้น' : ''} · <Link className="underline font-semibold" href={`/chemical/${row.id}/edit?company_id=${encodeURIComponent(row.company_id)}`}>เพิ่มองค์ประกอบ</Link></p>
+                : row.incomplete && <p className="text-xs text-amber-800 mt-1">ข้อมูลองค์ประกอบ / CAS ยังไม่ครบ</p>}{row.has_sds && <SdsLink id={row.id} name={row.name} compact />}</td>
             {columns.map(c => <td key={c} className={selected.includes(c) ? 'bg-purple-50/60' : ''}><CategoryCell counts={row.counts} c={c} checkable={row.checked_cas_count > 0} /></td>)}
             <td><Link className="legal-btn whitespace-nowrap" href={`/chemical/legal?company_id=${encodeURIComponent(row.company_id)}&substance_id=${row.id}`}>ดูข้อกฎหมาย</Link></td>
           </tr>,
