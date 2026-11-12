@@ -431,7 +431,11 @@ export async function manageFirstAid(request: NextRequest) {
       }
     }
     check(await db.from('fa_items').update({ image_path: imagePath, image_source: source, image_updated_at: new Date().toISOString() }).eq('company_id', companyId).eq('id', itemId));
-    if (current.image_path && current.image_path !== imagePath) await db.storage.from(FA_IMAGE_BUCKET).remove([current.image_path]).catch(() => undefined);
+    // A catalog copied to another company shares the picture file: delete it only when it is this company's own and no other row still uses it.
+    if (current.image_path && current.image_path !== imagePath && String(current.image_path).startsWith(`${companyId}/`)) {
+      const others = check(await db.from('fa_items').select('id').eq('image_path', current.image_path).limit(1));
+      if (!others?.length) await db.storage.from(FA_IMAGE_BUCKET).remove([current.image_path]).catch(() => undefined);
+    }
     const url = imagePath ? (await db.storage.from(FA_IMAGE_BUCKET).createSignedUrl(imagePath, IMAGE_URL_SECONDS)).data?.signedUrl || null : null;
     return { ok: true, imageUrl: url, hasImage: !!imagePath, imageSource: source };
   }
