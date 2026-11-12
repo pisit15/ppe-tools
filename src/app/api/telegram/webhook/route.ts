@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
-import { answerCallback, editMessage, sendMessage, webhookSecret, esc } from '@/lib/telegram/api';
+import { answerCallback, downloadFile, editMessage, sendMessage, webhookSecret, esc } from '@/lib/telegram/api';
+import { lineToTelegram, resolveCallback } from '@/lib/telegram/fromLine';
+import { handleInspectImage, handleInspectText } from '@/lib/inspect/line';
+import { handlePostback, handleText } from '@/lib/line/bot';
+import type { LineMessage } from '@/lib/line/flex';
 import { handleVisitorCallback, tgLinkId } from '@/lib/telegram/visitorActions';
 import { groupCommandText, handleGroupText } from '@/lib/line/groupBot';
 import { telegramScope, recordChat, touchChat } from '@/lib/telegram/chats';
 import { getLinkedAccount } from '@/lib/line/accounts';
 import { notifyDecision } from '@/lib/visitor/notify';
-import { textFallback } from '@/lib/line/flex';
 
 export const dynamic = 'force-dynamic';
 
 type TgUser = { id: number; first_name?: string; username?: string; is_bot?: boolean };
 type TgChat = { id: number; type: 'private' | 'group' | 'supergroup' | 'channel'; title?: string };
-type TgMessage = { message_id: number; from?: TgUser; chat: TgChat; text?: string; entities?: { type: string; offset: number; length: number }[] };
+type TgMessage = { message_id: number; from?: TgUser; chat: TgChat; text?: string; caption?: string; photo?: { file_id: string; width: number; height: number; file_size?: number }[]; document?: { file_id: string; mime_type?: string; file_size?: number }; entities?: { type: string; offset: number; length: number }[] };
 type Update = {
   update_id: number;
   message?: TgMessage;
@@ -32,6 +35,12 @@ function commandText(m: TgMessage, botUsername: string): string | null {
   if (botUsername && mention.test(t)) t = t.replace(mention, '@she');
   t = t.replace(/^\/she(?:@\w+)?\b/i, '@she');
   return groupCommandText(t);
+}
+
+/** Send the LINE bot's replies to a Telegram chat (cards → text + buttons). */
+async function sendLineMessages(db: ReturnType<typeof getSupabaseServer>, chatId: number, messages: LineMessage[] | null, replyTo?: number) {
+  if (!messages?.length) return;
+  for (const m of await lineToTelegram(db, messages)) await sendMessage(chatId, m.html, m.inline || m.reply, replyTo);
 }
 
 export async function POST(request: NextRequest) {
@@ -60,7 +69,14 @@ export async function POST(request: NextRequest) {
       const q = update.callback_query;
       const chat = q.message?.chat;
       const data = q.data || '';
-      if (!chat || !data.startsWith('visitor:')) { await answerCallback(q.id); return NextResponse.json({ ok: true }); }
+      if (!chat) { await answerCallback(q.id); return NextResponse.json({ ok: true }); }
+      if (!data.startsWith('visitor:')) {
+        // Browse/detail buttons rendered from LINE Flex cards.
+        const payload = await resolveCallback(db, data);
+        await answerCallback(q.id);
+        if (payload && q.from?.id) await sendLineMessages(db, chat.id, await handlePostback(db, tgLinkId(q.from.id), payload));
+        return NextResponse.json({ ok: true });
+      }
       const scope = await telegramScope(db, chat.id);
       if (!scope) { await answerCallback(q.id, 'กลุ่มนี้ยังไม่ได้ผูกกับบริษัท', true); return NextResponse.json({ ok: true }); }
       const reply = await handleVisitorCallback(db, scope, q.from?.id, data);
@@ -81,17 +97,37 @@ export async function POST(request: NextRequest) {
 
     if (m.chat.type === 'private') {
       const linkId = tgLinkId(m.from.id);
+      const ctx = { db, lineUserId: linkId, accessToken: '', fetchImage: downloadFile };
+      const raw = (m.text || '').trim();
+      const t = raw.toLowerCase();
       const account = await getLinkedAccount(db, linkId);
-      const t = (m.text || '').trim().toLowerCase();
-      if (account && !/^\/link/.test(t)) {
-        await sendMessage(m.chat.id, `ผูกบัญชีแล้วในชื่อ <b>${esc(account.displayName)}</b> — กดอนุมัติจากการ์ดในกลุ่มได้เลย\nพิมพ์ /link เพื่อผูกบัญชีอื่นแทน`);
+
+      // Photos (or image files) → equipment inspection, same pipeline as LINE.
+      const fileId = m.photo?.length ? m.photo[m.photo.length - 1].file_id : (m.document?.mime_type?.startsWith('image/') ? m.document.file_id : null);
+      if (fileId) {
+        await sendLineMessages(db, m.chat.id, await handleInspectImage(ctx, fileId), m.message_id);
         return NextResponse.json({ ok: true });
       }
-      await db.from('line_link_codes').delete().eq('line_user_id', linkId).is('used_at', null);
-      const code = newCode();
-      const { error } = await db.from('line_link_codes').insert({ code, line_user_id: linkId, expires_at: new Date(Date.now() + CODE_TTL_MS).toISOString() });
-      if (error) { await sendMessage(m.chat.id, 'ระบบเชื่อมบัญชีขัดข้อง กรุณาลองใหม่ภายหลัง'); return NextResponse.json({ ok: true }); }
-      await sendMessage(m.chat.id, `ผูก Telegram นี้กับบัญชี tools.eashe.org เพื่อกดอนุมัติคำขอจากในกลุ่ม\n\nกดลิงก์แล้วเข้าสู่ระบบด้วยบัญชีบริษัท (ลิงก์ใช้ได้ 15 นาที ครั้งเดียว):\n${siteBase()}/line/link?code=${code}&via=telegram`);
+
+      const wantsLink = /^\/link\b/.test(t) || /^(เชื่อมบัญชี|link)$/i.test(raw);
+      if (/^\/start\b/.test(t) && account) { await sendLineMessages(db, m.chat.id, await handleText(db, linkId, 'เมนู')); return NextResponse.json({ ok: true }); }
+      if (!wantsLink && !account && raw && !/^\/start\b/.test(t)) {
+        // Unlinked users may still be inspectors registered by code (รหัส 0058 …).
+        const insp = await handleInspectText(ctx, raw);
+        if (insp) { await sendLineMessages(db, m.chat.id, insp); return NextResponse.json({ ok: true }); }
+      }
+      if (wantsLink || !account) {
+        await db.from('line_link_codes').delete().eq('line_user_id', linkId).is('used_at', null);
+        const code = newCode();
+        const { error } = await db.from('line_link_codes').insert({ code, line_user_id: linkId, expires_at: new Date(Date.now() + CODE_TTL_MS).toISOString() });
+        if (error) { await sendMessage(m.chat.id, 'ระบบเชื่อมบัญชีขัดข้อง กรุณาลองใหม่ภายหลัง'); return NextResponse.json({ ok: true }); }
+        await sendMessage(m.chat.id, `${account ? `ผูกอยู่ในชื่อ <b>${esc(account.displayName)}</b> — ` : ''}ผูก Telegram นี้กับบัญชี tools.eashe.org เพื่อใช้เมนูและกดอนุมัติคำขอจากในกลุ่ม\n\nกดลิงก์แล้วเข้าสู่ระบบด้วยบัญชีบริษัท (ลิงก์ใช้ได้ 15 นาที ครั้งเดียว):\n${siteBase()}/line/link?code=${code}&via=telegram`);
+        return NextResponse.json({ ok: true });
+      }
+      if (!raw) return NextResponse.json({ ok: true });
+      // Inspection commands first (รหัส …, ไม่ผ่าน …, ตรวจซ้ำ …); everything else is the general bot (PPE, incidents, waste, chemicals, laws …).
+      const replies = (await handleInspectText(ctx, raw)) ?? (await handleText(db, linkId, raw));
+      await sendLineMessages(db, m.chat.id, replies);
       return NextResponse.json({ ok: true });
     }
 
@@ -101,12 +137,7 @@ export async function POST(request: NextRequest) {
       if (cmd === null) return NextResponse.json({ ok: true });
       const scope = await telegramScope(db, m.chat.id);
       if (!scope) { await sendMessage(m.chat.id, 'กลุ่มนี้ยังไม่ได้ผูกกับบริษัท — ทีม SHE ตั้งค่าได้ที่ tools.eashe.org/visitor/settings → การแจ้งเตือน Telegram', undefined, m.message_id); return NextResponse.json({ ok: true }); }
-      const messages = await handleGroupText(db, scope, cmd);
-      if (messages) {
-        // LINE Flex cards fall back to their alt text here; plain texts pass through.
-        const html = textFallback(messages).map(x => (x.type === 'text' ? esc(String((x as { text?: string }).text || '')) : '')).filter(Boolean).join('\n\n');
-        if (html) await sendMessage(m.chat.id, html, undefined, m.message_id);
-      }
+      await sendLineMessages(db, m.chat.id, await handleGroupText(db, scope, cmd), m.message_id);
       return NextResponse.json({ ok: true });
     }
   } catch (err) {

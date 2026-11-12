@@ -17,7 +17,9 @@ const MAX_PHOTOS = 3;
 const PENDING_MS = 30 * 60 * 1000;  // held photo (already passed this round) waits for "ตรวจซ้ำ" up to 30 min
 const HELP = 'วิธีบันทึกผลตรวจทาง LINE\n1) ถ่ายรูปอุปกรณ์ให้เห็น QR ชัด (ห่างไม่เกิน ~70 ซม.) แล้วส่งมาที่นี่ทีละรูป\n2) ระบบตอบกลับว่าบันทึกถังไหนแล้ว — ส่ง QR ก่อนเสมอ รูปเพิ่มส่งตามหลัง\n3) ถ้าไม่ผ่าน พิมพ์ต่อว่า "ไม่ผ่าน <สิ่งที่พบ>" ภายใน 10 นาที\n4) ถ้าตรวจวันก่อนหน้า พิมพ์ "วันที่ 31/10" ก่อนส่งรูป\n5) ถังที่ตรวจผ่านแล้วในรอบนี้ ระบบจะถามก่อน — พิมพ์ "ตรวจซ้ำ" เพื่อยืนยัน\nรูปที่ 2–3 ของถังเดิมส่งต่อได้เลย (ภายใน 10 นาที)';
 
-type Ctx = { db: SupabaseClient; lineUserId: string; accessToken: string };
+/** fetchImage: optional override for non-LINE channels (Telegram passes a file_id and its own downloader). */
+type Ctx = { db: SupabaseClient; lineUserId: string; accessToken: string; fetchImage?: (messageId: string) => Promise<Buffer | null> };
+const imageOf = (ctx: Ctx, id: string) => (ctx.fetchImage ? ctx.fetchImage(id) : fetchContent(id, ctx.accessToken));
 
 // ---------------------------------------------------------------- identity
 
@@ -140,7 +142,7 @@ export async function handleInspectText(ctx: Ctx, raw: string): Promise<LineMess
     if (!cur?.pending_asset_id || !cur.pending_message_id || !cur.pending_at || Date.now() - Date.parse(cur.pending_at) > PENDING_MS) return [text('ไม่มีรูปที่รอยืนยันอยู่ (เกิน 30 นาที หรือยังไม่ได้ส่งรูป) — ส่งรูปถังใหม่อีกครั้ง')];
     const { data: assetRow } = await db.from('insp_assets').select('*').eq('id', cur.pending_asset_id).maybeSingle();
     if (!assetRow) return [text('ไม่พบอุปกรณ์ที่รอยืนยัน')];
-    const buf = await fetchContent(cur.pending_message_id, ctx.accessToken);
+    const buf = await imageOf(ctx, cur.pending_message_id);
     await db.from('insp_line_users').update({ pending_asset_id: null, pending_message_id: null, pending_at: null }).eq('line_user_id', lineUserId);
     if (!buf) return [text('ดึงรูปเดิมจาก LINE ไม่ได้แล้ว กรุณาส่งรูปใหม่ แล้วพิมพ์ "ตรวจซ้ำ" อีกครั้ง')];
     return recordPass(ctx, assetRow as InspAssetRow, buf, cur.pending_message_id, true);
@@ -155,12 +157,12 @@ export async function handleInspectText(ctx: Ctx, raw: string): Promise<LineMess
 // ---------------------------------------------------------------- image
 
 export async function handleInspectImage(ctx: Ctx, messageId: string): Promise<LineMessage[]> {
-  const { db, accessToken } = ctx;
+  const { db } = ctx;
   // Idempotent: LINE may redeliver the same event.
   const { data: dup } = await db.from('insp_photos').select('asset_id').eq('line_message_id', messageId).maybeSingle();
   if (dup) return [text('รูปนี้บันทึกไปแล้ว')];
 
-  const buf = await fetchContent(messageId, accessToken);
+  const buf = await imageOf(ctx, messageId);
   if (!buf) return [text('ดึงรูปจาก LINE ไม่สำเร็จ กรุณาส่งใหม่')];
 
   const { token, debug } = await decodeToken(buf);

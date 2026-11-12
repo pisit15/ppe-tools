@@ -3,6 +3,7 @@
 
 export type InlineButton = { text: string; callback_data?: string; url?: string };
 export type InlineKeyboard = { inline_keyboard: InlineButton[][] };
+export type ReplyMarkup = InlineKeyboard | { keyboard: { text: string }[][]; resize_keyboard: true; one_time_keyboard: true } | { remove_keyboard: true };
 export type TgResult = { ok: boolean; status: number; error?: string; message_id?: number };
 
 const token = () => process.env.TELEGRAM_BOT_TOKEN || '';
@@ -31,7 +32,7 @@ export async function tgCall<T = unknown>(method: string, body: Record<string, u
   }
 }
 
-export async function sendMessage(chatId: number | string, html: string, keyboard?: InlineKeyboard, replyTo?: number): Promise<TgResult> {
+export async function sendMessage(chatId: number | string, html: string, keyboard?: ReplyMarkup, replyTo?: number): Promise<TgResult> {
   const r = await tgCall<{ message_id: number }>('sendMessage', {
     chat_id: chatId, text: html.slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true,
     ...(keyboard ? { reply_markup: keyboard } : {}),
@@ -62,4 +63,22 @@ export async function setWebhook(url: string, secret: string) {
 
 export async function getWebhookInfo() {
   return tgCall<{ url?: string; last_error_message?: string; pending_update_count?: number }>('getWebhookInfo', {});
+}
+
+/** Download a photo/document by file_id (≤ 12 MB). Telegram serves files from a separate host that embeds the bot token. */
+export async function downloadFile(fileId: string): Promise<Buffer | null> {
+  const t = token();
+  if (!t) return null;
+  const info = await tgCall<{ file_path?: string; file_size?: number }>('getFile', { file_id: fileId });
+  const path = info.result?.file_path;
+  if (!info.ok || !path) return null;
+  if ((info.result?.file_size || 0) > 12 * 1024 * 1024) return null;
+  try {
+    const res = await fetch(`https://api.telegram.org/file/bot${t}/${path}`);
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch (e) {
+    console.error('Telegram file download failed', e instanceof Error ? e.message : e);
+    return null;
+  }
 }
