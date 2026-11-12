@@ -113,7 +113,7 @@ export function guessIcon(row: { name?: string; category?: string; unit?: string
   return 'other';
 }
 function mapItem(row: Row, imageUrl: string | null = null): FaItem {
-  return { id: row.id, name: row.name, generic: row.generic || '', description: row.description || '', category: row.category, unit: row.unit, min: row.min, trackExpiry: row.track_expiry, icon: (row.icon as FaIcon) || guessIcon(row), imageUrl, hasImage: !!row.image_path, imageSource: row.image_source || '', dispenseMode: row.dispense_mode === 'shared' ? 'shared' : 'unit', openLifeDays: row.open_life_days ?? null };
+  return { id: row.id, name: row.name, generic: row.generic || '', description: row.description || '', category: row.category, unit: row.unit, min: row.min, trackExpiry: row.track_expiry, icon: (row.icon as FaIcon) || guessIcon(row), imageUrl, hasImage: !!row.image_path, imageSource: row.image_source || '', dispenseMode: row.dispense_mode === 'shared' || row.dispense_mode === 'fixed' ? row.dispense_mode : 'unit', openLifeDays: row.open_life_days ?? null };
 }
 /** Signed read URLs for every item picture (private bucket), in one storage call. */
 async function itemImageUrls(db: DB, rows: Row[]): Promise<Map<string, string>> {
@@ -340,16 +340,17 @@ export async function manageFirstAid(request: NextRequest) {
   }
   if (action === 'item') {
     allowedKeys(body, ['action', 'id', 'createId', 'name', 'generic', 'category', 'unit', 'min', 'trackExpiry', 'description', 'icon', 'dispenseMode', 'openLifeDays']);
-    const dispenseMode = body.dispenseMode == null ? 'unit' : text(body.dispenseMode, 'วิธีจ่าย', 10);
-    if (dispenseMode !== 'unit' && dispenseMode !== 'shared') throw new FirstAidInputError('วิธีจ่ายไม่ถูกต้อง');
+    // An older page that does not send the mode must not reset it: on update the mode is only written when given.
+    const dispenseMode = body.dispenseMode == null ? null : text(body.dispenseMode, 'วิธีจ่าย', 10);
+    if (dispenseMode !== null && !['unit', 'shared', 'fixed'].includes(dispenseMode)) throw new FirstAidInputError('วิธีจ่ายไม่ถูกต้อง');
     const openLifeDays = dispenseMode === 'shared' && body.openLifeDays != null && body.openLifeDays !== 0 ? integer(body.openLifeDays, 'อายุหลังเปิด (วัน)', 1, 3650) : null;
     if (body.id && body.createId) throw new FirstAidInputError('เลือกแก้ไขหรือสร้างรายการอย่างใดอย่างหนึ่ง');
     const icon = text(body.icon, 'ไอคอน', 20, false);
     if (icon && !FA_ICONS.some(entry => entry.id === icon)) throw new FirstAidInputError('ไอคอนไม่ถูกต้อง');
-    const values = { name: text(body.name, 'ชื่อรายการ'), generic: text(body.generic, 'รายละเอียด', 200, false), category: text(body.category, 'หมวดหมู่', 80), unit: text(body.unit, 'หน่วยนับ', 40), min: integer(body.min ?? 0, 'จำนวนขั้นต่ำ'), track_expiry: bool(body.trackExpiry, true), description: text(body.description, 'คำอธิบายสั้น', 160, false), icon, dispense_mode: dispenseMode, open_life_days: openLifeDays };
+    const values = { name: text(body.name, 'ชื่อรายการ'), generic: text(body.generic, 'รายละเอียด', 200, false), category: text(body.category, 'หมวดหมู่', 80), unit: text(body.unit, 'หน่วยนับ', 40), min: integer(body.min ?? 0, 'จำนวนขั้นต่ำ'), track_expiry: bool(body.trackExpiry, true), description: text(body.description, 'คำอธิบายสั้น', 160, false), icon, ...(dispenseMode !== null || !body.id ? { dispense_mode: dispenseMode || 'unit', open_life_days: openLifeDays } : {}) };
     const id = body.id ? await scopedRow(db, 'fa_items', companyId, body.id) : null;
     if (id) {
-      const existing = checkOne(await db.from('fa_items').select('track_expiry,unit').eq('company_id', companyId).eq('id', id).single());
+      const existing = checkOne(await db.from('fa_items').select('track_expiry,unit,dispense_mode').eq('company_id', companyId).eq('id', id).single());
       if (existing.unit !== values.unit) {
         const [lots, movements] = await Promise.all([
           db.from('fa_lots').select('id').eq('company_id', companyId).eq('item_id', id).limit(1),
@@ -357,7 +358,8 @@ export async function manageFirstAid(request: NextRequest) {
         ]);
         if (check(lots)?.length || check(movements)?.length) throw new FirstAidInputError('รายการนี้มีล็อตหรือประวัติการเคลื่อนไหวแล้ว หากเปลี่ยนหน่วยนับให้สร้างรายการใหม่', 409);
       }
-      if (!existing.track_expiry && values.track_expiry) {
+      // Fixed equipment is never dispensed, so a missing date blocks nothing: it shows as "waiting for a due date" until entered.
+      if (!existing.track_expiry && values.track_expiry && (dispenseMode ?? existing.dispense_mode) !== 'fixed') {
         const missing = check(await db.from('fa_lots').select('id').eq('company_id', companyId).eq('item_id', id).is('expiry', null).gt('quantity', 0).limit(1));
         if (missing?.length) throw new FirstAidInputError('มีล็อตที่ยังไม่ระบุวันหมดอายุ กรุณาจัดการก่อนเปิดติดตามวันหมดอายุ');
       }
@@ -561,7 +563,7 @@ async function recordStockCount(db: DB, companyId: string, actor: ToolsActor, bo
       if (item.track_expiry && !expiry) throw new FirstAidInputError(`${item.name}: กรุณาระบุวันหมดอายุของจำนวนที่นับได้เกินระบบ`);
       check(await post({ kind: 'receive', locationId: input.locationId, date: input.date, lines: [{ itemId: line.itemId, quantity: delta }], expiry, lotCode: `COUNT-${input.date.replace(/-/g, '')}`, note: `ตรวจนับ ${input.date}: นับได้ ${line.counted} ระบบ ${system}` }));
     } else {
-      check(await post({ kind: 'dispose', locationId: input.locationId, date: input.date, lines: [{ itemId: line.itemId, quantity: -delta }], note: `ตรวจนับ ${input.date}: นับได้ ${line.counted} ระบบ ${system} (ใช้ไปโดยไม่ได้บันทึก)` }));
+      check(await post({ kind: 'dispose', locationId: input.locationId, date: input.date, lines: [{ itemId: line.itemId, quantity: -delta }], note: `ตรวจนับ ${input.date}: นับได้ ${line.counted} ระบบ ${system} ${item.dispense_mode === 'fixed' ? '(ไม่พบที่จุด — สูญหาย)' : '(ใช้ไปโดยไม่ได้บันทึก)'}` }));
     }
     results.push({ itemId: line.itemId, delta });
   }

@@ -4,8 +4,8 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import type { FaEvent } from '@/lib/first-aid/types';
-import { FA_GREEN, ItemImage, KIND_LABEL, Spinner, Stat, ToastView, VIZ, bangkokToday, btnSecondary, currentPeriod, daysUntil, errMsg, expiryDays, fmtInt, loadHistory, manage, openedContainers, personLabel, shiftPeriod, thaiDate, thaiPeriod, useFa, useToast } from '../../_components/fa';
-import type { FaItem } from '@/lib/first-aid/types';
+import { FA_GREEN, ItemImage, KIND_LABEL, Spinner, Stat, ToastView, VIZ, bangkokToday, btnSecondary, currentPeriod, daysUntil, errMsg, expiryDays, fmtInt, loadHistory, manage, openedContainers, personLabel, shiftPeriod, thaiDate, thaiPeriod, useFa, useToast, writeOffReason } from '../../_components/fa';
+import type { FaItem, WriteOffReason } from '@/lib/first-aid/types';
 
 /** Shared-use items are tallied in uses (ครั้ง); opening a new container is a stock event, not a dispense. */
 const tallyUnit = (item: FaItem | undefined) => (item?.dispenseMode === 'shared' ? 'ครั้ง' : item?.unit || '');
@@ -120,11 +120,19 @@ function MonthsTab({ events }: { events: FaEvent[] | null }) {
   if (events === null) return <Spinner />;
   const months = Array.from({ length: 12 }, (_, i) => shiftPeriod(currentPeriod(), i - 11));
   const scoped = events.filter(e => scope === 'all' || e.locationId === scope);
-  const perMonth = months.map(m => ({ m, issues: scoped.filter(e => e.kind === 'issue' && e.date.startsWith(m)).length, receives: scoped.filter(e => e.kind === 'receive' && e.date.startsWith(m)).length, disposes: scoped.filter(e => e.kind === 'dispose' && e.date.startsWith(m)).length }));
+  const perMonth = months.map(m => ({ m, issues: scoped.filter(e => e.kind === 'issue' && e.usage !== 'open' && e.date.startsWith(m)).length, receives: scoped.filter(e => e.kind === 'receive' && e.date.startsWith(m)).length, disposes: scoped.filter(e => e.kind === 'dispose' && e.date.startsWith(m)).length }));
   const max = Math.max(1, ...perMonth.map(p => p.issues));
   const byItem = new Map<string, number[]>();
-  for (const e of scoped) { if (e.kind !== 'issue') continue; const idx = months.indexOf(e.date.slice(0, 7)); if (idx < 0) continue; const arr = byItem.get(e.itemId) || Array(12).fill(0); arr[idx] += e.quantity; byItem.set(e.itemId, arr); }
+  for (const e of scoped) { if (e.kind !== 'issue' || e.usage === 'open') continue; const idx = months.indexOf(e.date.slice(0, 7)); if (idx < 0) continue; const arr = byItem.get(e.itemId) || Array(12).fill(0); arr[idx] += e.quantity; byItem.set(e.itemId, arr); }
   const rows = [...byItem.entries()].map(([id, arr]) => ({ item: state.items.find(i => i.id === id) || state.archivedItems.find(i => i.id === id), arr, total: arr.reduce((a, b) => a + b, 0) })).filter(r => r.item).sort((a, b) => b.total - a.total).slice(0, 40);
+  // Written off in the same 12 months, by reason and point (units).
+  const REASONS: { id: WriteOffReason; label: string }[] = [{ id: 'damaged', label: 'ชำรุด' }, { id: 'lost', label: 'สูญหาย' }, { id: 'expired', label: 'หมดอายุ' }, { id: 'uncounted', label: 'นับแล้วขาด' }, { id: 'other', label: 'อื่น ๆ' }];
+  const disposals = scoped.filter(e => e.kind === 'dispose' && months.includes(e.date.slice(0, 7)));
+  const offByLocation = new Map<string, Record<WriteOffReason, number>>();
+  for (const e of disposals) { const row = offByLocation.get(e.locationId) || { damaged: 0, lost: 0, expired: 0, uncounted: 0, other: 0 }; row[writeOffReason(e.note)] += e.quantity; offByLocation.set(e.locationId, row); }
+  const lostItems = new Map<string, number>();
+  for (const e of disposals) { const r = writeOffReason(e.note); if (r === 'lost' || r === 'damaged') lostItems.set(e.itemId, (lostItems.get(e.itemId) || 0) + e.quantity); }
+  const topLost = [...lostItems.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, n]) => `${state.items.find(i => i.id === id)?.name || state.archivedItems.find(i => i.id === id)?.name || '?'} ${fmtInt(n)}`);
   return (
     <div className="space-y-4">
       <section className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
@@ -137,6 +145,12 @@ function MonthsTab({ events }: { events: FaEvent[] | null }) {
           <tbody>{rows.map(r => <tr key={r.item!.id} className="border-t border-gray-50"><td className="px-3 py-1 whitespace-nowrap"><div className="flex items-center gap-2"><ItemImage item={r.item!} size={22} rounded={5} /><b className="text-gray-900">{r.item!.name}</b><span className="text-gray-400">{tallyUnit(r.item)}</span></div></td>{r.arr.map((v, i) => <td key={i} className="px-1.5 py-1 text-right tabular-nums">{v ? fmtInt(v) : <span className="text-gray-300">·</span>}</td>)}<td className="px-2 py-1 text-right tabular-nums font-semibold" style={{ background: `${FA_GREEN}0F` }}>{fmtInt(r.total)}</td></tr>)}</tbody></table>
         {rows.length === 0 && <p className="px-4 py-10 text-center text-sm text-gray-500">ไม่มีการจ่ายใน 12 เดือน</p>}
       </section>
+      {offByLocation.size > 0 && (
+        <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+          <div className="px-4 py-3 border-b border-gray-100"><h3 className="font-semibold text-gray-900">ตัดออก 12 เดือน · แยกตามเหตุผล</h3><p className="text-xs text-gray-500">จำนวนชิ้นที่ตัดออกจากสต๊อกโดยไม่ได้จ่าย — “สูญหาย” สูงที่จุดใด ควรดูการเข้าถึงตู้จุดนั้น{topLost.length > 0 ? ` · ชำรุด/หายมากสุด: ${topLost.join(' · ')}` : ''}</p></div>
+          <table className="w-full text-sm"><thead><tr className="text-xs text-gray-500 bg-gray-50/80"><th className="text-left font-medium px-3 py-2">จุด</th>{REASONS.map(r => <th key={r.id} className="text-right font-medium px-2 py-2">{r.label}</th>)}<th className="text-right font-medium px-3 py-2">รวม</th></tr></thead>
+            <tbody>{[...offByLocation.entries()].map(([locId, row]) => <tr key={locId} className="border-t border-gray-50"><td className="px-3 py-1.5 text-gray-900">{state.locations.find(l => l.id === locId)?.name || state.archivedLocations.find(l => l.id === locId)?.name || '—'}</td>{REASONS.map(r => <td key={r.id} className="px-2 py-1.5 text-right tabular-nums" style={{ color: row[r.id] ? (r.id === 'lost' ? VIZ.accent : VIZ.text) : VIZ.muted }}>{row[r.id] ? fmtInt(row[r.id]) : '·'}</td>)}<td className="px-3 py-1.5 text-right tabular-nums font-semibold">{fmtInt(REASONS.reduce((s, r) => s + row[r.id], 0))}</td></tr>)}</tbody></table>
+        </section>)}
     </div>
   );
 }

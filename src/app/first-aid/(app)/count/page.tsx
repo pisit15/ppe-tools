@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Fragment, Suspense, useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { FaItem } from '@/lib/first-aid/types';
 import { FA_GREEN, ItemImage, ItemPicker, Spinner, ToastView, VIZ, balance, bangkokToday, btnPrimary, btnSecondary, daysUntil, errMsg, expiryDays, fmtInt, inputClass, labelClass, manage, postTransaction, thaiDate, useFa, useToast } from '../../_components/fa';
@@ -54,9 +54,11 @@ function StockCount({ locationId, onDone }: { locationId: string; onDone: (msg: 
     const ids = new Set<string>([...state.thresholds.filter(t => t.locationId === locationId).map(t => t.itemId), ...state.lots.filter(l => l.locationId === locationId && l.quantity > 0).map(l => l.itemId)]);
     let draft: Record<string, { counted: string; expiry: string }> = {};
     try { draft = JSON.parse(window.localStorage.getItem(draftKey) || '{}'); } catch { /* ignore */ }
-    const next = state.items.filter(i => ids.has(i.id)).sort((a, b) => a.name.localeCompare(b.name, 'th')).map(item => ({ item, system: balance(state, item.id, locationId), counted: draft[item.id]?.counted ?? '', expiry: draft[item.id]?.expiry ?? '' }));
+    const next = state.items.filter(i => ids.has(i.id)).sort((a, b) => Number(a.dispenseMode === 'fixed') - Number(b.dispenseMode === 'fixed') || a.name.localeCompare(b.name, 'th')).map(item => ({ item, system: balance(state, item.id, locationId), counted: draft[item.id]?.counted ?? '', expiry: draft[item.id]?.expiry ?? '' }));
     setRows(next);
-    const expired = state.lots.filter(l => l.locationId === locationId && l.quantity > 0 && l.expiry && (expiryDays(l.expiry, state.asOf) ?? 0) < 0).map(l => l.id);
+    // Expired consumables are pre-ticked for disposal; equipment past its due date is not thrown away — it is checked and given a new date.
+    const fixedIds = new Set(state.items.filter(i => i.dispenseMode === 'fixed').map(i => i.id));
+    const expired = state.lots.filter(l => l.locationId === locationId && l.quantity > 0 && l.expiry && (expiryDays(l.expiry, state.asOf) ?? 0) < 0 && !fixedIds.has(l.itemId)).map(l => l.id);
     setDispose(new Set(expired));
   }, [state, locationId, draftKey]);
   useEffect(() => { const d: Record<string, { counted: string; expiry: string }> = {}; rows.forEach(r => { if (r.counted !== '' || r.expiry) d[r.item.id] = { counted: r.counted, expiry: r.expiry }; }); window.localStorage.setItem(draftKey, JSON.stringify(d)); }, [rows, draftKey]);
@@ -88,19 +90,22 @@ function StockCount({ locationId, onDone }: { locationId: string; onDone: (msg: 
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
           <thead><tr className="text-xs text-gray-500 bg-gray-50/80"><th className="text-left font-medium px-3 py-2">รายการ</th><th className="text-right font-medium px-2 py-2">ในระบบ</th><th className="text-right font-medium px-2 py-2">นับได้จริง</th><th className="text-right font-medium px-2 py-2">ต่าง</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">ล็อต / หมดอายุ</th><th className="text-right font-medium px-2 py-2 hidden sm:table-cell">ขั้นต่ำ</th><th className="text-left font-medium px-2 py-2">ผล</th></tr></thead>
-          <tbody>{parsed.map(r => { const lots = state.lots.filter(l => l.locationId === locationId && l.itemId === r.item.id && l.quantity > 0); const low = (r.n ?? r.system) < minOf(r.item); return (
-            <tr key={r.item.id} className={`border-t border-gray-50 ${r.n === null ? '' : 'bg-white'}`}>
+          <tbody>{parsed.map((r, index) => { const lots = state.lots.filter(l => l.locationId === locationId && l.itemId === r.item.id && l.quantity > 0); const low = (r.n ?? r.system) < minOf(r.item); const fixed = r.item.dispenseMode === 'fixed'; const firstFixed = fixed && (index === 0 || parsed[index - 1].item.dispenseMode !== 'fixed'); return (
+            <Fragment key={r.item.id}>
+            {firstFixed && <tr className="bg-gray-50/80 border-t border-gray-100"><td colSpan={7} className="px-3 py-1.5 text-xs font-medium text-gray-600">อุปกรณ์ประจำจุด — ตรวจว่ามีครบและใช้งานได้ · กด “ครบ” ถ้าตรง · ของที่ไม่พบให้พิมพ์จำนวนที่เหลือจริง</td></tr>}
+            <tr className={`border-t border-gray-50 ${r.n === null ? '' : 'bg-white'}`}>
               <td className="px-3 py-1.5"><div className="flex items-center gap-2"><ItemImage item={r.item} size={32} rounded={8} /><div><div className="font-medium text-gray-900">{r.item.name}</div><div className="text-xs text-gray-500">{r.item.unit}</div></div></div></td>
               <td className="px-2 py-1.5 text-right tabular-nums">{fmtInt(r.system)}</td>
-              <td className="px-2 py-1.5 text-right"><input type="number" inputMode="numeric" min={0} aria-label={`นับได้จริง ${r.item.name}`} placeholder={String(r.system)} value={r.counted} onChange={e => set(r.item.id, { counted: e.target.value })} onFocus={e => e.target.select()} className="w-20 rounded-md border border-gray-300 px-2 py-1 text-right text-gray-900" style={inputStyle(r)} /></td>
+              <td className="px-2 py-1.5 text-right"><input type="number" inputMode="numeric" min={0} aria-label={`นับได้จริง ${r.item.name}`} placeholder={String(r.system)} value={r.counted} onChange={e => set(r.item.id, { counted: e.target.value })} onFocus={e => e.target.select()} className="w-20 rounded-md border border-gray-300 px-2 py-1 text-right text-gray-900" style={inputStyle(r)} />{fixed && r.n === null && <button type="button" className="ml-1.5 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50" onClick={() => set(r.item.id, { counted: String(r.system) })}>ครบ</button>}</td>
               <td className="px-2 py-1.5 text-right tabular-nums font-medium" style={{ color: r.delta === 0 ? VIZ.positive : r.delta > 0 ? VIZ.secondary : VIZ.accent }}>{r.n === null ? <span className="text-gray-300">—</span> : r.delta === 0 ? '0' : r.delta > 0 ? `+${fmtInt(r.delta)}` : fmtInt(r.delta)}</td>
               <td className="px-2 py-1.5 hidden md:table-cell"><div className="flex flex-wrap gap-1 items-center">
                 {lots.map(l => { const d = expiryDays(l.expiry, state.asOf); const exp = d !== null && d < 0; return <span key={l.id} className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]" style={exp ? { borderColor: VIZ.accent, color: VIZ.accent, background: `${VIZ.accent}14` } : !l.expiry && r.item.trackExpiry ? { borderStyle: 'dashed', color: VIZ.lightText } : { borderColor: '#E5E7EB', color: VIZ.lightText }}>{l.expiry ? thaiDate(l.expiry, { short: true }) : r.item.trackExpiry ? 'ไม่ระบุวันหมดอายุ' : 'ไม่ติดตาม'} · {fmtInt(l.quantity)}{exp && <label className="ml-1 inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={dispose.has(l.id)} onChange={e => setDispose(s => { const n = new Set(s); if (e.target.checked) n.add(l.id); else n.delete(l.id); return n; })} />ตัดทิ้ง</label>}</span>; })}
                 {r.delta > 0 && r.item.trackExpiry && <input type="date" aria-label="วันหมดอายุของที่นับได้เกิน" value={r.expiry} onChange={e => set(r.item.id, { expiry: e.target.value })} className="rounded-md border px-1.5 py-0.5 text-xs text-gray-900" style={{ borderColor: r.expiry || !needsExpiry.some(x => x.item.id === r.item.id) ? '#D1D5DB' : VIZ.accent }} title="วันหมดอายุของจำนวนที่นับได้เกินระบบ" />}
               </div></td>
               <td className="px-2 py-1.5 text-right tabular-nums text-gray-500 hidden sm:table-cell">{minOf(r.item) || '—'}</td>
-              <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: r.n === null ? VIZ.neutral : r.delta === 0 && !low ? VIZ.positive : low ? VIZ.secondary : VIZ.text }}>{r.n === null ? 'ยังไม่นับ' : r.delta === 0 ? (low ? 'ตรง · ต่ำกว่าขั้นต่ำ' : 'ตรง') : r.delta > 0 ? `เกินระบบ · รับเข้า ${fmtInt(r.delta)}` : `ตัด ${fmtInt(-r.delta)} (ใช้ไปไม่ได้บันทึก)`}{low && r.delta !== 0 ? ' · ต้องเติม' : ''}</td>
-            </tr>); })}</tbody>
+              <td className="px-2 py-1.5 text-xs whitespace-nowrap" style={{ color: r.n === null ? VIZ.neutral : r.delta === 0 && !low ? VIZ.positive : low ? VIZ.secondary : VIZ.text }}>{r.n === null ? (fixed ? 'ยังไม่ตรวจ' : 'ยังไม่นับ') : r.delta === 0 ? (low ? (fixed ? 'ตรง · ไม่ครบตามที่ต้องมี' : 'ตรง · ต่ำกว่าขั้นต่ำ') : fixed ? 'ครบ' : 'ตรง') : r.delta > 0 ? `เกินระบบ · รับเข้า ${fmtInt(r.delta)}` : fixed ? `ไม่พบ ${fmtInt(-r.delta)} · ตัดออก (สูญหาย)` : `ตัด ${fmtInt(-r.delta)} (ใช้ไปไม่ได้บันทึก)`}{low && r.delta !== 0 ? (fixed ? ' · ไม่ครบ' : ' · ต้องเติม') : ''}</td>
+            </tr>
+            </Fragment>); })}</tbody>
         </table></div>
       </section>
       <aside className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-3 lg:sticky lg:top-20">

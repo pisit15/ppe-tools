@@ -23,6 +23,7 @@ export default function TakeClient({ token }: { token: string }) {
   }, [token]);
   const location = state?.locations[0];
   const items = useMemo(() => state?.items || [], [state]);
+  const equipment = useMemo(() => items.filter(i => i.dispenseMode === 'fixed').map(i => i.name), [items]);
   const avail = useCallback((i: FaItem) => (state ? balance(state, i.id, location?.id) : 0), [state, location]);
   const opened = useCallback((i: FaItem) => (state ? openedContainers(state, i.id, location?.id)[0] || null : null), [state, location]);
   const setQty = (id: string, qty: number) => { setErr(''); setCart(c => { const n = { ...c }; if (qty <= 0) delete n[id]; else n[id] = qty; return n; }); };
@@ -74,7 +75,9 @@ export default function TakeClient({ token }: { token: string }) {
   return (
     <Shell>
       <header className="text-white px-4 pt-4 pb-3" style={{ background: FA_GREEN }}><div className="text-xs opacity-80">{state.company.short} · {location.type}</div><div className="text-xl font-semibold leading-tight">{location.name}</div><div className="text-xs opacity-80 mt-1">หยิบแล้วบันทึกตรงนี้ ไม่ต้อง login · ใช้เวลา 20 วินาที</div></header>
-      <div className="flex-1 overflow-y-auto p-3"><PickBoard items={items} avail={avail} opened={opened} cart={cart} onChange={setQty} columns="grid-cols-2" compact /></div>
+      <div className="flex-1 overflow-y-auto p-3"><PickBoard items={items} avail={avail} opened={opened} cart={cart} onChange={setQty} columns="grid-cols-2" compact />
+        {equipment.length > 0 && <p className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-600"><b className="text-gray-800">อุปกรณ์ประจำตู้</b> (ใช้แล้วเก็บคืนที่เดิม ไม่ต้องบันทึก): {equipment.join(' · ')}<br />หายหรือชำรุด → ติ๊ก “แจ้ง จป.” ในขั้นตอนถัดไป หรือแจ้ง จป. โดยตรง</p>}
+      </div>
       <div className="bg-white border-t border-gray-200 p-3 pb-6 flex items-center gap-3">
         <div className="flex-1 min-w-0"><div className="font-semibold text-gray-900">{picked.length ? `หยิบ ${picked.length} รายการ · ${[totalQty ? `${fmtInt(totalQty)} ชิ้น` : '', totalUses ? `ใช้ ${fmtInt(totalUses)} ครั้ง` : ''].filter(Boolean).join(' · ')}` : 'ยังไม่ได้เลือก'}</div><div className="text-xs text-gray-500 truncate">{picked.map(l => `${l.item.name} ${lineQtyLabel(l)}`).join(', ') || 'แตะ “+ เลือก” ที่ของที่หยิบ'}</div></div>
         <button type="button" disabled={!picked.length} onClick={() => setStep('confirm')} className="h-12 px-6 rounded-xl text-white font-semibold text-base disabled:opacity-40" style={{ background: FA_GREEN }}>ถัดไป ›</button>

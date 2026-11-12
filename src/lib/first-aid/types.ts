@@ -23,7 +23,11 @@ export type FaIcon = '' | 'pill' | 'bottle' | 'sachet' | 'plaster' | 'gauze' | '
 export const DISPENSE_MODES: { id: DispenseMode; label: string; hint: string }[] = [
   { id: 'unit', label: 'เบิกทั้งชิ้น', hint: 'จ่ายเป็นเม็ด / ซอง / ชิ้น ตัดสต๊อกตามจำนวน' },
   { id: 'shared', label: 'แบ่งใช้จากขวด/หลอดเดียว', hint: 'เช่น ยาล้างตา ยานวด เบตาดีน — บันทึก “ใช้ 1 ครั้ง” ไม่ตัดสต๊อก ตัดเมื่อ “เปิดขวดใหม่”' },
+  { id: 'fixed', label: 'อุปกรณ์ประจำจุด (ไม่เบิก)', hint: 'เช่น กรรไกร ปรอท เครื่องวัดความดัน AED — ไม่ขึ้นในหน้าเบิกและหน้า QR บันทึกเฉพาะรับเข้า / โอน / ชำรุด / สูญหาย' },
 ];
+/** Why stock was written off; stored as the leading word of the document note so reports can group by it. */
+export const WRITE_OFF_REASONS = ['ชำรุด', 'สูญหาย', 'หมดอายุ', 'อื่น ๆ'] as const;
+export type WriteOffReason = 'damaged' | 'lost' | 'expired' | 'uncounted' | 'other';
 export const FA_ICONS: { id: Exclude<FaIcon, ''>; label: string }[] = [
   { id: 'pill', label: 'ยาเม็ด / แคปซูล' }, { id: 'bottle', label: 'ยาน้ำ / ขวด' }, { id: 'sachet', label: 'ซอง' }, { id: 'cream', label: 'ครีม / หลอด' },
   { id: 'plaster', label: 'พลาสเตอร์' }, { id: 'gauze', label: 'ผ้าก๊อซ / ผ้าพัน' }, { id: 'mask', label: 'หน้ากาก' }, { id: 'glove', label: 'ถุงมือ' }, { id: 'device', label: 'อุปกรณ์' }, { id: 'other', label: 'อื่น ๆ' },
@@ -31,7 +35,8 @@ export const FA_ICONS: { id: Exclude<FaIcon, ''>; label: string }[] = [
 
 // ---- Shapes returned by /api/first-aid/state (normalized at the API boundary) ----
 export type FaLocation = { id: string; name: string; type: string; area: string; issueMode: FirstAidMode; lastChecked: string | null; inspectionIssue: boolean; hasPublicLink: boolean; requireRequester: boolean; icon: string; isRegister: boolean };
-export type DispenseMode = 'unit' | 'shared';
+/** unit = handed out whole · shared = one opened container used many times · fixed = equipment kept at the point, never dispensed. */
+export type DispenseMode = 'unit' | 'shared' | 'fixed';
 export type FaItem = { id: string; name: string; generic: string; description: string; category: string; unit: string; min: number; trackExpiry: boolean; icon: FaIcon; imageUrl: string | null; hasImage: boolean; imageSource: string; dispenseMode: DispenseMode; openLifeDays: number | null };
 export type FaLot = { id: string; itemId: string; locationId: string; code: string; expiry: string | null; quantity: number };
 /** One item at one point: minimum, plus the shared container currently opened there (if any). */

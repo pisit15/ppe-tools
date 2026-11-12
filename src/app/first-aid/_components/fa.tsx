@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { VIZ, getJson, postJson } from '@/app/inspect/_components/ui';
 import type { FaEvent, FaIcon, FaItem, FaState } from '@/lib/first-aid/types';
-import { balance } from '@/lib/first-aid/model';
+import { balance, statusLabel } from '@/lib/first-aid/model';
 import { SYMPTOMS, cleanGeneric, itemGroup, matchesSymptom } from '@/lib/first-aid/browse';
 
 export { VIZ, PAGE_BG, thaiDate, thaiPeriod, thaiDateTime, bangkokToday, currentPeriod, shiftPeriod, daysUntil, relativeDays, getJson, postJson, errMsg, useToast, ToastView, inputClass, selectCompact, labelClass, cardClass, btnPrimary, btnSecondary, btnGhost, Spinner, EmptyState, Drawer, Modal, ConfirmButton, SectionTitle } from '@/app/inspect/_components/ui';
@@ -30,7 +30,7 @@ export async function loadHistory(company: string, from: string, to: string, ext
   return getJson<{ from: string; to: string; events: FaEvent[]; truncated: boolean }>(`/api/first-aid/history?${q}`);
 }
 
-export { expiryDays, usableLots, pendingLots, expiredLots, balance, minFor, itemStatus, personLabel, openedContainers, addDays, type ItemStatus, type OpenedInfo } from '@/lib/first-aid/model';
+export { expiryDays, usableLots, pendingLots, expiredLots, balance, minFor, itemStatus, personLabel, openedContainers, addDays, isDispensable, physicalQty, statusLabel, writeOffReason, type ItemStatus, type OpenedInfo } from '@/lib/first-aid/model';
 export const KIND_LABEL: Record<FaEvent['kind'], string> = { issue: 'จ่าย', receive: 'รับเข้า', transfer: 'โอน', dispose: 'ตัดทิ้ง' };
 export const fmtInt = (n: number) => n.toLocaleString('th-TH');
 export { cleanGeneric } from '@/lib/first-aid/browse';
@@ -65,9 +65,9 @@ export function ItemImage({ item, size = 40, rounded = 10, className = '' }: { i
   return <div className={`flex items-center justify-center shrink-0 ${className}`} style={{ ...box, background: '#F0F3F0' }}><Pictogram icon={item.icon} size={typeof size === 'number' ? Math.round(size * 0.7) : 48} /></div>;
 }
 
-export function StatusBadge({ status, small = false }: { status: ItemStatusKey; small?: boolean }) {
+export function StatusBadge({ status, small = false, item }: { status: ItemStatusKey; small?: boolean; item?: Pick<FaItem, 'dispenseMode'> }) {
   const c = STATUS_COLOR[status];
-  return <span className={`inline-flex items-center rounded-md font-medium whitespace-nowrap ${small ? 'px-1.5 py-0 text-[11px]' : 'px-2 py-0.5 text-xs'}`} style={{ background: `${c}1F`, color: status === 'pending' ? VIZ.text : c }}>{STATUS_LABEL[status]}</span>;
+  return <span className={`inline-flex items-center rounded-md font-medium whitespace-nowrap ${small ? 'px-1.5 py-0 text-[11px]' : 'px-2 py-0.5 text-xs'}`} style={{ background: `${c}1F`, color: status === 'pending' ? VIZ.text : c }}>{item ? statusLabel(item, status) : STATUS_LABEL[status]}</span>;
 }
 
 /** Quantity stepper with large touch targets. */

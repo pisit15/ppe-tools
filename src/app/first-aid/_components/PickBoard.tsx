@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import type { FaItem, TransactionLine } from '@/lib/first-aid/types';
-import type { OpenedInfo } from '@/lib/first-aid/model';
+import { isDispensable, type OpenedInfo } from '@/lib/first-aid/model';
 import { SYMPTOMS, itemGroup, matchesSymptom } from '@/lib/first-aid/browse';
 import { FA_GREEN, ItemImage, Stepper, VIZ, fmtInt, itemSub, thaiDate } from './fa';
 
@@ -42,10 +42,12 @@ export function rememberQty(cart: Cart) {
  * Picture grid with search + symptom / group chips. Tap a card → it goes into the cart (same on the nurse's screen and the QR page).
  * `avail` gives the quantity available at the chosen point; `opened` the shared container in use there; `frequent` puts recently dispensed items first.
  */
-export function PickBoard({ items, avail, opened, cart, onChange, frequent = [], maxLines = 8, columns = 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5', compact = false }: {
+export function PickBoard({ items: allItems, avail, opened, cart, onChange, frequent = [], maxLines = 8, columns = 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5', compact = false }: {
   items: FaItem[]; avail: (item: FaItem) => number; opened?: (item: FaItem) => OpenedInfo | null; cart: Cart; onChange: (key: string, qty: number) => void; frequent?: string[]; maxLines?: number; columns?: string; compact?: boolean;
 }) {
   const [q, setQ] = useState(''); const [tag, setTag] = useState('');
+  // Equipment kept at the point (scissors, thermometer …) is not something to pick.
+  const items = useMemo(() => allItems.filter(isDispensable), [allItems]);
   const symptoms = useMemo(() => SYMPTOMS.filter(t => items.some(i => matchesSymptom(t, i))), [items]);
   const groups = useMemo(() => { const m = new Map<string, number>(); items.forEach(i => m.set(itemGroup(i), (m.get(itemGroup(i)) || 0) + 1)); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [items]);
   const needle = q.trim().toLowerCase();

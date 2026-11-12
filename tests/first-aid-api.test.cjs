@@ -342,3 +342,31 @@ test('shared-use items: uses never deduct stock, opened container follows the sh
   assert.throws(() => validation.parseTransaction({ ...base, lines: [{ itemId: randomUUID(), quantity: 2, usage: 'open' }] }, '2026-11-09'), /ครั้งละ 1/);
   assert.throws(() => validation.parseTransaction({ ...base, lines: [{ itemId: randomUUID(), quantity: 1, usage: 'refill' }] }, '2026-11-09'), /รูปแบบการใช้/);
 });
+
+test('fixed equipment: never offered for dispensing, worded as complete/missing, write-offs grouped by reason', () => {
+  const model = load('src/lib/first-aid/model.ts');
+  const base = { generic: '', description: '', category: 'อุปกรณ์', min: 1, trackExpiry: false, icon: 'device', imageUrl: null, hasImage: false, imageSource: '', openLifeDays: null };
+  const scissors = { ...base, id: 'scissors', name: 'กรรไกร', unit: 'อัน', dispenseMode: 'fixed' };
+  const aed = { ...base, id: 'aed', name: 'เครื่อง AED', unit: 'เครื่อง', dispenseMode: 'fixed', trackExpiry: true };
+  const gloves = { ...base, id: 'gloves', name: 'ถุงมือยาง', unit: 'คู่', dispenseMode: 'unit' };
+  assert.equal(model.isDispensable(scissors), false);
+  assert.equal(model.isDispensable(gloves), true); // consumables filed under "อุปกรณ์" stay dispensable
+  const state = { asOf: '2026-11-13', items: [scissors, aed, gloves], thresholds: [],
+    lots: [{ id: 'a', itemId: 'scissors', locationId: 'p1', code: 'X', expiry: null, quantity: 1 }, { id: 'b', itemId: 'aed', locationId: 'p1', code: 'PAD', expiry: '2026-10-31', quantity: 1 }] };
+  assert.equal(model.statusLabel(scissors, model.itemStatus(state, scissors).key), 'ครบ');
+  assert.equal(model.statusLabel(gloves, model.itemStatus(state, gloves).key), 'หมด');
+  // AED pads past their date: still physically there (can be written off or re-dated), shown as past due.
+  const aedStatus = model.itemStatus(state, aed);
+  assert.equal(aedStatus.key, 'expired');
+  assert.equal(model.statusLabel(aed, aedStatus.key), 'เกินกำหนด');
+  assert.equal(model.physicalQty(state, 'aed', 'p1'), 1);
+  assert.equal(model.balance(state, 'aed', 'p1'), 0);
+  assert.equal(model.writeOffReason('ชำรุด — จอแตก'), 'damaged');
+  assert.equal(model.writeOffReason('สูญหาย'), 'lost');
+  assert.equal(model.writeOffReason('ตรวจนับ 2026-11-13: นับได้ 0 ระบบ 1 (ไม่พบที่จุด — สูญหาย)'), 'lost');
+  assert.equal(model.writeOffReason('ตรวจนับ 2026-11-13: นับได้ 3 ระบบ 5 (ใช้ไปโดยไม่ได้บันทึก)'), 'uncounted');
+  assert.equal(model.writeOffReason('ตรวจนับ 2026-11-13: หมดอายุ 2026-10-01'), 'expired');
+  assert.equal(model.writeOffReason('อื่น ๆ — บริจาค'), 'other');
+  assert.equal(model.writeOffReason('อื่น ๆ — เสียหายจากน้ำท่วม'), 'damaged');
+  assert.equal(model.writeOffReason('อื่น ๆ — หายตอนย้ายตู้'), 'lost');
+});

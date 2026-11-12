@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { FaItem, FaLot } from '@/lib/first-aid/types';
-import { FA_GREEN, ItemImage, itemSub, Modal, Stepper, VIZ, balance, bangkokToday, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, manage, postTransaction, thaiDate, useFa } from './fa';
+import { WRITE_OFF_REASONS, type FaItem, type FaLot } from '@/lib/first-aid/types';
+import { FA_GREEN, ItemImage, itemSub, Modal, Stepper, VIZ, balance, bangkokToday, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, manage, physicalQty, postTransaction, thaiDate, useFa } from './fa';
 
 const REASONS = ['ปวดหัว / ไข้', 'ปวดท้อง / ท้องเสีย', 'คลื่นไส้', 'แพ้ / คัน', 'ปวดเมื่อย', 'บาดแผล', 'อื่น ๆ'];
 const WHO_KEY = 'fa.lastWho';
@@ -70,15 +70,57 @@ export function LotExpiryModal({ lot, item, onClose, onDone }: { lot: FaLot | nu
   const location = state?.locations.find(l => l.id === lot.locationId);
   async function save(value: string | null) {
     setBusy(true); setErr('');
-    try { await manage(company, { action: 'lot-expiry', lotId: lot!.id, expiry: value }); await refresh(); onDone(value ? `บันทึกวันหมดอายุ ${thaiDate(value)} แล้ว` : 'ลบวันหมดอายุแล้ว'); onClose(); }
+    try { await manage(company, { action: 'lot-expiry', lotId: lot!.id, expiry: value }); await refresh(); onDone(value ? `บันทึก${item!.dispenseMode === 'fixed' ? 'วันครบกำหนด' : 'วันหมดอายุ'} ${thaiDate(value)} แล้ว` : 'ลบวันหมดอายุแล้ว'); onClose(); }
     catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   }
   return (
-    <Modal open={!!lot} onClose={onClose} title="ระบุวันหมดอายุ" size="sm" footer={<div className="flex gap-2 justify-end"><button type="button" className={btnSecondary} onClick={onClose}>ยกเลิก</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} disabled={busy || !expiry} onClick={() => void save(expiry)}>บันทึก</button></div>}>
+    <Modal open={!!lot} onClose={onClose} title={item.dispenseMode === 'fixed' ? 'ระบุวันครบกำหนดตรวจ / เปลี่ยน' : 'ระบุวันหมดอายุ'} size="sm" footer={<div className="flex gap-2 justify-end"><button type="button" className={btnSecondary} onClick={onClose}>ยกเลิก</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} disabled={busy || !expiry} onClick={() => void save(expiry)}>บันทึก</button></div>}>
       <div className="flex items-center gap-3 mb-3"><ItemImage item={item} size={44} /><div><div className="font-semibold text-gray-900">{item.name}</div><div className="text-xs text-gray-500">{location?.name} · ล็อต {lot.code} · {fmtInt(lot.quantity)} {item.unit}</div></div></div>
-      <label className={labelClass} htmlFor="le-date">วันหมดอายุตามบรรจุภัณฑ์</label>
+      <label className={labelClass} htmlFor="le-date">{item.dispenseMode === 'fixed' ? 'วันครบกำหนด (เช่น วันหมดอายุแผ่น AED / แบตเตอรี่ / วันสอบเทียบครั้งถัดไป)' : 'วันหมดอายุตามบรรจุภัณฑ์'}</label>
       <input id="le-date" type="date" className={inputClass} value={expiry} onChange={e => setExpiry(e.target.value)} />
-      <p className="mt-2 text-xs text-gray-500">ของที่ยังไม่มีวันหมดอายุจะจ่ายไม่ได้ จนกว่าจะยืนยัน · ถ้าเป็นอุปกรณ์ที่ไม่มีวันหมดอายุ ให้ปิด “ติดตามวันหมดอายุ” ในหน้าแก้ไขรายการ</p>
+      <p className="mt-2 text-xs text-gray-500">{item.dispenseMode === 'fixed' ? 'เมื่อถึงวันนี้ระบบจะขึ้น “เกินกำหนด” ให้ตรวจหรือเปลี่ยน แล้วกลับมาใส่วันครบกำหนดรอบใหม่' : 'ของที่ยังไม่มีวันหมดอายุจะจ่ายไม่ได้ จนกว่าจะยืนยัน · ถ้าเป็นอุปกรณ์ที่ไม่มีวันหมดอายุ ให้ปิด “ติดตามวันหมดอายุ” ในหน้าแก้ไขรายการ'}</p>
+      {err && <p className="mt-2 text-sm" style={{ color: VIZ.accent }}>{err}</p>}
+    </Modal>
+  );
+}
+
+/** Take stock off the books with a reason (damaged / lost / expired): the only "out" movement for fixed equipment. */
+export function WriteOffModal({ item, onClose, onDone }: { item: FaItem | null; onClose: () => void; onDone: (msg: string) => void }) {
+  const { state, company, scope, refresh } = useFa();
+  const locations = useMemo(() => (state?.locations || []).filter(l => !l.isRegister), [state]);
+  const [locationId, setLocationId] = useState('');
+  const [qty, setQty] = useState(1); const [reason, setReason] = useState<string>(WRITE_OFF_REASONS[0]); const [detail, setDetail] = useState('');
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!item || !state) return;
+    setQty(1); setReason(WRITE_OFF_REASONS[0]); setDetail(''); setErr('');
+    const withStock = locations.filter(l => physicalQty(state, item.id, l.id) > 0);
+    setLocationId(scope !== 'all' && withStock.some(l => l.id === scope) ? scope : withStock[0]?.id || locations[0]?.id || '');
+  }, [item, locations, scope, state]);
+  if (!item || !state) return null;
+  const have = physicalQty(state, item.id, locationId);
+  const reasons = WRITE_OFF_REASONS.filter(r => r !== 'หมดอายุ' || item.trackExpiry);
+  async function save() {
+    if (!item) return;
+    if (qty > have) { setErr(`ที่จุดนี้มี ${fmtInt(have)} ${item.unit}`); return; }
+    if (reason === 'อื่น ๆ' && !detail.trim()) { setErr('ระบุรายละเอียดของเหตุผล'); return; }
+    setBusy(true); setErr('');
+    try {
+      await postTransaction(company, { idempotencyKey: crypto.randomUUID(), kind: 'dispose', locationId, date: bangkokToday(), lines: [{ itemId: item.id, quantity: qty }], note: [reason, detail.trim()].filter(Boolean).join(' — ').slice(0, 500) });
+      await refresh(); onDone(`ตัดออก ${item.name} ${fmtInt(qty)} ${item.unit} · ${reason}`); onClose();
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
+  }
+  return (
+    <Modal open={!!item} onClose={onClose} title="ตัดออก · ชำรุด / สูญหาย" size="sm" footer={<div className="flex gap-2"><button type="button" className={btnSecondary} onClick={onClose}>ยกเลิก</button><button type="button" className={`${btnPrimary} flex-1`} style={{ background: VIZ.accent }} disabled={busy || have === 0} onClick={() => void save()}>{busy ? 'กำลังบันทึก…' : `ตัดออก ${fmtInt(qty)} ${item.unit}`}</button></div>}>
+      <div className="flex items-center gap-3 mb-4"><ItemImage item={item} size={56} rounded={12} /><div className="min-w-0"><div className="font-semibold text-lg text-gray-900 leading-tight">{item.name}</div><div className="text-sm text-gray-500">{itemSub(item)}</div></div></div>
+      {locations.length > 1 && (
+        <div className="mb-3"><label className={labelClass} htmlFor="wo-loc">จุด</label>
+          <select id="wo-loc" className={inputClass} value={locationId} onChange={e => { setLocationId(e.target.value); setQty(1); }}>{locations.map(l => <option key={l.id} value={l.id}>{l.name} · มี {fmtInt(physicalQty(state, item.id, l.id))}</option>)}</select></div>
+      )}
+      <div className="flex items-center justify-between mb-3"><span className="text-sm text-gray-600">จำนวนที่ตัดออก</span><div className="flex items-center gap-2"><Stepper value={qty} onChange={setQty} max={Math.max(1, have)} size={44} /><span className="text-sm text-gray-500">{item.unit}</span></div></div>
+      <div className="mb-3"><span className={labelClass}>เหตุผล</span><div className="flex flex-wrap gap-1.5">{reasons.map(r => <button key={r} type="button" aria-pressed={reason === r} onClick={() => setReason(r)} className={`rounded-full border px-3 py-1.5 text-sm ${reason === r ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={reason === r ? { background: VIZ.accent } : undefined}>{r}</button>)}</div></div>
+      <input className={inputClass} value={detail} onChange={e => setDetail(e.target.value)} placeholder={reason === 'อื่น ๆ' ? 'ระบุเหตุผล' : 'รายละเอียด (ไม่บังคับ) เช่น จอแตก / หายจากตู้'} aria-label="รายละเอียด" />
+      <p className="mt-3 text-xs" style={{ color: VIZ.lightText }}>{have === 0 ? 'จุดนี้ไม่มีรายการนี้อยู่แล้ว' : `หลังตัดออกเหลือ ${fmtInt(have - qty)} ${item.unit} · ของใหม่ที่ซื้อมาแทนให้บันทึกที่ “รับเข้า”`}</p>
       {err && <p className="mt-2 text-sm" style={{ color: VIZ.accent }}>{err}</p>}
     </Modal>
   );

@@ -1,5 +1,5 @@
 /** Read-only stock rules shared by the pages and the public form; mirrors the database RPCs. */
-import { FA_ANON_NAME, type FaItem, type FaLot, type FaState, type FaThreshold } from './types';
+import { FA_ANON_NAME, type FaItem, type FaLot, type FaState, type FaThreshold, type WriteOffReason } from './types';
 
 export type ItemStatusKey = 'ok' | 'low' | 'out' | 'expired' | 'pending' | 'open_expired';
 
@@ -54,5 +54,23 @@ export function itemStatus(state: Pick<FaState, 'lots' | 'items' | 'asOf' | 'thr
   else if (bal === 0 && !opened) key = 'out';
   else if (bal < min) key = 'low';
   return { key, balance: bal, min, nearest, expiredQty: expired, pendingQty: pending, opened };
+}
+/** Fixed equipment never appears on the dispense board or the QR page. */
+export const isDispensable = (item: Pick<FaItem, 'dispenseMode'>) => item.dispenseMode !== 'fixed';
+/** Everything physically at the point, whatever its date — what can be written off. */
+export const physicalQty = (state: Pick<FaState, 'lots'>, itemId: string, locationId = 'all') => state.lots.filter(l => l.itemId === itemId && (locationId === 'all' || l.locationId === locationId) && l.quantity > 0).reduce((s, l) => s + l.quantity, 0);
+const STATUS_TEXT: Record<ItemStatusKey, string> = { ok: 'เพียงพอ', low: 'ต้องเติม', out: 'หมด', expired: 'หมดอายุ', pending: 'รอวันหมดอายุ', open_expired: 'ขวดที่เปิดเกินกำหนด' };
+const FIXED_STATUS_TEXT: Record<ItemStatusKey, string> = { ok: 'ครบ', low: 'ไม่ครบ', out: 'ไม่มีที่จุด', expired: 'เกินกำหนด', pending: 'รอวันครบกำหนด', open_expired: 'เกินกำหนด' };
+/** Status wording: consumables are "enough / refill", fixed equipment is "complete / missing / past due". */
+export const statusLabel = (item: Pick<FaItem, 'dispenseMode'>, key: ItemStatusKey) => (item.dispenseMode === 'fixed' ? FIXED_STATUS_TEXT : STATUS_TEXT)[key];
+/** Classify a write-off from its note (manual reason chip, stock-count adjustment, or free text). */
+export function writeOffReason(note: string): WriteOffReason {
+  const n = note || '';
+  if (/ไม่ได้บันทึก/.test(n)) return 'uncounted';
+  if (/สูญหาย|ไม่พบ/.test(n)) return 'lost';
+  if (/ชำรุด|เสีย|แตก|พัง|รั่ว/.test(n)) return 'damaged'; // before the bare "หาย" below: "เสียหาย" means damaged
+  if (/หมดอายุ|เกินกำหนด/.test(n)) return 'expired';
+  if (/หาย/.test(n)) return 'lost';
+  return 'other';
 }
 export const personLabel = (p: { name?: string; department?: string } | null | undefined) => !p || !p.name || p.name === FA_ANON_NAME ? '' : p.department && p.department !== FA_ANON_NAME ? `${p.name} · ${p.department}` : p.name;
