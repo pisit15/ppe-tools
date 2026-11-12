@@ -26,6 +26,7 @@ export type VisitorCompanyOptionsRow = {
   form_background: string | null; // JPEG data URL
   form_background_dim: number; // 0–95 (% light overlay)
   line_group_id: string | null; // LINE group that receives notifications
+  telegram_chat_id: number | null; // Telegram group that receives notifications (free channel)
   notify_new: boolean;
   notify_decision: boolean;
   gate_check: GateCheckConfig | null; // null = built-in AMT default
@@ -165,4 +166,5 @@ export type TrackPayload = Pick<VisitorRequestRow,
   & { company_name: string; persons: Pick<VisitorPersonRow, 'seq' | 'name' | 'detail'>[]; vehicles: Pick<VisitorVehicleRow, 'seq' | 'plate' | 'province' | 'vehicle_type' | 'decision'>[] };
 
 export type LineGroupOption = { group_id: string; group_name: string; active: boolean; joined_at: string };
-export type NotifyLogRow = { id: number; company_id: string; request_id: string | null; kind: 'new_request' | 'decision' | 'test'; group_id: string; http_status: number | null; error: string | null; sent_at: string };
+export type NotifyLogRow = { id: number; company_id: string; request_id: string | null; kind: 'new_request' | 'decision' | 'test'; channel: 'line' | 'telegram'; group_id: string; http_status: number | null; error: string | null; sent_at: string };
+export type TelegramChatOption = { chat_id: number; title: string; active: boolean; joined_at: string };

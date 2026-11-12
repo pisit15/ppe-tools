@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     assertCompany(actor, company, true);
     const { data, error } = await db().from('visitor_company_options').select('*').eq('company_id', company).maybeSingle();
     if (error) throw error;
-    const row = (data as VisitorCompanyOptionsRow | null) || { company_id: company, areas: [], departments: [], form_background: null, form_background_dim: 75, line_group_id: null, notify_new: true, notify_decision: true, gate_check: null, updated_at: '', updated_by: null };
+    const row = (data as VisitorCompanyOptionsRow | null) || { company_id: company, areas: [], departments: [], form_background: null, form_background_dim: 75, line_group_id: null, telegram_chat_id: null, notify_new: true, notify_decision: true, gate_check: null, updated_at: '', updated_by: null };
     return NextResponse.json({ data: row });
   } catch (error) {
     return apiError(error);
@@ -45,7 +45,7 @@ const MAX_BG = 800_000; // chars of data URL (~600 KB JPEG)
 export async function PUT(request: NextRequest) {
   try {
     const actor = await requireVisitorApprover(request);
-    const body = (await request.json().catch(() => null)) as { company_id?: unknown; areas?: unknown; departments?: unknown; form_background?: unknown; form_background_dim?: unknown; line_group_id?: unknown; notify_new?: unknown; notify_decision?: unknown; gate_check?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as { company_id?: unknown; areas?: unknown; departments?: unknown; form_background?: unknown; form_background_dim?: unknown; line_group_id?: unknown; notify_new?: unknown; notify_decision?: unknown; gate_check?: unknown; telegram_chat_id?: unknown } | null;
     const company = body?.company_id;
     assertCompany(actor, company, true);
     const areas = cleanList(body?.areas, 'พื้นที่');
@@ -74,6 +74,12 @@ export async function PUT(request: NextRequest) {
     }
     if (body?.notify_new !== undefined) patch.notify_new = Boolean(body.notify_new);
     if (body?.notify_decision !== undefined) patch.notify_decision = Boolean(body.notify_decision);
+    if (body?.telegram_chat_id !== undefined) {
+      const t = body.telegram_chat_id;
+      if (t === null || t === '') patch.telegram_chat_id = null;
+      else if (Number.isSafeInteger(Number(t))) patch.telegram_chat_id = Number(t);
+      else return NextResponse.json({ error: 'telegram_chat_id ไม่ถูกต้อง' }, { status: 400 });
+    }
     if (body?.gate_check !== undefined) {
       // null = back to the built-in default; otherwise normalise and cap size (jsonb column, but keep it sane).
       if (body.gate_check === null) patch.gate_check = null;

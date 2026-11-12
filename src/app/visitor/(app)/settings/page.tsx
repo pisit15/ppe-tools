@@ -6,7 +6,7 @@ import { Copy, Link2, MonitorPlay, Plus, Ban, ExternalLink, QrCode, MapPin, Save
 import { GateCheckEditor } from '../../_components/GateCheckEditor';
 import { fileToBoundedDataUrl } from '../../_components/image';
 import { useAuth } from '@/components/AuthProvider';
-import type { GateCheckConfig, LineGroupOption, NotifyLogRow, VisitorCompanyOptionsRow, VisitorLinkRow } from '@/lib/visitor/types';
+import type { GateCheckConfig, LineGroupOption, NotifyLogRow, TelegramChatOption, VisitorCompanyOptionsRow, VisitorLinkRow } from '@/lib/visitor/types';
 import { useQr } from '../../_components/useQr';
 import { FetchError, ToastView, VIZ, cardClass, getJson, inputClass, labelClass, postJson, thaiDateTime, useToast } from '../../_components/ui';
 
@@ -34,7 +34,10 @@ export default function VisitorSettingsPage() {
   const [notifyDecision, setNotifyDecision] = useState(true);
   const [lineDirty, setLineDirty] = useState(false);
   const [gateCheck, setGateCheck] = useState<GateCheckConfig | null>(null);
-  const [lineInfo, setLineInfo] = useState<{ groups: LineGroupOption[]; log: NotifyLogRow[]; sent_this_month_all_companies: number; configured: boolean } | null>(null);
+  const [lineInfo, setLineInfo] = useState<{ groups: LineGroupOption[]; log: NotifyLogRow[]; sent_this_month_all_companies: number; configured: boolean; telegram: { configured: boolean; chats: TelegramChatOption[] } } | null>(null);
+  const [tgChat, setTgChat] = useState<string>('');
+  const [tgDirty, setTgDirty] = useState(false);
+  const [tgSetup, setTgSetup] = useState<{ bot?: { username?: string } | null; webhook?: { url?: string; last_error_message?: string } | null; secret_set?: boolean } | null>(null);
   const boardQr = useQr(company ? `${origin}/visitor/board/${company}` : null, 200);
 
   useEffect(() => {
@@ -47,23 +50,36 @@ export default function VisitorSettingsPage() {
     getJson<{ data: VisitorLinkRow[] }>(`/api/visitor/links?company=${encodeURIComponent(company)}`).then(r => setLinks(r.data))
       .catch((e: unknown) => setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'โหลดลิงก์ไม่สำเร็จ' }));
     getJson<{ data: VisitorCompanyOptionsRow }>(`/api/visitor/options?company=${encodeURIComponent(company)}`)
-      .then(r => { setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false); setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false); setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false); setGateCheck(r.data.gate_check ?? null); })
+      .then(r => { setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false); setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false); setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false); setGateCheck(r.data.gate_check ?? null); setTgChat(r.data.telegram_chat_id ? String(r.data.telegram_chat_id) : ''); setTgDirty(false); })
       .catch((e: unknown) => setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'โหลดรายการพื้นที่ไม่สำเร็จ' }));
     loadLine();
   }, [company, setToast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function loadLine() {
     if (!company) return;
-    getJson<{ data: { groups: LineGroupOption[]; log: NotifyLogRow[]; sent_this_month_all_companies: number; configured: boolean } }>(`/api/visitor/line?company=${encodeURIComponent(company)}`)
+    getJson<{ data: { groups: LineGroupOption[]; log: NotifyLogRow[]; sent_this_month_all_companies: number; configured: boolean; telegram: { configured: boolean; chats: TelegramChatOption[] } } }>(`/api/visitor/line?company=${encodeURIComponent(company)}`)
       .then(r => setLineInfo(r.data)).catch(() => setLineInfo(null));
   }
-  async function sendTest(digest = false) {
+  async function sendTest(digest = false, channel: 'line' | 'telegram' = 'line') {
     if (busy || !company) return;
     setBusy(true);
-    try { const r = await postJson<{ data: { count: number } }>('/api/visitor/line', { company_id: company, ...(digest ? { action: 'digest' } : {}) }); setToast({ type: 'success', msg: digest ? `ส่งสรุปค้างอนุมัติ ${r.data.count} รายการเข้ากลุ่มแล้ว` : 'ส่งข้อความทดสอบเข้ากลุ่มแล้ว' }); loadLine(); }
+    try { const r = await postJson<{ data: { count: number } }>('/api/visitor/line', { company_id: company, channel, ...(digest ? { action: 'digest' } : {}) }); setToast({ type: 'success', msg: digest ? `ส่งสรุปค้างอนุมัติ ${r.data.count} รายการเข้ากลุ่มแล้ว` : 'ส่งข้อความทดสอบเข้ากลุ่มแล้ว' }); loadLine(); }
     catch (e) { setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'ส่งไม่สำเร็จ' }); }
     finally { setBusy(false); }
   }
+
+  async function loadTgSetup() {
+    if (!isAdmin) return;
+    try { const r = await getJson<{ data: typeof tgSetup }>('/api/telegram/setup'); setTgSetup(r.data); } catch { setTgSetup(null); }
+  }
+  async function setupTelegramWebhook() {
+    if (busy) return;
+    setBusy(true);
+    try { const r = await postJson<{ data: { url: string; bot: { username?: string } | null } }>('/api/telegram/setup', {}); setToast({ type: 'success', msg: `ตั้ง webhook แล้ว${r.data.bot?.username ? ` (@${r.data.bot.username})` : ''}` }); void loadTgSetup(); }
+    catch (e) { setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'ตั้ง webhook ไม่สำเร็จ' }); }
+    finally { setBusy(false); }
+  }
+  useEffect(() => { void loadTgSetup(); }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const split = (t: string) => t.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   async function saveOptions(extra: Record<string, unknown> = {}, okMsg?: string) {
@@ -73,7 +89,7 @@ export default function VisitorSettingsPage() {
       const r = await postJson<{ data: VisitorCompanyOptionsRow }>('/api/visitor/options', { company_id: company, areas: split(areasText), departments: split(deptText), ...extra }, 'PUT');
       setAreasText(r.data.areas.join('\n')); setDeptText(r.data.departments.join('\n')); setOptionsDirty(false);
       setBg(r.data.form_background); setBgDim(r.data.form_background_dim ?? 75); setBgDirty(false);
-      setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false); setGateCheck(r.data.gate_check ?? null);
+      setLineGroup(r.data.line_group_id || ''); setNotifyNew(r.data.notify_new ?? true); setNotifyDecision(r.data.notify_decision ?? true); setLineDirty(false); setGateCheck(r.data.gate_check ?? null); setTgChat(r.data.telegram_chat_id ? String(r.data.telegram_chat_id) : ''); setTgDirty(false);
       setToast({ type: 'success', msg: okMsg || `บันทึกแล้ว: พื้นที่ ${r.data.areas.length} · แผนก ${r.data.departments.length}` });
     } catch (e) { setToast({ type: 'error', msg: e instanceof FetchError ? e.message : 'บันทึกไม่สำเร็จ' }); }
     finally { setBusy(false); }
@@ -199,11 +215,50 @@ export default function VisitorSettingsPage() {
             </div>
           </div>
           <div className="text-sm">
-            <div className="text-xs text-gray-500 mb-1">ประวัติการส่งล่าสุดของบริษัทนี้ · ส่งสำเร็จเดือนนี้ทุกบริษัทรวม <strong>{lineInfo?.sent_this_month_all_companies ?? '–'}</strong> ข้อความ (โควตาฟรี 200/เดือน)</div>
+            <div className="text-xs text-gray-500 mb-1">ประวัติการส่งล่าสุดของบริษัทนี้ · LINE ส่งสำเร็จเดือนนี้ทุกบริษัทรวม <strong>{lineInfo?.sent_this_month_all_companies ?? '–'}</strong> การ์ด — LINE นับโควตาตามจำนวนคนในกลุ่ม (1 การ์ด × สมาชิก) โควตาฟรี 200/เดือน</div>
             <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100 max-h-56 overflow-y-auto">
               {(lineInfo?.log || []).length === 0 && <li className="px-3 py-3 text-gray-400">ยังไม่เคยส่ง</li>}
-              {(lineInfo?.log || []).map(l => <li key={l.id} className="px-3 py-2 flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: l.http_status && l.http_status < 300 ? VIZ.positive : VIZ.accent }} /><span className="text-gray-500 whitespace-nowrap">{thaiDateTime(l.sent_at)}</span><span>{l.kind === 'new_request' ? 'คำขอใหม่' : l.kind === 'decision' ? 'ผลพิจารณา' : 'ทดสอบ/สรุป'}</span>{l.error && <span className="text-xs truncate" style={{ color: VIZ.accent }} title={l.error}>{l.http_status} {l.error}</span>}</li>)}
+              {(lineInfo?.log || []).map(l => <li key={l.id} className="px-3 py-2 flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: l.http_status && l.http_status < 300 ? VIZ.positive : VIZ.accent }} /><span className="text-gray-500 whitespace-nowrap">{thaiDateTime(l.sent_at)}</span><span>{l.kind === 'new_request' ? 'คำขอใหม่' : l.kind === 'decision' ? 'ผลพิจารณา' : 'ทดสอบ/สรุป'}{l.channel === 'telegram' && <span className="ml-1 text-xs text-gray-400">Telegram</span>}</span>{l.error && <span className="text-xs truncate" style={{ color: VIZ.accent }} title={l.error}>{l.http_status} {l.error}</span>}</li>)}
             </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className={cardClass} style={{ borderLeft: `4px solid ${VIZ.primary}` }}>
+        <h2 className="inline-flex items-center gap-2 font-semibold text-lg" style={{ color: VIZ.primary }}><Send size={20} />การแจ้งเตือน Telegram (ของบริษัทนี้) — ฟรี ไม่จำกัดจำนวน</h2>
+        <p className="text-sm text-gray-600 mt-1">เพิ่มบอท{tgSetup?.bot?.username ? <> <strong>@{tgSetup.bot.username}</strong></> : ' Telegram ของ EA SHE'} เข้ากลุ่ม Telegram ของทีม SHE แล้วเลือกกลุ่มด้านล่าง ได้การ์ดคำขอใหม่/ผลพิจารณา กดอนุมัติในการ์ดได้ และใช้คำสั่ง <code>@she …</code> เหมือน LINE — ผู้อนุมัติผูกบัญชีครั้งเดียวโดยทักบอทแบบส่วนตัวแล้วพิมพ์ <code>/link</code></p>
+        {lineInfo && !lineInfo.telegram.configured && <p className="mt-2 text-sm rounded-lg px-3 py-2" style={{ background: `${VIZ.accent}1A`, color: VIZ.accent }}>เซิร์ฟเวอร์ยังไม่ได้ตั้ง TELEGRAM_BOT_TOKEN — ส่งข้อความไม่ได้</p>}
+        {isAdmin && tgSetup && (
+          <div className="mt-2 text-xs text-gray-500 flex flex-wrap items-center gap-2">
+            <span>webhook: {tgSetup.webhook?.url ? <span className="font-mono">{tgSetup.webhook.url}</span> : <span style={{ color: VIZ.accent }}>ยังไม่ได้ตั้ง</span>}{tgSetup.webhook?.last_error_message && <span style={{ color: VIZ.accent }}> · error: {tgSetup.webhook.last_error_message}</span>}</span>
+            <button type="button" disabled={busy || !tgSetup.secret_set} onClick={() => void setupTelegramWebhook()} className="rounded-md border border-gray-300 bg-white px-2 py-1 disabled:opacity-50" title={tgSetup.secret_set ? '' : 'ตั้ง TELEGRAM_WEBHOOK_SECRET ก่อน'}>ตั้ง/อัปเดต webhook</button>
+          </div>
+        )}
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <label className={labelClass} htmlFor="tg">กลุ่ม Telegram ที่รับแจ้งเตือน</label>
+            <div className="flex gap-2">
+              <select id="tg" className={inputClass} value={tgChat} onChange={e => { setTgChat(e.target.value); setTgDirty(true); }}>
+                <option value="">— ไม่แจ้งเตือน —</option>
+                {(lineInfo?.telegram.chats || []).map(c => <option key={c.chat_id} value={String(c.chat_id)} disabled={!c.active && String(c.chat_id) !== tgChat}>{c.title || '(ไม่ทราบชื่อกลุ่ม)'}{c.active ? '' : ' — บอทออกจากกลุ่มแล้ว'} · {c.chat_id}</option>)}
+              </select>
+              <button type="button" onClick={loadLine} className="shrink-0 rounded-lg border border-gray-300 bg-white px-3" aria-label="โหลดรายชื่อกลุ่มใหม่"><RefreshCw size={16} /></button>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">{lineInfo && lineInfo.telegram.chats.length === 0 ? 'ยังไม่มีกลุ่มที่บอทเข้าไป — เพิ่มบอทเข้ากลุ่มแล้วกดรีเฟรช' : 'ใช้สวิตช์ "คำขอใหม่ / ผลการพิจารณา" ร่วมกับ LINE ด้านบน'}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" disabled={busy || !tgDirty || !company} onClick={() => void saveOptions({ telegram_chat_id: tgChat || null }, 'บันทึกการแจ้งเตือน Telegram แล้ว')} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-white text-sm font-medium disabled:opacity-50" style={{ background: VIZ.primary }}><Save size={16} />บันทึก</button>
+              <button type="button" disabled={busy || tgDirty || !tgChat} onClick={() => void sendTest(false, 'telegram')} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-sm font-medium border border-gray-300 bg-white disabled:opacity-50"><Send size={16} />ส่งข้อความทดสอบ</button>
+              <button type="button" disabled={busy || tgDirty || !tgChat} onClick={() => void sendTest(true, 'telegram')} className="inline-flex items-center gap-1 rounded-lg px-4 py-2.5 text-sm font-medium border bg-white disabled:opacity-50" style={{ borderColor: VIZ.secondary, color: VIZ.secondary }}><Bell size={16} />ส่งสรุปค้างอนุมัติเข้ากลุ่ม</button>
+            </div>
+          </div>
+          <div className="text-sm text-gray-600 space-y-1">
+            <div className="font-medium text-gray-700">ขั้นตอนตั้งค่า (ครั้งเดียว)</div>
+            <ol className="list-decimal pl-5 space-y-1 text-xs">
+              <li>ผู้ดูแลระบบ: สร้างบอทกับ <strong>@BotFather</strong> ใน Telegram (คำสั่ง /newbot) → ได้ token → ใส่ใน Vercel env <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_BOT_USERNAME</code> และตั้ง <code>TELEGRAM_WEBHOOK_SECRET</code> (ข้อความสุ่มยาว ๆ) → redeploy → กด &quot;ตั้ง/อัปเดต webhook&quot; ด้านบน</li>
+              <li>ใน @BotFather พิมพ์ /setprivacy เลือกบอท → <strong>Disable</strong> เพื่อให้บอทอ่านคำสั่ง @she ในกลุ่มได้</li>
+              <li>สร้างกลุ่ม Telegram ของทีม SHE แล้วเพิ่มบอทเข้ากลุ่ม → กลับมากดรีเฟรชแล้วเลือกกลุ่ม</li>
+              <li>ผู้อนุมัติแต่ละคน: ทักบอทส่วนตัว พิมพ์ <code>/link</code> → เข้าสู่ระบบครั้งเดียว</li>
+            </ol>
           </div>
         </div>
       </section>

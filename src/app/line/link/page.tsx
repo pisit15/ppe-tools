@@ -22,7 +22,9 @@ const VIZ = {
 type Company = { companyId: string; companyName: string };
 
 function LinkForm() {
-  const code = useSearchParams().get('code') || '';
+  const params = useSearchParams();
+  const code = params.get('code') || '';
+  const app = params.get('via') === 'telegram' ? 'Telegram' : 'LINE';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [companies, setCompanies] = useState<Company[] | null>(null);
@@ -57,7 +59,7 @@ function LinkForm() {
   }
 
   if (!code) {
-    return <p className="text-sm" style={{ color: VIZ.accent }}>ลิงก์ไม่ถูกต้อง กรุณาขอลิงก์ใหม่จากแชต LINE</p>;
+    return <p className="text-sm" style={{ color: VIZ.accent }}>ลิงก์ไม่ถูกต้อง กรุณาขอลิงก์ใหม่จากแชต {app}</p>;
   }
 
   if (doneName) {
@@ -66,7 +68,7 @@ function LinkForm() {
         <CheckCircle2 size={48} className="mx-auto mb-3" style={{ color: VIZ.positive }} />
         <h2 className="text-lg font-bold" style={{ color: VIZ.text }}>เชื่อมบัญชีแล้ว</h2>
         <p className="text-sm mt-1" style={{ color: VIZ.lightText }}>
-          {doneName} · กลับไปที่แชต LINE แล้วพิมพ์ &quot;เมนู&quot; เพื่อเริ่มใช้งาน
+          {doneName} · กลับไปที่แชต {app} แล้วพิมพ์ &quot;เมนู&quot; เพื่อเริ่มใช้งาน
         </p>
       </div>
     );
@@ -75,7 +77,7 @@ function LinkForm() {
   if (companies) {
     return (
       <div>
-        <p className="text-sm mb-3" style={{ color: VIZ.text }}>บัญชีนี้อยู่หลายบริษัท เลือกบริษัทที่จะใช้กับ LINE</p>
+        <p className="text-sm mb-3" style={{ color: VIZ.text }}>บัญชีนี้อยู่หลายบริษัท เลือกบริษัทที่จะใช้กับ {app}</p>
         <div className="flex flex-col gap-2">
           {companies.map(c => (
             <button
@@ -134,7 +136,7 @@ function LinkForm() {
         {busy ? 'กำลังตรวจสอบ…' : 'เชื่อมบัญชี'}
       </button>
       <p className="text-xs" style={{ color: VIZ.lightText }}>
-        ใช้บัญชีเดียวกับที่เข้าสู่ระบบ tools.eashe.org · ระบบไม่เก็บรหัสผ่านไว้กับ LINE
+        ใช้บัญชีเดียวกับที่เข้าสู่ระบบ tools.eashe.org · ระบบไม่เก็บรหัสผ่านไว้กับ {app}
       </p>
     </form>
   );
@@ -153,7 +155,7 @@ export default function LineLinkPage() {
             <img src="/ea-logo.svg" alt="EA SHE" width={66} height={50} />
           </div>
           <h1 className="text-xl font-bold text-white flex items-center justify-center gap-2">
-            <Link2 size={20} /> เชื่อมบัญชี LINE
+            <Link2 size={20} /> เชื่อมบัญชีแชตบอท
           </h1>
           <p className="text-blue-200 text-sm mt-1">เข้าสู่ระบบเพื่อใช้ EA SHE Bot</p>
         </div>
