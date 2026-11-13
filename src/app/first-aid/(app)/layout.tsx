@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, BarChart3, ChevronDown, ClipboardCheck, Image as ImageIcon, List, LogOut, PlusCircle, Settings2 } from 'lucide-react';
 import { useAuth, type LoginCompanyOption } from '@/components/AuthProvider';
 import ModuleAccessDenied from '@/components/ModuleAccessDenied';
@@ -46,11 +46,16 @@ export default function FirstAidLayout({ children }: { children: React.ReactNode
 
   const setCompany = useCallback((id: string) => { setCompanyState(id); setScopeState('all'); window.localStorage.setItem(COMPANY_KEY, id); window.localStorage.setItem(SCOPE_KEY, 'all'); }, []);
   const setScope = useCallback((id: string) => { setScopeState(id); window.localStorage.setItem(SCOPE_KEY, id); }, []);
+  // A slower answer for the company shown before must never replace the data of the company shown now
+  // (opening ?company_id=… while another company is remembered starts two loads).
+  const currentCompany = useRef(company);
+  useEffect(() => { currentCompany.current = company; }, [company]);
   const refresh = useCallback(async () => {
     if (!company) return;
-    try { setError(''); const next = await getJson<FaState>(`/api/first-aid/state?company_id=${encodeURIComponent(company)}`); setState(next); }
-    catch (e) { setError(errMsg(e, 'โหลดข้อมูลไม่สำเร็จ')); }
-    finally { setLoading(false); }
+    const current = () => currentCompany.current === company;
+    try { setError(''); const next = await getJson<FaState>(`/api/first-aid/state?company_id=${encodeURIComponent(company)}`); if (current()) setState(next); }
+    catch (e) { if (current()) setError(errMsg(e, 'โหลดข้อมูลไม่สำเร็จ')); }
+    finally { if (current()) setLoading(false); }
   }, [company]);
   useEffect(() => { if (user && company) { setLoading(true); setState(null); void refresh(); } }, [user, company, refresh]);
   // Scope must point at a visible location of this company
