@@ -6,6 +6,7 @@ import { getLinkedAccount, type LinkedAccount } from '../line/accounts';
 import type { GroupScope } from '../line/groupBot';
 import type { VehicleDecision, VisitorRequestWithPersons } from '../visitor/types';
 import { VEHICLE_DECISION_LABEL } from '../visitor/constants';
+import { decideBatch } from '../visitor/server';
 import { esc, type InlineKeyboard } from './api';
 
 const UUID = /^[0-9a-f-]{36}$/;
@@ -47,15 +48,16 @@ export async function handleVisitorCallback(db: SupabaseClient, scope: GroupScop
   const pendingVehicles = (r.visitor_vehicles || []).filter(v => v.decision === 'pending');
   if (action === 'approve') {
     const who = `ในนาม ${esc(account.displayName)}`;
+    const batchNote = r.batch_id ? ' <i>(ทั้งชุดหลายวัน)</i>' : '';
     if (pendingVehicles.length === 0) {
       return {
-        html: `<b>ยืนยันอนุมัติ ${esc(r.request_no)}</b>\n${esc(r.visitor_company)} · ${r.visitor_persons.length} คน\n${who}\n<i>(ถ้าต้องใส่เงื่อนไข PPE/PTW ให้อนุมัติในระบบแทน)</i>`,
+        html: `<b>ยืนยันอนุมัติ ${esc(r.request_no)}</b>${batchNote}\n${esc(r.visitor_company)} · ${r.visitor_persons.length} คน\n${who}\n<i>(ถ้าต้องใส่เงื่อนไข PPE/PTW ให้อนุมัติในระบบแทน)</i>`,
         keyboard: { inline_keyboard: [[{ text: '✅ ยืนยันอนุมัติ', callback_data: `visitor:confirm:${r.id}` }, { text: 'เปิดในระบบ', url: 'https://tools.eashe.org/visitor' }]] },
       };
     }
     const plates = pendingVehicles.map(v => `${esc(v.plate)}${v.reason ? ` (${esc(v.reason.slice(0, 60))})` : ''}`).join(', ');
     return {
-      html: `<b>ยืนยันอนุมัติ ${esc(r.request_no)}</b>\n${esc(r.visitor_company)} · ${r.visitor_persons.length} คน\n🚗 รถรอพิจารณา ${pendingVehicles.length} คัน: ${plates}\n${who}`,
+      html: `<b>ยืนยันอนุมัติ ${esc(r.request_no)}</b>${batchNote}\n${esc(r.visitor_company)} · ${r.visitor_persons.length} คน\n🚗 รถรอพิจารณา ${pendingVehicles.length} คัน: ${plates}\n${who}`,
       keyboard: { inline_keyboard: [
         [{ text: '✅ อนุมัติ + รถเข้าภายในได้ทุกคัน', callback_data: `visitor:confirm:${r.id}:allowed` }],
         [{ text: '✅ อนุมัติ + รถจอดลานด้านนอก', callback_data: `visitor:confirm:${r.id}:outside` }],
@@ -76,8 +78,10 @@ export async function handleVisitorCallback(db: SupabaseClient, scope: GroupScop
       if (vErr) throw vErr;
       await db.from('visitor_events').insert([{ request_id: r.id, actor, action: 'vehicle_decision', note: `${pendingVehicles.map(v => v.plate).join(', ')}: ${VEHICLE_DECISION_LABEL[choice]} (จาก Telegram)` }]);
     }
+    let more = 0;
+    if (r.batch_id) more = await decideBatch(r.batch_id, r.id, 'approve', actor, { vehicleChoice: vehicleChoice === 'allowed' || vehicleChoice === 'outside' ? vehicleChoice : undefined, source: 'Telegram' });
     const updated = await loadRequest(db, r.id);
-    return { html: `✅ อนุมัติ ${esc(r.request_no)} แล้ว โดย ${esc(account.displayName)}`, toast: `อนุมัติ ${r.request_no} แล้ว`, approvedRequest: updated || undefined };
+    return { html: `✅ อนุมัติ ${esc(r.request_no)} แล้ว โดย ${esc(account.displayName)}${more > 0 ? `\nรวมอีก ${more} วันในชุดเดียวกัน` : ''}`, toast: `อนุมัติ ${r.request_no} แล้ว${more > 0 ? ` (+${more} วัน)` : ''}`, approvedRequest: updated || undefined };
   }
   return { html: 'คำสั่งไม่ถูกต้อง', toast: 'คำสั่งไม่ถูกต้อง' };
 }

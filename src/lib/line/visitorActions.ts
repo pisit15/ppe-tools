@@ -8,6 +8,7 @@ import { text, type Json, type LineMessage } from './flex';
 import type { GroupScope } from './groupBot';
 import type { VehicleDecision, VisitorRequestWithPersons } from '../visitor/types';
 import { VEHICLE_DECISION_LABEL } from '../visitor/constants';
+import { decideBatch } from '../visitor/server';
 
 const UUID = /^[0-9a-f-]{36}$/;
 type Req = VisitorRequestWithPersons;
@@ -47,12 +48,13 @@ export async function handleVisitorPostback(db: SupabaseClient, scope: GroupScop
   const pendingVehicles = (r.visitor_vehicles || []).filter(v => v.decision === 'pending');
   if (action === 'approve') {
     const who = `ในนาม ${account.displayName}`;
+    const batchNote = r.batch_id ? ' (ทั้งชุดหลายวัน)' : '';
     if (pendingVehicles.length === 0) {
       return [{
         type: 'template', altText: `ยืนยันอนุมัติ ${r.request_no}?`,
         template: {
           type: 'confirm',
-          text: `ยืนยันอนุมัติ ${r.request_no}\n${r.visitor_company} · ${r.visitor_persons.length} คน\n${who}\n(ถ้าต้องใส่เงื่อนไข PPE/PTW ให้อนุมัติในระบบแทน)`.slice(0, 240),
+          text: `ยืนยันอนุมัติ ${r.request_no}${batchNote}\n${r.visitor_company} · ${r.visitor_persons.length} คน\n${who}\n(ถ้าต้องใส่เงื่อนไข PPE/PTW ให้อนุมัติในระบบแทน)`.slice(0, 240),
           actions: [
             { type: 'postback', label: 'ยืนยันอนุมัติ', data: confirmPostback(r.id), displayText: `ยืนยันอนุมัติ ${r.request_no}` },
             { type: 'uri', label: 'เปิดในระบบ', uri: 'https://tools.eashe.org/visitor' },
@@ -67,7 +69,7 @@ export async function handleVisitorPostback(db: SupabaseClient, scope: GroupScop
       type: 'template', altText: `ยืนยันอนุมัติ ${r.request_no} — มีรถรอพิจารณา ${pendingVehicles.length} คัน`,
       template: {
         type: 'buttons',
-        text: `อนุมัติ ${r.request_no}\n${r.visitor_company} · ${r.visitor_persons.length} คน\nรถรอพิจารณา ${pendingVehicles.length} คัน: ${plates}\n${who}`.slice(0, 160),
+        text: `อนุมัติ ${r.request_no}${batchNote}\n${r.visitor_company} · ${r.visitor_persons.length} คน\nรถรอพิจารณา ${pendingVehicles.length} คัน: ${plates}\n${who}`.slice(0, 160),
         actions: [
           { type: 'postback', label: 'อนุมัติ รถเข้าได้', data: confirmPostback(r.id, 'allowed'), displayText: `อนุมัติ ${r.request_no} รถเข้าได้` },
           { type: 'postback', label: 'อนุมัติ รถจอดนอก', data: confirmPostback(r.id, 'outside'), displayText: `อนุมัติ ${r.request_no} รถจอดนอก` },
@@ -89,8 +91,11 @@ export async function handleVisitorPostback(db: SupabaseClient, scope: GroupScop
       if (vErr) throw vErr;
       await db.from('visitor_events').insert([{ request_id: r.id, actor, action: 'vehicle_decision', note: `${pendingVehicles.map(v => v.plate).join(', ')}: ${VEHICLE_DECISION_LABEL[vehicleChoice]} (จาก LINE)` }]);
     }
+    let more = 0;
+    if (r.batch_id) more = await decideBatch(r.batch_id, r.id, 'approve', actor, { vehicleChoice: vehicleChoice === 'allowed' || vehicleChoice === 'outside' ? vehicleChoice : undefined, source: 'LINE' });
     const updated = await loadRequest(db, r.id);
-    return updated ? [decisionCard(updated, scope.companyName)] : [text(`อนุมัติ ${r.request_no} แล้ว`)];
+    const card = updated ? decisionCard(updated, scope.companyName) : text(`อนุมัติ ${r.request_no} แล้ว`);
+    return more > 0 ? [card, text(`อนุมัติทั้งชุดแล้ว: อีก ${more} วันในชุดเดียวกันได้รับการอนุมัติด้วย`)] : [card];
   }
   return [text('คำสั่งไม่ถูกต้อง')];
 }

@@ -41,16 +41,19 @@ const button = (label: string, uri: string, color: string): Json => ({
 });
 
 /** Pushed when an employee submits a request. */
-export function newRequestCard(r: VisitorRequestWithPersons, companyName: string): LineMessage {
-  const alt = `คำขอเข้าพื้นที่ใหม่ ${r.request_no}: ${r.visitor_company} ${thaiDate(r.arrival_date)} ${hhmm(r.time_from)} (${r.visitor_persons.length} คน) — รออนุมัติ`;
+export const batchLabel = (dates: string[]) => `${dates.length} วัน: ${dates.map(d => { const [, m, dd] = d.split('-').map(Number); return `${dd} ${TH_MONTHS[m - 1]}`; }).join(', ')}`;
+
+export function newRequestCard(r: VisitorRequestWithPersons, companyName: string, batchDates?: string[]): LineMessage {
+  const batch = batchDates && batchDates.length > 1 ? batchDates : null;
+  const alt = `คำขอเข้าพื้นที่ใหม่ ${r.request_no}${batch ? ` (ชุด ${batch.length} วัน)` : ''}: ${r.visitor_company} ${thaiDate(r.arrival_date)} ${hhmm(r.time_from)} (${r.visitor_persons.length} คน) — รออนุมัติ`;
   return flex(alt, {
     type: 'bubble', size: 'mega',
-    header: header('VISITOR ACCESS · รออนุมัติ', `คำขอใหม่ ${r.request_no}`, C.warn),
-    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: body(r, companyName) },
+    header: header('VISITOR ACCESS · รออนุมัติ', `คำขอใหม่ ${r.request_no}${batch ? ` · ชุด ${batch.length} วัน` : ''}`, C.warn),
+    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: [...(batch ? [row('หลายวัน', batchLabel(batch), true)] : []), ...body(r, companyName)] },
     footer: {
       type: 'box', layout: 'vertical', spacing: 'sm',
       contents: [
-        { type: 'button', style: 'primary', color: C.ok, height: 'sm', action: { type: 'postback', label: 'อนุมัติ (ผู้มีสิทธิ์ที่ผูก LINE แล้ว)', data: `visitor:approve:${r.id}`, displayText: `อนุมัติ ${r.request_no}` } },
+        { type: 'button', style: 'primary', color: C.ok, height: 'sm', action: { type: 'postback', label: batch ? `อนุมัติทั้งชุด ${batch.length} วัน` : 'อนุมัติ (ผู้มีสิทธิ์ที่ผูก LINE แล้ว)', data: `visitor:approve:${r.id}`, displayText: `อนุมัติ ${r.request_no}` } },
         { type: 'button', style: 'secondary', height: 'sm', action: { type: 'uri', label: 'เปิดคิว · ใส่เงื่อนไข / ขอข้อมูลเพิ่ม / ไม่อนุมัติ', uri: QUEUE } },
       ],
     },

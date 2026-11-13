@@ -9,11 +9,12 @@ import { Car, ParkingCircle } from 'lucide-react';
 import { Check, X } from 'lucide-react';
 import type { CreateVisitorRequestInput, HasPermit, VehicleInput, VisitorBackground, VisitorLinkInfo } from '@/lib/visitor/types';
 import { useQr } from '../../../_components/useQr';
+import { MultiDatePicker } from '../../../_components/DatePicker';
 import { FetchError, ToastView, VIZ, cardClass, getJson, inputClass, labelClass, postJson, thaiDate, useToast } from '../../../_components/ui';
 
 type LinkInfo = VisitorLinkInfo;
 type Person = { name: string; detail: string };
-type Done = { request_no: string; track_code: string };
+type Done = { request_no: string; track_code: string; batch?: { request_no: string; arrival_date: string; track_code: string }[] };
 
 const todayBangkok = () => new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
 
@@ -30,7 +31,9 @@ export default function VisitorRequestPage() {
   const [phone, setPhone] = useState('');
   const [department, setDepartment] = useState('');
   const [visitorCompany, setVisitorCompany] = useState('');
-  const [arrivalDate, setArrivalDate] = useState(todayBangkok());
+  const [arrivalDates, setArrivalDates] = useState<string[]>([todayBangkok()]);
+  const arrivalDate = [...arrivalDates].sort()[0] || todayBangkok();
+  const [multiDay, setMultiDay] = useState(false);
   const [timeFrom, setTimeFrom] = useState('08:00');
   const [timeTo, setTimeTo] = useState('17:00');
   const [purpose, setPurpose] = useState('');
@@ -86,7 +89,7 @@ export default function VisitorRequestPage() {
     }
     const body: CreateVisitorRequestInput = {
       token, informer_name: informerName, informer_employee_code: employeeCode, informer_phone: phone, informer_department: department,
-      visitor_company: visitorCompany, arrival_date: arrivalDate, time_from: timeFrom, time_to: timeTo, purpose, purpose_other: purposeOther,
+      visitor_company: visitorCompany, arrival_date: arrivalDate, arrival_dates: arrivalDates, time_from: timeFrom, time_to: timeTo, purpose, purpose_other: purposeOther,
       work_areas: isContractor ? areas : [], work_area_detail: isContractor ? areaDetail : '', has_permit: isContractor ? hasPermit : 'unknown', permit_ref: isContractor && hasPermit === 'yes' ? permitRef : '', note,
       persons: filledPersons.map(p => ({ name: p.name.trim(), detail: p.detail.trim() })),
       vehicles: sendVehicles.map(v => ({ plate: (v.plate || '').trim(), province: (v.province || '').trim(), vehicle_type: v.vehicle_type || '', reason: (v.reason || '').trim() })),
@@ -111,7 +114,8 @@ export default function VisitorRequestPage() {
         <div className={cardClass} style={{ borderLeft: `4px solid ${VIZ.positive}` }}>
           <div className="flex items-center gap-3"><CheckCircle2 size={32} style={{ color: VIZ.positive }} /><h1 className="text-2xl font-semibold" style={{ color: VIZ.text }}>ส่งคำขอแล้ว</h1></div>
           <p className="mt-4 text-gray-700">เลขที่คำขอ <span className="font-mono font-semibold text-lg" style={{ color: VIZ.primary }}>{done.request_no}</span></p>
-          <p className="mt-1 text-gray-700">วันที่เข้าพื้นที่ {thaiDate(arrivalDate, true)} เวลา {timeFrom}–{timeTo} · {filledPersons.length} คน · {visitorCompany}</p>
+          <p className="mt-1 text-gray-700">วันที่เข้าพื้นที่ {done.batch && done.batch.length > 1 ? `${done.batch.length} วัน` : thaiDate(arrivalDate, true)} เวลา {timeFrom}–{timeTo} · {filledPersons.length} คน · {visitorCompany}</p>
+          {done.batch && done.batch.length > 1 && <ul className="mt-2 text-sm text-gray-700 grid gap-1 sm:grid-cols-2">{done.batch.map(b => <li key={b.request_no}><span className="font-mono" style={{ color: VIZ.primary }}>{b.request_no}</span> · {thaiDate(b.arrival_date, true)}</li>)}</ul>}
           <p className="mt-4 text-sm text-gray-600">ทีม SHE จะคัดกรองและอนุมัติ ติดตามสถานะได้จากลิงก์นี้ (บันทึกไว้ หรือส่งต่อให้ผู้มาติดต่อ):</p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {trackQr && <div className="mt-3 flex items-center gap-4"><img src={trackQr} alt="QR ลิงก์ติดตามสถานะ" width={110} height={110} className="rounded-lg border border-gray-200" /><p className="text-sm text-gray-600">ให้ผู้มาติดต่อสแกน QR นี้เพื่อดูสถานะ/เงื่อนไขการเข้าพื้นที่ด้วยตัวเอง</p></div>}
@@ -190,10 +194,19 @@ export default function VisitorRequestPage() {
         <section className={cardClass}>
           <h2 className="flex items-center gap-2 text-lg font-semibold mb-4" style={{ color: VIZ.primary }}><CalendarDays size={20} />วัน-เวลา และพื้นที่</h2>
           <div className="grid gap-4 sm:grid-cols-3">
-            <div><label className={labelClass} htmlFor="date">วันที่เข้าพื้นที่ *</label><input id="date" type="date" className={inputClass} value={arrivalDate} onChange={e => setArrivalDate(e.target.value)} required /></div>
+            <div>
+              <label className={labelClass} htmlFor="date">วันที่เข้าพื้นที่ *</label>
+              {!multiDay && <input id="date" type="date" className={inputClass} value={arrivalDate} onChange={e => setArrivalDates(e.target.value ? [e.target.value] : [])} required />}
+              {multiDay && <div className="text-sm text-gray-700">{arrivalDates.length} วัน — เลือกในปฏิทินด้านล่าง</div>}
+              <button type="button" onClick={() => { setMultiDay(m => !m); if (multiDay) setArrivalDates(d => d.slice(0, 1)); }} className="mt-1 text-xs underline" style={{ color: VIZ.primary }}>{multiDay ? 'กลับเป็นวันเดียว' : 'มาหลายวัน (เลือกหลายวันในปฏิทิน)'}</button>
+            </div>
             <div><label className={labelClass} htmlFor="tf">เวลาเริ่ม *</label><input id="tf" type="time" className={inputClass} value={timeFrom} onChange={e => setTimeFrom(e.target.value)} required /></div>
             <div><label className={labelClass} htmlFor="tt">เวลาสิ้นสุด *</label><input id="tt" type="time" className={inputClass} value={timeTo} onChange={e => setTimeTo(e.target.value)} required /></div>
           </div>
+          {multiDay && <div className="mt-4">
+            <MultiDatePicker value={arrivalDates} onChange={setArrivalDates} min={todayBangkok()} maxCount={VISITOR_LIMITS.maxBatchDays} />
+            <p className="mt-1 text-xs text-gray-500">แตะวันที่ต้องการได้อิสระ (ไม่ต้องติดกัน) เวลาเริ่ม-สิ้นสุดใช้เหมือนกันทุกวัน · ระบบจะออกเลขคำขอ 1 เลขต่อวัน และทีม SHE อนุมัติทั้งชุดได้ในครั้งเดียว</p>
+          </div>}
           {/* Same rules as the Jotform conditions: area + permit only for contractor work; "อื่น ๆ" needs detail. */}
           {isContractor && <div className="mt-5">
             <label className={labelClass}>พื้นที่ปฏิบัติงาน * {link.areas.length === 0 && <span className="text-gray-500 font-normal">(ระบุในช่องรายละเอียดด้านล่าง)</span>}</label>

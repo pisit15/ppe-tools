@@ -45,6 +45,14 @@ export default function TrackPage() {
             </dl>
             {data.status === 'approved' && data.conditions && <div className="mt-4 rounded-lg p-3 text-sm" style={{ background: `${VIZ.positive}1A` }}><strong>เงื่อนไขการเข้าพื้นที่:</strong> {data.conditions}</div>}
             {(data.status === 'need_info' || data.status === 'rejected') && data.decision_note && <div className="mt-4 rounded-lg p-3 text-sm" style={{ background: `${VIZ.secondary}1A` }}><strong>จากทีม SHE:</strong> {data.decision_note}</div>}
+            {data.batch && data.batch.length > 1 && (
+              <div className="mt-4 rounded-lg border border-gray-200 p-3">
+                <div className="text-sm font-semibold text-gray-800 mb-1">คำขอชุดเดียวกัน {data.batch.length} วัน</div>
+                <ul className="divide-y divide-gray-100 text-sm">
+                  {data.batch.map(b => <li key={b.request_no} className="py-1.5 flex items-center justify-between gap-2"><a href={`/visitor/track/${b.track_code}`} className="font-mono hover:underline" style={{ color: b.request_no === data.request_no ? VIZ.text : VIZ.primary }}>{b.request_no}</a><span className="text-gray-600">{thaiDate(b.arrival_date, true)}</span><StatusBadge status={b.status} /></li>)}
+                </ul>
+              </div>
+            )}
             {data.status === 'submitted' && <p className="mt-4 text-sm text-gray-600">รอทีม SHE คัดกรอง หน้านี้อัปเดตอัตโนมัติทุก 1 นาที</p>}
             {data.status === 'need_info' && <p className="mt-2 text-sm text-gray-600">กรุณาติดต่อทีม SHE หรือส่งคำขอใหม่พร้อมข้อมูลที่ครบถ้วน</p>}
           </div>

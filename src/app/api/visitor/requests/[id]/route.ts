@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AccessError, apiError, assertCompany } from '@/lib/toolsSession';
 import { requireVisitorApprover } from '@/lib/visitor/access';
 import { validateDecision } from '@/lib/visitor/validation';
-import { REQUEST_SELECT, addEvent, db, sortPersons } from '@/lib/visitor/server';
+import { REQUEST_SELECT, addEvent, batchSiblings, db, decideBatch, sortPersons } from '@/lib/visitor/server';
 import { notifyDecision } from '@/lib/visitor/notify';
 import type { VisitorEventRow, VisitorRequestDetail, VisitorRequestWithPersons, VisitorStatus } from '@/lib/visitor/types';
 import { VEHICLE_DECISION_LABEL } from '@/lib/visitor/constants';
@@ -18,7 +18,8 @@ async function load(id: string): Promise<VisitorRequestDetail> {
   if (!data) throw new AccessError('ไม่พบคำขอ', 404);
   const { data: events, error: evError } = await client.from('visitor_events').select('*').eq('request_id', id).order('at');
   if (evError) throw evError;
-  return { ...sortPersons(data as VisitorRequestWithPersons), visitor_events: (events || []) as VisitorEventRow[] };
+  const row = sortPersons(data as VisitorRequestWithPersons);
+  return { ...row, visitor_events: (events || []) as VisitorEventRow[], batch: await batchSiblings(row) };
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -70,7 +71,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }).eq('id', row.id);
     if (error) throw error;
     await addEvent(row.id, actorName, EVENT[decision.action], [decision.note, decision.action === 'approve' && decision.conditions ? `เงื่อนไข: ${decision.conditions}` : ''].filter(Boolean).join(' · '));
-    const updated = await load(row.id);
+    let batchCount = 0;
+    if (decision.apply_to_batch && row.batch_id && decision.action !== 'vehicles') {
+      batchCount = await decideBatch(row.batch_id, row.id, decision.action, actorName, { note: decision.note, conditions: decision.action === 'approve' ? (decision.conditions || '') : undefined, vehicleChoice: decision.vehicles?.length === 1 && decision.vehicles[0].decision !== 'pending' ? decision.vehicles[0].decision : undefined });
+    }
+    const updated = { ...(await load(row.id)), batch_applied: batchCount };
     // Tell the company's LINE group — but not when an already-approved request only had its conditions edited.
     if (!(row.status === 'approved' && decision.action === 'approve')) await notifyDecision(updated);
     return NextResponse.json({ data: updated });

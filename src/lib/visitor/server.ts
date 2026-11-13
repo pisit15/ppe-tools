@@ -1,9 +1,9 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { getSupabaseServer } from '@/lib/supabase';
 import { AccessError } from '@/lib/toolsSession';
 import { VISITOR_LIMITS, gateCheckConfig, vehiclePolicyFor } from './constants';
 import { addDays, bangkokToday } from './validation';
-import type { BoardPayload, BoardRequest, CreateVisitorRequestInput, GateCheckConfig, VisitorBackground, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons, VisitorVehicleRow } from './types';
+import type { BatchSibling, BoardPayload, BoardRequest, CreateVisitorRequestInput, GateCheckConfig, VisitorBackground, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons, VisitorVehicleRow } from './types';
 
 export const db = () => getSupabaseServer();
 export const newToken = (bytes = 24) => randomBytes(bytes).toString('base64url');
@@ -43,39 +43,78 @@ export async function activeLink(token: string) {
 }
 
 /** Create a request through a public link. Rate-limited per link; returns the stored row. */
-export async function createRequest(input: CreateVisitorRequestInput): Promise<VisitorRequestWithPersons> {
+/** Creates one request per date (input.arrival_dates, or just arrival_date). Several dates share a batch_id. Returns rows in date order. */
+export async function createRequest(input: CreateVisitorRequestInput): Promise<VisitorRequestWithPersons[]> {
   const link = await activeLink(input.token);
   const client = db();
+  const dates = input.arrival_dates?.length ? [...new Set(input.arrival_dates)].sort() : [input.arrival_date];
   const since = new Date(Date.now() - 3600 * 1000).toISOString();
   const { count, error: countError } = await client.from('visitor_requests').select('id', { count: 'exact', head: true }).eq('link_id', link.id).gte('created_at', since);
   if (countError) throw countError;
-  if ((count || 0) >= VISITOR_LIMITS.maxRequestsPerLinkPerHour) throw new AccessError('มีคำขอผ่านลิงก์นี้มากเกินไปในชั่วโมงที่ผ่านมา กรุณาลองใหม่ภายหลัง', 429);
+  if ((count || 0) + dates.length > VISITOR_LIMITS.maxRequestsPerLinkPerHour) throw new AccessError('มีคำขอผ่านลิงก์นี้มากเกินไปในชั่วโมงที่ผ่านมา กรุณาลองใหม่ภายหลัง', 429);
 
   const period = bangkokToday().slice(2, 4) + bangkokToday().slice(5, 7);
-  const { data: no, error: noError } = await client.rpc('visitor_next_request_no', { p_company: link.company_id, p_period: period });
-  if (noError) throw noError;
-
-  const { token: _token, persons, vehicles = [], ...fields } = input;
-  void _token;
-  const { data: created, error } = await client.from('visitor_requests').insert([{
-    ...fields, company_id: link.company_id, link_id: link.id, request_no: String(no), track_code: newToken(18), status: 'submitted', source: 'web',
-  }]).select('*').single();
-  if (error) throw error;
-  const row = created as VisitorRequestRow;
-  const { error: personsError } = await client.from('visitor_persons').insert(persons.map((p, i) => ({ request_id: row.id, seq: i + 1, name: p.name, detail: p.detail || '' })));
-  if (personsError) throw personsError;
-  if (vehicles.length) {
-    const policy = vehiclePolicyFor(input.purpose);
-    const { error: vErr } = await client.from('visitor_vehicles').insert(vehicles.map((v, i) => ({
-      request_id: row.id, seq: i + 1, plate: v.plate, province: v.province || '', vehicle_type: v.vehicle_type || '', reason: v.reason || '',
-      decision: policy.mode === 'allow' ? 'allowed' : 'pending',
-    })));
-    if (vErr) throw vErr;
+  const { token: _token, persons, vehicles = [], arrival_dates: _dates, ...fields } = input;
+  void _token; void _dates;
+  const batchId = dates.length > 1 ? randomUUID() : null;
+  const policy = vehiclePolicyFor(input.purpose);
+  const out: VisitorRequestWithPersons[] = [];
+  for (const arrival_date of dates) {
+    const { data: no, error: noError } = await client.rpc('visitor_next_request_no', { p_company: link.company_id, p_period: period });
+    if (noError) throw noError;
+    const { data: created, error } = await client.from('visitor_requests').insert([{
+      ...fields, arrival_date, company_id: link.company_id, link_id: link.id, request_no: String(no), track_code: newToken(18), status: 'submitted', source: 'web', batch_id: batchId,
+    }]).select('*').single();
+    if (error) throw error;
+    const row = created as VisitorRequestRow;
+    const { error: personsError } = await client.from('visitor_persons').insert(persons.map((p, i) => ({ request_id: row.id, seq: i + 1, name: p.name, detail: p.detail || '' })));
+    if (personsError) throw personsError;
+    if (vehicles.length) {
+      const { error: vErr } = await client.from('visitor_vehicles').insert(vehicles.map((v, i) => ({
+        request_id: row.id, seq: i + 1, plate: v.plate, province: v.province || '', vehicle_type: v.vehicle_type || '', reason: v.reason || '',
+        decision: policy.mode === 'allow' ? 'allowed' : 'pending',
+      })));
+      if (vErr) throw vErr;
+    }
+    await addEvent(row.id, `${input.informer_name} (${input.informer_employee_code})`, 'submitted', `${persons.length} คน${vehicles.length ? ` · รถ ${vehicles.length} คัน` : ''}${batchId ? ` · ชุด ${dates.length} วัน` : ''}`);
+    const { data: full, error: fullError } = await client.from('visitor_requests').select(REQUEST_SELECT).eq('id', row.id).single();
+    if (fullError) throw fullError;
+    out.push(sortPersons(full as VisitorRequestWithPersons));
   }
-  await addEvent(row.id, `${input.informer_name} (${input.informer_employee_code})`, 'submitted', `${persons.length} คน${vehicles.length ? ` · รถ ${vehicles.length} คัน` : ''}`);
-  const { data: full, error: fullError } = await client.from('visitor_requests').select(REQUEST_SELECT).eq('id', row.id).single();
-  if (fullError) throw fullError;
-  return sortPersons(full as VisitorRequestWithPersons);
+  return out;
+}
+
+/** Other requests submitted with this one (same batch), date order. Empty for single-day requests. */
+export async function batchSiblings(r: Pick<VisitorRequestRow, 'id' | 'batch_id'>): Promise<BatchSibling[]> {
+  if (!r.batch_id) return [];
+  const { data, error } = await db().from('visitor_requests').select('id, request_no, arrival_date, status, track_code').eq('batch_id', r.batch_id).order('arrival_date');
+  if (error) throw error;
+  return (data || []) as BatchSibling[];
+}
+
+const BATCH_NEXT = { approve: 'approved', reject: 'rejected', cancel: 'cancelled', need_info: 'need_info' } as const;
+/**
+ * Applies a decision to the other requests of a multi-day batch (the one already decided is skipped).
+ * approve/reject/need_info touch only requests still waiting; cancel also cancels approved days. Returns how many changed.
+ */
+export async function decideBatch(batchId: string, exceptId: string, action: keyof typeof BATCH_NEXT, actor: string, opts: { note?: string; conditions?: string; vehicleChoice?: 'allowed' | 'outside'; source?: string } = {}): Promise<number> {
+  const client = db();
+  const statuses = action === 'cancel' ? ['submitted', 'need_info', 'approved'] : ['submitted', 'need_info'];
+  const { data, error } = await client.from('visitor_requests').select('id, request_no').eq('batch_id', batchId).neq('id', exceptId).in('status', statuses);
+  if (error) throw error;
+  const rows = (data || []) as { id: string; request_no: string }[];
+  const now = new Date().toISOString();
+  for (const r of rows) {
+    const patch: Record<string, unknown> = { status: BATCH_NEXT[action], decided_by: actor, decided_at: now, decision_note: opts.note || '' };
+    if (action === 'approve' && opts.conditions !== undefined) patch.conditions = opts.conditions;
+    const { error: uErr } = await client.from('visitor_requests').update(patch).eq('id', r.id);
+    if (uErr) throw uErr;
+    await addEvent(r.id, actor, BATCH_NEXT[action] === 'need_info' ? 'need_info' : BATCH_NEXT[action], [`ทั้งชุด${opts.source ? ` (${opts.source})` : ''}`, opts.note || ''].filter(Boolean).join(' · '));
+    if (action === 'approve' && opts.vehicleChoice) {
+      await client.from('visitor_vehicles').update({ decision: opts.vehicleChoice, decided_by: actor, decided_at: now }).eq('request_id', r.id).eq('decision', 'pending');
+    }
+  }
+  return rows.length;
 }
 
 export async function addEvent(requestId: string, actor: string, action: string, note = '') {

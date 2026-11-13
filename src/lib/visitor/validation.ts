@@ -30,10 +30,16 @@ export function validateCreate(body: unknown): CreateVisitorRequestInput {
   const token = str(b.token, 64, 'ลิงก์คำขอ');
   if (!/^[A-Za-z0-9_-]{24,64}$/.test(token)) throw bad('ลิงก์คำขอไม่ถูกต้อง');
 
-  const arrival_date = str(b.arrival_date, 10, 'วันที่เข้าพื้นที่');
-  if (!DATE.test(arrival_date) || Number.isNaN(Date.parse(`${arrival_date}T00:00:00Z`))) throw bad('วันที่เข้าพื้นที่ไม่ถูกต้อง');
-  if (arrival_date < addDays(bangkokToday(), -1)) throw bad('วันที่เข้าพื้นที่ต้องไม่ย้อนหลังเกิน 1 วัน');
-  if (arrival_date > addDays(bangkokToday(), 365)) throw bad('วันที่เข้าพื้นที่ต้องไม่เกิน 1 ปีข้างหน้า');
+  // One date (arrival_date) or several (arrival_dates[]: any days, not necessarily consecutive, ≤ VISITOR_LIMITS.maxBatchDays).
+  const rawDates = Array.isArray(b.arrival_dates) && b.arrival_dates.length ? b.arrival_dates.map(x => String(x ?? '').trim()) : [str(b.arrival_date, 10, 'วันที่เข้าพื้นที่')];
+  const arrival_dates = [...new Set(rawDates)].sort();
+  if (arrival_dates.length > VISITOR_LIMITS.maxBatchDays) throw bad(`เลือกได้สูงสุด ${VISITOR_LIMITS.maxBatchDays} วันต่อคำขอ`);
+  for (const d of arrival_dates) {
+    if (!DATE.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`))) throw bad('วันที่เข้าพื้นที่ไม่ถูกต้อง');
+    if (d < addDays(bangkokToday(), -1)) throw bad('วันที่เข้าพื้นที่ต้องไม่ย้อนหลังเกิน 1 วัน');
+    if (d > addDays(bangkokToday(), 365)) throw bad('วันที่เข้าพื้นที่ต้องไม่เกิน 1 ปีข้างหน้า');
+  }
+  const arrival_date = arrival_dates[0];
   const time_from = str(b.time_from, 5, 'เวลาเริ่ม');
   const time_to = str(b.time_to, 5, 'เวลาสิ้นสุด');
   if (!TIME.test(time_from) || !TIME.test(time_to)) throw bad('รูปแบบเวลาไม่ถูกต้อง (HH:MM)');
@@ -96,7 +102,7 @@ export function validateCreate(body: unknown): CreateVisitorRequestInput {
     informer_phone: str(b.informer_phone, 30, 'เบอร์โทรศัพท์', 6),
     informer_department: str(b.informer_department, 80, 'แผนก'),
     visitor_company: str(b.visitor_company, 160, 'ชื่อบริษัทผู้มาติดต่อ'),
-    arrival_date, time_from, time_to, purpose, purpose_other, work_areas, work_area_detail,
+    arrival_date, arrival_dates, time_from, time_to, purpose, purpose_other, work_areas, work_area_detail,
     has_permit,
     permit_ref: opt(b.permit_ref, 80, 'เลขที่ Permit'),
     note: opt(b.note, 1000, 'หมายเหตุ'),
@@ -119,5 +125,5 @@ export function validateDecision(body: unknown): DecisionInput {
     return { id, decision };
   }) : undefined;
   if (action === 'vehicles' && !vehicles?.length) throw bad('ไม่มีรถให้บันทึก');
-  return { action: action as DecisionInput['action'], note, conditions: opt(b.conditions, 1000, 'เงื่อนไข'), vehicles };
+  return { action: action as DecisionInput['action'], note, conditions: opt(b.conditions, 1000, 'เงื่อนไข'), vehicles, apply_to_batch: Boolean(b.apply_to_batch) };
 }

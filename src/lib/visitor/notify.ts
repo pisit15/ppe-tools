@@ -36,13 +36,14 @@ async function sendTelegram(companyId: string, chatId: number, kind: Kind, reque
   return result;
 }
 
-export async function notifyNewRequest(r: VisitorRequestWithPersons) {
+/** @param batchDates every date of a multi-day batch (one card for the whole batch; approving it approves every day) */
+export async function notifyNewRequest(r: VisitorRequestWithPersons, batchDates?: string[]) {
   try {
     const s = await settings(r.company_id);
     if (!s?.notify_new) return;
     const name = await companyName(r.company_id);
-    if (s.line_group_id) await sendLine(r.company_id, s.line_group_id, 'new_request', r.id, newRequestCard(r, name));
-    if (s.telegram_chat_id) { const t = newRequestText(r, name); await sendTelegram(r.company_id, s.telegram_chat_id, 'new_request', r.id, t.html, t.keyboard); }
+    if (s.line_group_id) await sendLine(r.company_id, s.line_group_id, 'new_request', r.id, newRequestCard(r, name, batchDates));
+    if (s.telegram_chat_id) { const t = newRequestText(r, name, batchDates); await sendTelegram(r.company_id, s.telegram_chat_id, 'new_request', r.id, t.html, t.keyboard); }
   } catch (e) { console.error('visitor notify (new) failed', e instanceof Error ? e.message : e); }
 }
 

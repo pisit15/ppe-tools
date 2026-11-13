@@ -56,6 +56,7 @@ export default function VisitorQueuePage() {
   // Sortable columns; default = arrival date ascending (soonest visit first), then start time.
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'arrival', dir: 'asc' });
   const toggleSort = (key: SortKey) => setSort(prev => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'created' ? 'desc' : 'asc' }));
+  const batchSizes = useMemo(() => { const m: Record<string, number> = {}; for (const r of rows) if (r.batch_id) m[r.batch_id] = (m[r.batch_id] || 0) + 1; return m; }, [rows]);
   const sorted = useMemo(() => {
     const val = (r: VisitorRequestWithPersons): string | number => {
       switch (sort.key) {
@@ -133,7 +134,7 @@ export default function VisitorQueuePage() {
             {sorted.length === 0 && <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">{loading ? 'กำลังโหลด…' : 'ไม่มีรายการ'}</td></tr>}
             {sorted.map(r => (
               <tr key={r.id} onClick={() => setSelected(r.id)} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer">
-                <td className="px-4 py-3 font-mono font-medium" style={{ color: VIZ.primary }}>{r.request_no}</td>
+                <td className="px-4 py-3 font-mono font-medium" style={{ color: VIZ.primary }}>{r.request_no}{r.batch_id && <span className="ml-1 inline-block rounded-full px-1.5 py-0 text-[11px] font-sans font-medium align-middle" style={{ background: `${VIZ.secondary}22`, color: '#8a4b00' }} title="คำขอหลายวัน (ชุดเดียวกัน)">ชุด{batchSizes[r.batch_id] ? ` ${batchSizes[r.batch_id]}` : ''}</span>}</td>
                 <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                 <td className="px-4 py-3 whitespace-nowrap">{thaiDate(r.arrival_date)} <span className="text-gray-500">{hhmm(r.time_from)}–{hhmm(r.time_to)}</span></td>
                 <td className="px-4 py-3 font-medium">{r.visitor_company}{r.visitor_vehicles?.length > 0 && <span className="ml-1 inline-flex items-center gap-0.5 text-xs font-normal" style={{ color: r.visitor_vehicles.some(v => v.decision === 'pending') ? VIZ.secondary : VIZ.lightText }} title="รถที่ขอนำเข้า"><Car size={12} />{r.visitor_vehicles.length}</span>}</td>
@@ -179,6 +180,7 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<DecisionAction | null>(null);
   const [vehicleDecisions, setVehicleDecisions] = useState<Record<string, VehicleDecision>>({});
+  const [applyBatch, setApplyBatch] = useState(true);
 
   useEffect(() => {
     setData(null); setError(''); setConfirm(null);
@@ -194,9 +196,9 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
     setBusy(true);
     try {
       const vehicles = data.visitor_vehicles.filter(v => vehicleDecisions[v.id] && vehicleDecisions[v.id] !== v.decision).map(v => ({ id: v.id, decision: vehicleDecisions[v.id] }));
-      const r = await postJson<{ data: VisitorRequestDetail }>(`/api/visitor/requests/${id}`, { action, note: note.trim(), conditions: conditions.trim(), ...(vehicles.length ? { vehicles } : {}) }, 'PATCH');
+      const r = await postJson<{ data: VisitorRequestDetail }>(`/api/visitor/requests/${id}`, { action, note: note.trim(), conditions: conditions.trim(), ...(vehicles.length ? { vehicles } : {}), apply_to_batch: applyBatch && (data.batch?.length || 0) > 1 }, 'PATCH');
       setData(r.data); setNote(''); setConfirm(null); setVehicleDecisions(Object.fromEntries(r.data.visitor_vehicles.map(v => [v.id, v.decision])));
-      notify({ type: 'success', msg: `${r.data.request_no}: ${VISITOR_STATUS_LABEL[r.data.status]}` });
+      notify({ type: 'success', msg: `${r.data.request_no}: ${VISITOR_STATUS_LABEL[r.data.status]}${r.data.batch_applied ? ` · ใช้กับอีก ${r.data.batch_applied} วันในชุด` : ''}` });
       onChanged();
     } catch (e) { notify({ type: 'error', msg: e instanceof FetchError ? e.message : 'บันทึกไม่สำเร็จ' }); }
     finally { setBusy(false); }
@@ -278,6 +280,15 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
             {data.note && <section className="rounded-lg p-4 text-sm" style={{ background: `${VIZ.secondary}14` }}><strong>หมายเหตุจากผู้แจ้ง:</strong> {data.note}</section>}
             {data.decision_note && <section className="rounded-lg p-4 text-sm" style={{ background: `${STATUS_COLOR[data.status]}14` }}><strong>บันทึกการตัดสิน ({data.decided_by}):</strong> {data.decision_note}</section>}
 
+            {data.batch && data.batch.length > 1 && (
+              <section className="rounded-xl border p-4" style={{ borderColor: `${VIZ.secondary}66`, background: `${VIZ.secondary}0D` }}>
+                <h4 className="font-semibold flex items-center gap-2">คำขอหลายวัน · ชุดเดียวกัน {data.batch.length} วัน</h4>
+                <ul className="mt-2 grid gap-1 sm:grid-cols-2 text-sm">
+                  {data.batch.map(b => <li key={b.id} className="flex items-center gap-2"><span className="font-mono" style={{ color: b.id === data.id ? VIZ.text : VIZ.primary }}>{b.request_no}</span><span className="text-gray-600">{thaiDate(b.arrival_date, true)}</span><StatusBadge status={b.status} /></li>)}
+                </ul>
+                {open && <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={applyBatch} onChange={e => setApplyBatch(e.target.checked)} className="accent-[#4E79A7]" />ใช้การตัดสินนี้กับ<strong>ทุกวันในชุดที่ยังรอ</strong> ({data.batch.filter(b => ['submitted', 'need_info'].includes(b.status) && b.id !== data.id).length} ใบ) — ติ๊กออกถ้าจะตัดสินเฉพาะวันนี้</label>}
+              </section>
+            )}
             {open && (
               <section className="rounded-xl border border-gray-200 p-4 space-y-3">
                 <h4 className="font-semibold">การตัดสินของทีม SHE</h4>

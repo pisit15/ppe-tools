@@ -28,12 +28,15 @@ function details(r: VisitorRequestWithPersons): string[] {
   return out;
 }
 
-export function newRequestText(r: VisitorRequestWithPersons, companyName: string): { html: string; keyboard: InlineKeyboard } {
-  const html = [`🟠 <b>VISITOR ACCESS · รออนุมัติ</b>`, `<b>คำขอใหม่ ${esc(r.request_no)}</b>`, '', ...details(r), '', `<i>${esc(companyName)} · ${esc(r.request_no)}</i>`].join('\n');
+const batchLabel = (dates: string[]) => `${dates.length} วัน: ${dates.map(d => { const [, m, dd] = d.split('-').map(Number); return `${dd} ${TH_MONTHS[m - 1]}`; }).join(', ')}`;
+
+export function newRequestText(r: VisitorRequestWithPersons, companyName: string, batchDates?: string[]): { html: string; keyboard: InlineKeyboard } {
+  const batch = batchDates && batchDates.length > 1 ? batchDates : null;
+  const html = [`🟠 <b>VISITOR ACCESS · รออนุมัติ</b>`, `<b>คำขอใหม่ ${esc(r.request_no)}${batch ? ` · ชุด ${batch.length} วัน` : ''}</b>`, '', ...(batch ? [`<b>หลายวัน:</b> ${esc(batchLabel(batch))}`] : []), ...details(r), '', `<i>${esc(companyName)} · ${esc(r.request_no)}</i>`].join('\n');
   return {
     html,
     keyboard: { inline_keyboard: [
-      [{ text: '✅ อนุมัติ (ผู้มีสิทธิ์ที่ผูกบัญชีแล้ว)', callback_data: `visitor:approve:${r.id}` }],
+      [{ text: batch ? `✅ อนุมัติทั้งชุด ${batch.length} วัน` : '✅ อนุมัติ (ผู้มีสิทธิ์ที่ผูกบัญชีแล้ว)', callback_data: `visitor:approve:${r.id}` }],
       [{ text: 'เปิดคิว · ใส่เงื่อนไข / ขอข้อมูลเพิ่ม / ไม่อนุมัติ', url: QUEUE }],
     ] },
   };
