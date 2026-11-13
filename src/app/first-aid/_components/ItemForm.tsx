@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Link2, Trash2 } from 'lucide-react';
+import { Camera, Link2, Share2, Trash2 } from 'lucide-react';
 import { compressImage } from '@/app/inspect/_components/photo';
 import { DISPENSE_MODES, FA_ICONS, type DispenseMode, type FaIcon, type FaItem } from '@/lib/first-aid/types';
 import { FA_GREEN, ItemImage, Modal, Pictogram, VIZ, btnPrimary, btnSecondary, errMsg, inputClass, labelClass, manage, useFa } from './fa';
@@ -10,9 +10,19 @@ type ImageResult = { ok: true; imageUrl: string | null; hasImage: boolean; image
 
 /** Picture controls for one item: take/upload a photo, paste a link, or remove. Updates are saved immediately. */
 export function ImageField({ item, onChanged, compact = false }: { item: FaItem; onChanged: (next: Partial<FaItem>) => void; compact?: boolean }) {
-  const { company } = useFa();
+  const { company, isAdmin, refresh } = useFa();
   const [busy, setBusy] = useState(''); const [url, setUrl] = useState(''); const [err, setErr] = useState('');
+  const [sharedNote, setSharedNote] = useState('');
   const file = useRef<HTMLInputElement>(null);
+  /** Admin: copy this item's picture into the shared library, so every company's same-named item shows it by default. */
+  async function makeDefault() {
+    setBusy('กำลังตั้งเป็นรูปเริ่มต้น…'); setErr(''); setSharedNote('');
+    try {
+      const r = await manage<{ ok: true; keywords: string[]; replaced: boolean }>(company, { action: 'default-image-add', itemId: item.id });
+      setSharedNote(`${r.replaced ? 'เปลี่ยนรูปเริ่มต้นแล้ว' : 'ตั้งเป็นรูปเริ่มต้นของทุกบริษัทแล้ว'} · คำค้น: ${r.keywords.join(', ')} (แก้ได้ที่หน้า รูปยา)`);
+      void refresh();
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(''); }
+  }
   async function upload(f: File) {
     setBusy('กำลังย่อและอัปโหลด…'); setErr('');
     try {
@@ -42,6 +52,7 @@ export function ImageField({ item, onChanged, compact = false }: { item: FaItem;
         <div className="flex flex-wrap gap-2">
           <button type="button" className={btnSecondary} disabled={!!busy} onClick={() => file.current?.click()}><Camera size={15} />ถ่าย / อัปโหลด</button>
           {item.hasImage && <button type="button" className={btnSecondary} disabled={!!busy} onClick={() => void clear()}><Trash2 size={15} />ลบรูป</button>}
+          {isAdmin && item.hasImage && <button type="button" className={btnSecondary} disabled={!!busy} onClick={() => void makeDefault()} title="ทุกบริษัทที่มียาชื่อเดียวกันและยังไม่มีรูปของตัวเอง จะเห็นรูปนี้"><Share2 size={15} />ใช้เป็นรูปเริ่มต้นทุกบริษัท</button>}
           <input ref={file} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
         </div>
         <div className="flex gap-2">
@@ -50,6 +61,8 @@ export function ImageField({ item, onChanged, compact = false }: { item: FaItem;
         </div>
         {busy && <p className="text-xs text-gray-500">{busy}</p>}
         {err && <p className="text-xs" style={{ color: VIZ.accent }}>{err}</p>}
+        {sharedNote && !busy && <p className="text-xs" style={{ color: VIZ.positive }}>{sharedNote}</p>}
+        {!busy && !item.hasImage && item.imageDefault && <p className="text-[11px] text-gray-500">กำลังใช้รูปเริ่มต้นร่วม — ใส่รูปของบริษัทเองเพื่อแทนที่ได้</p>}
         {!busy && item.imageSource && item.imageSource !== 'upload' && <p className="text-[11px] text-gray-400 truncate" title={item.imageSource}>ที่มา: {item.imageSource}</p>}
       </div>
     </div>

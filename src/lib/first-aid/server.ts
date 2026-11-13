@@ -4,7 +4,8 @@ import QRCode from 'qrcode';
 import { getSupabaseServer } from '@/lib/supabase';
 import { AccessError, assertCompany, assertSameOrigin, requireModuleActor, type ToolsActor } from '@/lib/toolsSession';
 import { FirstAidInputError, allowedKeys, bangkokDate, bool, calendarDate, integer, manualPerson, parseTransaction, readJsonBody, record, text, uuid } from './validation';
-import { FA_ANON_DEPARTMENT, FA_ANON_NAME, FA_ICONS, type FaCountInput, type FaIcon, type FaItem, type FirstAidEmployee, type PersonSnapshot, type TransactionInput, type TransactionLine } from './types';
+import { FA_ANON_DEPARTMENT, FA_ANON_NAME, FA_ICONS, type FaCountInput, type FaDefaultImage, type FaIcon, type FaItem, type FirstAidEmployee, type PersonSnapshot, type TransactionInput, type TransactionLine } from './types';
+import { normalizeName, parseKeywords, pickDefault, suggestKeyword } from './default-images';
 
 type DB = ReturnType<typeof getSupabaseServer>;
 // Database JSON is normalized at the API boundary; no database record is returned wholesale.
@@ -112,21 +113,38 @@ export function guessIcon(row: { name?: string; category?: string; unit?: string
   if (category === 'อุปกรณ์' || unit === 'เครื่อง' || unit === 'อัน') return 'device';
   return 'other';
 }
-function mapItem(row: Row, imageUrl: string | null = null): FaItem {
-  return { id: row.id, name: row.name, generic: row.generic || '', description: row.description || '', category: row.category, unit: row.unit, min: row.min, trackExpiry: row.track_expiry, icon: (row.icon as FaIcon) || guessIcon(row), imageUrl, hasImage: !!row.image_path, imageSource: row.image_source || '', dispenseMode: row.dispense_mode === 'shared' || row.dispense_mode === 'fixed' ? row.dispense_mode : 'unit', openLifeDays: row.open_life_days ?? null };
+function mapItem(row: Row, imageUrl: string | null = null, imageDefault = false): FaItem {
+  return { id: row.id, name: row.name, generic: row.generic || '', description: row.description || '', category: row.category, unit: row.unit, min: row.min, trackExpiry: row.track_expiry, icon: (row.icon as FaIcon) || guessIcon(row), imageUrl, hasImage: !!row.image_path, imageDefault, imageSource: row.image_source || '', dispenseMode: row.dispense_mode === 'shared' || row.dispense_mode === 'fixed' ? row.dispense_mode : 'unit', openLifeDays: row.open_life_days ?? null };
 }
-/** Signed read URLs for every item picture (private bucket), in one storage call. */
-async function itemImageUrls(db: DB, rows: Row[]): Promise<Map<string, string>> {
-  const paths = rows.map(row => row.image_path).filter((p): p is string => !!p);
+/** Shared default pictures live under this prefix of the private bucket; no company id can equal it (ids have no dot). */
+const DEFAULT_IMAGE_PREFIX = 'shared.defaults/';
+type DefaultRow = { id: string; title: string; keywords: string[]; image_path: string; image_source: string };
+/** The library is decoration: if it cannot be read, items simply fall back to their pictograms. */
+async function loadDefaultImages(db: DB): Promise<DefaultRow[]> {
+  try {
+    const { data, error } = await db.from('fa_default_images').select('id,title,keywords,image_path,image_source').order('created_at', { ascending: true }).limit(500);
+    if (error) throw error;
+    return ((data as Row[] | null) || []).filter(row => Array.isArray(row.keywords)) as DefaultRow[];
+  } catch (error) { console.error('first-aid: default pictures unavailable', error); return []; }
+}
+/** Signed read URLs for the given picture files (private bucket), in one storage call. */
+async function signImagePaths(db: DB, paths: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(paths.filter(Boolean))];
   const map = new Map<string, string>();
-  if (!paths.length) return map;
-  const { data } = await db.storage.from(FA_IMAGE_BUCKET).createSignedUrls(paths, IMAGE_URL_SECONDS);
+  if (!unique.length) return map;
+  const { data } = await db.storage.from(FA_IMAGE_BUCKET).createSignedUrls(unique, IMAGE_URL_SECONDS);
   for (const entry of data || []) if (entry.signedUrl && entry.path) map.set(entry.path, entry.signedUrl);
   return map;
 }
-async function mapItems(db: DB, rows: Row[]): Promise<FaItem[]> {
-  const urls = await itemImageUrls(db, rows);
-  return rows.map(row => mapItem(row, row.image_path ? urls.get(row.image_path) || null : null));
+/** An item shows its company's own picture; without one, the shared default whose keyword matches its name. */
+async function mapItems(db: DB, rows: Row[], defaults: DefaultRow[] = []): Promise<FaItem[]> {
+  const chosen = rows.map(row => (row.image_path ? { path: row.image_path as string, shared: false } : (() => { const d = defaults.length ? pickDefault(String(row.name || ''), defaults) : null; return d ? { path: d.image_path, shared: true } : null; })()));
+  const urls = await signImagePaths(db, chosen.map(c => c?.path || ''));
+  return rows.map((row, index) => { const c = chosen[index]; const url = c ? urls.get(c.path) || null : null; return mapItem(row, url, !!c?.shared && !!url); });
+}
+async function mapDefaultImages(db: DB, defaults: DefaultRow[]): Promise<FaDefaultImage[]> {
+  const urls = await signImagePaths(db, defaults.map(d => d.image_path));
+  return defaults.map(d => ({ id: d.id, title: d.title, keywords: d.keywords, imageUrl: urls.get(d.image_path) || null, source: d.image_source || '' }));
 }
 function mapLot(row: Row) { return { id: row.id, itemId: row.item_id, locationId: row.location_id, code: row.code, expiry: row.expiry, quantity: row.quantity }; }
 function mapThreshold(row: Row) { return { itemId: row.item_id, locationId: row.location_id, min: row.min, openedAt: row.opened_at ?? null, openedLotCode: row.opened_lot_code || '', openedExpiry: row.opened_expiry ?? null }; }
@@ -165,16 +183,16 @@ export async function loadFirstAidState(companyId: string, actor: ToolsActor) {
     actor.isAdmin ? db.from('fa_visits').select('id,date,person,service,note,time_in,time_out').eq('company_id', companyId).order('created_at', { ascending: false }).limit(200).then(check) : Promise.resolve([]),
     companyEmployees(db, companyId), db.rpc('fa_usage_summary', { p_company_id: companyId }),
   ]);
-  const departments = await companyDepartments(db, companyId);
+  const [departments, defaults] = await Promise.all([companyDepartments(db, companyId), loadDefaultImages(db)]);
   const movements: Row[] = (check(movementResult) || []).slice(0, 500);
   const documentIds = [...new Set(movements.map(row => row.document_id))]; const documents: Row[] = [];
   for (let offset = 0; offset < documentIds.length; offset += 100) documents.push(...check(await db.from('fa_documents').select(DOCUMENT_COLUMNS).eq('company_id', companyId).in('id', documentIds.slice(offset, offset + 100))) || []);
   const byId = new Map(documents.map(row => [row.id, row]));
-  const [activeItems, archivedItems] = await Promise.all([mapItems(db, items.filter(row => row.active)), mapItems(db, items.filter(row => !row.active))]);
+  const [activeItems, archivedItems, defaultImages] = await Promise.all([mapItems(db, items.filter(row => row.active), defaults), mapItems(db, items.filter(row => !row.active), defaults), actor.isAdmin ? mapDefaultImages(db, defaults) : Promise.resolve([])]);
   return {
     schemaVersion: 4, asOf: bangkokDate(), company, locations: locations.filter(row => row.active).map(mapLocation), archivedLocations: locations.filter(row => !row.active).map(mapLocation), items: activeItems, archivedItems, thresholds: thresholds.map(mapThreshold), lots: lots.map(mapLot),
     events: movements.filter(row => byId.has(row.document_id)).map(row => mapEvent(row, byId.get(row.document_id)!)),
-    inspections: (check(inspectionResult) || []).map(mapInspection), visits: (visits || []).map(mapVisit), employees, departments,
+    inspections: (check(inspectionResult) || []).map(mapInspection), visits: (visits || []).map(mapVisit), employees, departments, defaultImages,
     session: { id: `${actor.accountTable}:${actor.id}`, name: actor.displayName, identityMethod: 'authenticated_session' },
     permissions: { canManage: true, canClinical: actor.isAdmin, public: false }, usageSummary: check(usageResult), historyLimit: 500, historyHasMore: (movementResult.data?.length || 0) > 500,
   };
@@ -288,7 +306,7 @@ export async function loadPublicFirstAidState(token: string) {
   const ids = [...new Set([...lots.map(row => row.item_id), ...thresholds.map(row => row.item_id)])];
   const items: Row[] = [];
   for (let offset = 0; offset < ids.length; offset += 100) items.push(...check(await db.from('fa_items').select(ITEM_COLUMNS).eq('company_id', companyId).eq('active', true).in('id', ids.slice(offset, offset + 100))) || []);
-  return { schemaVersion: 4, asOf: bangkokDate(), company: { name: company.name, short: company.short, infirmary: false }, locations: [mapLocation({ ...location, public_token_hash: null })], items: await mapItems(db, items), lots: lots.map(mapLot), thresholds: thresholds.map(mapThreshold), departments, events: [], inspections: [], visits: [], employees: [], permissions: { canManage: false, canClinical: false, public: true } };
+  return { schemaVersion: 4, asOf: bangkokDate(), company: { name: company.name, short: company.short, infirmary: false }, locations: [mapLocation({ ...location, public_token_hash: null })], items: await mapItems(db, items, await loadDefaultImages(db)), lots: lots.map(mapLot), thresholds: thresholds.map(mapThreshold), departments, events: [], inspections: [], visits: [], employees: [], permissions: { canManage: false, canClinical: false, public: true } };
 }
 
 export async function postPublicFirstAidTransaction(request: NextRequest, token: string) {
@@ -325,7 +343,7 @@ async function createMasterRow(db: DB, table: 'fa_items' | 'fa_locations' | 'fa_
 export async function manageFirstAid(request: NextRequest) {
   const { actor, companyId } = await firstAidActor(request, true); const db = getSupabaseServer();
   const body = record(await readJsonBody(request)); const action = text(body.action, 'การดำเนินการ', 40);
-  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location', 'close-opened'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
+  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location', 'close-opened', 'default-image-add', 'default-image-add-all', 'default-image-update', 'default-image-delete'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
   if (action === 'visit' && !actor.isAdmin) throw new AccessError('เฉพาะผู้ดูแลที่มีสิทธิ์ข้อมูลบริการห้องพยาบาล');
   // Authenticated writes initialize only their selected company's configuration.
   check(await db.from('fa_company_settings').upsert({ company_id: companyId }, { onConflict: 'company_id', ignoreDuplicates: true }));
@@ -409,6 +427,7 @@ export async function manageFirstAid(request: NextRequest) {
     check(await db.from(table).update({ active: bool(body.active, false) }).eq('company_id', companyId).eq('id', id));
     return { ok: true };
   }
+  if (action.startsWith('default-image-')) return manageDefaultImages(db, companyId, actor, action, body);
   if (action === 'image-sign') {
     allowedKeys(body, ['action', 'itemId', 'ext']);
     const itemId = await scopedRow(db, 'fa_items', companyId, body.itemId);
@@ -572,3 +591,64 @@ async function recordStockCount(db: DB, companyId: string, actor: ToolsActor, bo
   return { ok: true, inspection, adjustments: results, disposedExpired };
 }
 function randomUUIDv4() { return (globalThis.crypto as Crypto).randomUUID(); }
+
+/**
+ * Shared default pictures (admin only). A default is always a copy of a picture an item already has, so the usual
+ * upload / paste-a-link flow is the only way pictures enter the system; the copy means the company can later change or
+ * delete its own picture — or the whole company can be removed — without touching the default.
+ */
+async function manageDefaultImages(db: DB, companyId: string, actor: ToolsActor, action: string, body: Record<string, unknown>) {
+  if (!actor.isAdmin) throw new AccessError('เฉพาะผู้ดูแลระบบจึงตั้งรูปเริ่มต้นของทุกบริษัทได้');
+  const cleanKeywords = (value: unknown) => {
+    const list = parseKeywords(Array.isArray(value) ? value.filter(v => typeof v === 'string').join(',') : typeof value === 'string' ? value : '').filter(k => normalizeName(k).length >= 2 && k.length <= 60);
+    if (!list.length || list.length > 12) throw new FirstAidInputError('ระบุคำค้น 1–12 คำ (คำละ 2–60 ตัวอักษร)');
+    return list;
+  };
+  const addFromItem = async (item: Row, existing: DefaultRow[]) => {
+    if (!item.image_path) throw new FirstAidInputError('รายการนี้ยังไม่มีรูปของตัวเอง ใส่รูปก่อนแล้วจึงตั้งเป็นค่าเริ่มต้น');
+    const ext = (String(item.image_path).split('.').pop() || 'webp').toLowerCase();
+    const path = `${DEFAULT_IMAGE_PREFIX}${randomBytes(12).toString('hex')}.${['jpg', 'png', 'webp'].includes(ext) ? ext : 'webp'}`;
+    const copied = await db.storage.from(FA_IMAGE_BUCKET).copy(item.image_path, path);
+    if (copied.error) throw new FirstAidInputError('คัดลอกรูปไม่สำเร็จ ลองใหม่อีกครั้ง');
+    const title = String(item.name).slice(0, 160); const same = existing.find(d => normalizeName(d.title) === normalizeName(title));
+    const values = { image_path: path, image_source: String(item.image_source || '').slice(0, 500), updated_at: new Date().toISOString() };
+    if (same) {
+      // Same medicine set again: replace the picture, keep the keywords the admin has tuned.
+      check(await db.from('fa_default_images').update(values).eq('id', same.id));
+      await db.storage.from(FA_IMAGE_BUCKET).remove([same.image_path]).catch(() => undefined);
+      return { id: same.id, keywords: same.keywords, replaced: true };
+    }
+    const keywords = [suggestKeyword(title)];
+    const row = checkOne(await db.from('fa_default_images').insert({ title, keywords, created_by: `${actor.accountTable}:${actor.id}`, ...values }).select('id').single());
+    return { id: row.id as string, keywords, replaced: false };
+  };
+  if (action === 'default-image-add') {
+    allowedKeys(body, ['action', 'itemId']);
+    const itemId = await scopedRow(db, 'fa_items', companyId, body.itemId);
+    const item = checkOne(await db.from('fa_items').select('id,name,image_path,image_source').eq('company_id', companyId).eq('id', itemId).single());
+    return { ok: true, ...(await addFromItem(item, await loadDefaultImages(db))) };
+  }
+  if (action === 'default-image-add-all') {
+    allowedKeys(body, ['action']);
+    const items: Row[] = (await allRows(db, 'fa_items', 'id,name,image_path,image_source', companyId, { active: true })).filter(row => row.image_path && !String(row.image_path).startsWith(DEFAULT_IMAGE_PREFIX));
+    const existing = await loadDefaultImages(db); let added = 0; let skipped = 0;
+    for (const item of items) {
+      // Never overwrite a default that already exists for this name: bulk is for seeding, not for replacing.
+      if (existing.some(d => normalizeName(d.title) === normalizeName(String(item.name)))) { skipped += 1; continue; }
+      await addFromItem(item, existing); added += 1;
+    }
+    return { ok: true, added, skipped };
+  }
+  const id = uuid(body.id, 'รหัสรูปเริ่มต้น');
+  const current = check(await db.from('fa_default_images').select('id,image_path').eq('id', id).maybeSingle()) as Row | null;
+  if (!current) throw new FirstAidInputError('ไม่พบรูปเริ่มต้นนี้', 404);
+  if (action === 'default-image-update') {
+    allowedKeys(body, ['action', 'id', 'title', 'keywords']);
+    check(await db.from('fa_default_images').update({ ...(body.title != null ? { title: text(body.title, 'ชื่อ', 160) } : {}), keywords: cleanKeywords(body.keywords), updated_at: new Date().toISOString() }).eq('id', id));
+    return { ok: true };
+  }
+  allowedKeys(body, ['action', 'id']);
+  check(await db.from('fa_default_images').delete().eq('id', id));
+  if (String(current.image_path).startsWith(DEFAULT_IMAGE_PREFIX)) await db.storage.from(FA_IMAGE_BUCKET).remove([current.image_path]).catch(() => undefined);
+  return { ok: true };
+}

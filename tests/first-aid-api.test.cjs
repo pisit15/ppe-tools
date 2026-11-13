@@ -370,3 +370,58 @@ test('fixed equipment: never offered for dispensing, worded as complete/missing,
   assert.equal(model.writeOffReason('อื่น ๆ — เสียหายจากน้ำท่วม'), 'damaged');
   assert.equal(model.writeOffReason('อื่น ๆ — หายตอนย้ายตู้'), 'lost');
 });
+
+test('shared default pictures: matched by keyword on the item name, brand-specific, own picture first', async () => {
+  const d = load('src/lib/first-aid/default-images.ts');
+  assert.equal(d.normalizeName('BETADINE SOLUTION (30 ml)'), 'betadine solution 30 ml');
+  // Suggested keyword keeps the brand and drops strength / pack size.
+  assert.equal(d.suggestKeyword('Paracetamol 500 mg'), 'paracetamol');
+  assert.equal(d.suggestKeyword('ยาหยอดตา Hista-Oph'), 'hista oph');
+  assert.equal(d.suggestKeyword('Burnol / ยาทาแผลไฟไหม้ 10 g'), 'burnol');
+  assert.equal(d.suggestKeyword('ถุงมือยาง M'), 'ถุงมือยาง');
+  assert.equal(d.suggestKeyword('Cotton ball sterile ถุงเล็ก'), 'cotton ball sterile');
+  assert.equal(d.suggestKeyword('Gauze pad 3x3'), 'gauze pad');
+  assert.equal(d.suggestKeyword('ยาธาตุน้ำขาว 60 ml'), 'ยาธาตุน้ำขาว');
+  const defaults = [
+    { id: 'para', keywords: ['paracetamol', 'พารา'] }, { id: 'ors', keywords: ['ors'] }, { id: 'cotton-ball', keywords: ['cotton ball'] },
+    { id: 'betadine', keywords: ['betadine'] }, { id: 'betadine-scrub', keywords: ['betadine scrub'] }, { id: 'hista', keywords: ['hista oph'] },
+  ];
+  const pick = name => d.pickDefault(name, defaults)?.id || null;
+  assert.equal(pick('Paracetamol'), 'para');
+  assert.equal(pick('พาราเซตามอล 500 มก.'), 'para');
+  assert.equal(pick('ORS ผงเกลือแร่'), 'ors');
+  assert.equal(pick('Norgesic'), null); // "ors" must start a word
+  assert.equal(pick('Cotton ball sterile ถุงใหญ่'), 'cotton-ball');
+  assert.equal(pick('Cotton bud'), null); // a different product does not borrow the picture
+  assert.equal(pick('BETADINE SCRUB 500 ML'), 'betadine-scrub'); // the longer keyword wins
+  assert.equal(pick('BETADINE SOLUTION (30 ml)'), 'betadine');
+  assert.equal(pick('Poly oph'), null); // another brand of eye drops keeps its pictogram
+  assert.deepEqual(d.parseKeywords(' Paracetamol, พารา ;sara,  paracetamol '), ['paracetamol', 'พารา', 'sara']);
+});
+
+test('shared default pictures reach every company and the public page, never replace a company picture, and only admins manage them', async () => {
+  db.storage = { from: () => ({ createSignedUrls: async paths => ({ data: paths.map(p => ({ path: p, signedUrl: `https://signed.test/${p}` })) }) }) };
+  db.tables.fa_default_images = [{ id: randomUUID(), title: 'Gauze pad', keywords: ['gauze'], image_path: 'shared.defaults/abc.webp', image_source: '' }];
+  // No picture of its own → the shared default; staff without admin rights do not receive the library itself.
+  let state = await server.loadFirstAidState('amt', actor());
+  assert.equal(state.items[0].hasImage, false);
+  assert.equal(state.items[0].imageDefault, true);
+  assert.equal(state.items[0].imageUrl, 'https://signed.test/shared.defaults/abc.webp');
+  assert.deepEqual(state.defaultImages, []);
+  const pub = await server.loadPublicFirstAidState(token);
+  assert.equal(pub.items[0].imageUrl, 'https://signed.test/shared.defaults/abc.webp');
+  // Admin sees the library.
+  state = await server.loadFirstAidState('amt', { ...actor(), isAdmin: true });
+  assert.equal(state.defaultImages.length, 1);
+  assert.deepEqual(state.defaultImages[0].keywords, ['gauze']);
+  // The company's own picture always wins.
+  db.tables.fa_items[0].image_path = `amt/${ids.item}/own.webp`;
+  state = await server.loadFirstAidState('amt', actor());
+  assert.equal(state.items[0].hasImage, true);
+  assert.equal(state.items[0].imageDefault, false);
+  assert.equal(state.items[0].imageUrl, `https://signed.test/amt/${ids.item}/own.webp`);
+  // Only an admin may create or change defaults.
+  await assert.rejects(() => server.manageFirstAid(request('manage', { action: 'default-image-add', itemId: ids.item })), /ผู้ดูแลระบบ/);
+  await assert.rejects(() => server.manageFirstAid(request('manage', { action: 'default-image-delete', id: db.tables.fa_default_images[0].id })), /ผู้ดูแลระบบ/);
+  assert.equal(db.tables.fa_default_images.length, 1);
+});

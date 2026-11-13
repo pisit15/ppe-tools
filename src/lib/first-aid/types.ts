@@ -37,7 +37,9 @@ export const FA_ICONS: { id: Exclude<FaIcon, ''>; label: string }[] = [
 export type FaLocation = { id: string; name: string; type: string; area: string; issueMode: FirstAidMode; lastChecked: string | null; inspectionIssue: boolean; hasPublicLink: boolean; requireRequester: boolean; icon: string; isRegister: boolean };
 /** unit = handed out whole · shared = one opened container used many times · fixed = equipment kept at the point, never dispensed. */
 export type DispenseMode = 'unit' | 'shared' | 'fixed';
-export type FaItem = { id: string; name: string; generic: string; description: string; category: string; unit: string; min: number; trackExpiry: boolean; icon: FaIcon; imageUrl: string | null; hasImage: boolean; imageSource: string; dispenseMode: DispenseMode; openLifeDays: number | null };
+export type FaItem = { id: string; name: string; generic: string; description: string; category: string; unit: string; min: number; trackExpiry: boolean; icon: FaIcon; imageUrl: string | null; /** The company's own picture. */ hasImage: boolean; /** No own picture: the one shown is the shared default set by an admin. */ imageDefault: boolean; imageSource: string; dispenseMode: DispenseMode; openLifeDays: number | null };
+/** A shared default picture (admin-managed, all companies): shown on every item whose name matches a keyword and that has no picture of its own. */
+export type FaDefaultImage = { id: string; title: string; keywords: string[]; imageUrl: string | null; source: string };
 export type FaLot = { id: string; itemId: string; locationId: string; code: string; expiry: string | null; quantity: number };
 /** One item at one point: minimum, plus the shared container currently opened there (if any). */
 export type FaThreshold = { itemId: string; locationId: string; min: number; openedAt: string | null; openedLotCode: string; openedExpiry: string | null };
@@ -54,6 +56,7 @@ export type FaState = {
   schemaVersion: number; asOf: string; company: { id: string; name: string; short: string; infirmary: boolean };
   locations: FaLocation[]; archivedLocations: FaLocation[]; items: FaItem[]; archivedItems: FaItem[]; thresholds: FaThreshold[]; lots: FaLot[];
   events: FaEvent[]; inspections: FaInspection[]; visits: FaVisit[]; employees: FirstAidEmployee[]; departments: string[];
+  /** Admin sessions only: the shared default pictures, for the library on the pictures page. */ defaultImages: FaDefaultImage[];
   session: { id: string; name: string; identityMethod: string }; permissions: FirstAidPermissions; usageSummary: FaUsageSummary; historyLimit: number; historyHasMore: boolean;
 };
 export type FaPublicState = {
