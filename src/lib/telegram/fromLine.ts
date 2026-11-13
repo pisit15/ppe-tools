@@ -33,15 +33,37 @@ export async function resolveCallback(db: SupabaseClient, cb: string): Promise<s
 
 type Action = { type?: string; label?: string; uri?: string; data?: string; text?: string };
 
+/** Plain text of a node and its descendants (for horizontal rows and for tappable boxes without a label). */
+function textOf(node: Json, acc: string[] = []): string[] {
+  if (Array.isArray(node)) { node.forEach(n => textOf(n, acc)); return acc; }
+  if (!node || typeof node !== 'object') return acc;
+  const o = node as Record<string, Json>;
+  if (o.type === 'text' && typeof o.text === 'string' && o.text.trim()) acc.push(o.text.trim());
+  for (const k of ['header', 'hero', 'body', 'footer', 'contents']) if (k in o) textOf(o[k], acc);
+  return acc;
+}
+
 function walk(node: Json, out: { lines: string[]; actions: Action[] }) {
   if (Array.isArray(node)) { node.forEach(n => walk(n, out)); return; }
   if (!node || typeof node !== 'object') return;
   const o = node as Record<string, Json>;
+  // A tappable node (box/text with an action) becomes a button labelled by its own text when the action has no label.
+  if (o.action && typeof o.action === 'object') {
+    const a = { ...(o.action as Action) };
+    if (!a.label && !a.text) a.label = textOf(node).join(' ').slice(0, 40);
+    out.actions.push(a);
+  }
   if (o.type === 'text' && typeof o.text === 'string') {
     const t = o.text.trim();
     if (t) out.lines.push(o.weight === 'bold' ? `<b>${esc(t)}</b>` : esc(t));
+    return;
   }
-  if (o.action && typeof o.action === 'object') out.actions.push(o.action as Action);
+  // Horizontal / baseline rows read as one line ("AMT · หมด 84 · ต่ำ 1").
+  if (o.type === 'box' && (o.layout === 'horizontal' || o.layout === 'baseline')) {
+    const parts = textOf(o.contents as Json);
+    if (parts.length) out.lines.push(esc(parts.join(' · ')));
+    return;
+  }
   for (const k of ['header', 'hero', 'body', 'footer', 'contents']) if (k in o) walk(o[k], out);
 }
 
