@@ -483,3 +483,17 @@ test('current QR: shown again without changing it, older links adopted only when
   await assert.rejects(server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.location })), /ยังไม่มี QR/);
   await assert.rejects(server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.location, link })), /ช่องข้อมูล/);
 });
+
+test('symptom chips: short keys do not catch unrelated names, dizziness remedies are findable', () => {
+  const browse = load('src/lib/first-aid/browse.ts');
+  const tags = (name, description = '', generic = '') => browse.SYMPTOMS.filter(t => browse.matchesSymptom(t, { name, generic, description })).map(t => t.id);
+  assert.deepEqual(tags('Tylenol 500 mg', 'แก้ปวด ลดไข้', 'ยารับประทาน / ยาเม็ด (Paracetamol)'), ['pain']);
+  assert.deepEqual(tags('ENO'), ['stomach']);
+  assert.deepEqual(tags('ORS'), ['diarrhea']);
+  assert.deepEqual(tags('Zambuk 18 g', 'ขี้ผึ้งทาแก้ปวดบวม ฟกช้ำ แมลงกัดต่อย'), ['pain']);
+  assert.deepEqual(tags('ชุดAmbubag'), ['equipment']);
+  assert.equal(tags('Lister bandage scissors').includes('diarrhea'), false);
+  assert.equal(tags('Ammonia 450ml').includes('nausea'), true);
+  assert.equal(tags('ยาดมตราโป๊ยเซียน', 'สูดดมแก้วิงเวียน คัดจมูก').includes('nausea'), true);
+  assert.equal(tags('Trinolone oral paste 1 g', 'ทาแผลในปาก ร้อนใน', 'ยาใช้ภายนอก / ยาป้ายปาก').includes('allergy'), false);
+});
