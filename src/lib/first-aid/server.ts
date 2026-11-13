@@ -11,7 +11,8 @@ type DB = ReturnType<typeof getSupabaseServer>;
 // Database JSON is normalized at the API boundary; no database record is returned wholesale.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
-const LOCATION_COLUMNS = 'id,company_id,name,type,area,issue_mode,last_checked,inspection_issue,active,public_token_hash,require_requester';
+// public_token is read only to tell whether the QR can be shown again; mapLocation never copies it out.
+const LOCATION_COLUMNS = 'id,company_id,name,type,area,issue_mode,last_checked,inspection_issue,active,public_token_hash,public_token,require_requester';
 const ITEM_COLUMNS = 'id,company_id,name,generic,category,unit,min,track_expiry,active,description,icon,image_path,image_source,dispense_mode,open_life_days';
 const THRESHOLD_COLUMNS = 'id,item_id,location_id,min,opened_at,opened_lot_code,opened_expiry';
 export const FA_IMAGE_BUCKET = 'first-aid-images';
@@ -97,7 +98,7 @@ export async function companyDepartments(db: DB, companyId: string): Promise<str
 
 export function mapLocation(row: Row) {
   const type = String(row.type || 'ตู้ปฐมพยาบาล');
-  return { id: row.id, name: row.name, type, area: row.area || '', issueMode: row.issue_mode, lastChecked: row.last_checked, inspectionIssue: row.inspection_issue, hasPublicLink: !!row.public_token_hash, requireRequester: !!row.require_requester, icon: type.includes('กระเป๋า') ? 'briefcase-medical' : type.includes('คลัง') ? 'package' : 'building', isRegister: type === FA_REGISTER_TYPE };
+  return { id: row.id, name: row.name, type, area: row.area || '', issueMode: row.issue_mode, lastChecked: row.last_checked, inspectionIssue: row.inspection_issue, hasPublicLink: !!row.public_token_hash, qrViewable: !!row.public_token_hash && !!row.public_token, requireRequester: !!row.require_requester, icon: type.includes('กระเป๋า') ? 'briefcase-medical' : type.includes('คลัง') ? 'package' : 'building', isRegister: type === FA_REGISTER_TYPE };
 }
 /** Fallback pictogram when no picture was set: from unit/category/name. */
 export function guessIcon(row: { name?: string; category?: string; unit?: string }): FaIcon {
@@ -294,6 +295,9 @@ async function publicLocation(db: DB, token: string): Promise<Row> {
   const row = check(await db.from('fa_locations').select(LOCATION_COLUMNS).eq('public_token_hash', tokenHash(token)).eq('active', true).maybeSingle());
   if (!row) throw new FirstAidInputError('ลิงก์นี้หมดอายุหรือถูกยกเลิกแล้ว', 404);
   if (row.issue_mode !== 'self_service') throw new FirstAidInputError('จุดนี้ให้เจ้าหน้าที่เป็นผู้บันทึก กรุณาติดต่อเจ้าหน้าที่ประจำจุด', 403);
+  // QR codes made before links were kept: the first scan of a live poster lets the server remember its link, so staff
+  // can show and reprint that same QR later. Best effort — a scan must never fail because of this.
+  if (!row.public_token) { try { await db.from('fa_locations').update({ public_token: token }).eq('id', row.id).eq('public_token_hash', tokenHash(token)); } catch { /* settings keeps offering "scan once or paste the link" */ } }
   return row;
 }
 
@@ -343,7 +347,7 @@ async function createMasterRow(db: DB, table: 'fa_items' | 'fa_locations' | 'fa_
 export async function manageFirstAid(request: NextRequest) {
   const { actor, companyId } = await firstAidActor(request, true); const db = getSupabaseServer();
   const body = record(await readJsonBody(request)); const action = text(body.action, 'การดำเนินการ', 40);
-  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location', 'close-opened', 'default-image-add', 'default-image-add-all', 'default-image-update', 'default-image-delete'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
+  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location', 'close-opened', 'default-image-add', 'default-image-add-all', 'default-image-update', 'default-image-delete', 'qr-show', 'qr-adopt'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
   if (action === 'visit' && !actor.isAdmin) throw new AccessError('เฉพาะผู้ดูแลที่มีสิทธิ์ข้อมูลบริการห้องพยาบาล');
   // Authenticated writes initialize only their selected company's configuration.
   check(await db.from('fa_company_settings').upsert({ company_id: companyId }, { onConflict: 'company_id', ignoreDuplicates: true }));
@@ -480,14 +484,32 @@ export async function manageFirstAid(request: NextRequest) {
     return { ok: true };
   }
   if (action === 'count') return recordStockCount(db, companyId, actor, body);
+  const qrFor = async (token: string) => {
+    const url = new URL(`/first-aid/take/${token}`, request.nextUrl.origin).href;
+    return { ok: true, known: true, url, qrSvg: await QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 3, width: 400 }) };
+  };
+  if (action === 'qr-show' || action === 'qr-adopt') {
+    // Show the point's current QR again. Links created before the token was kept are unknown to the server:
+    // staff can paste the link from a phone that scanned the poster, and it is accepted only if it is this point's live link.
+    allowedKeys(body, action === 'qr-adopt' ? ['action', 'locationId', 'link'] : ['action', 'locationId']);
+    const locationId = await scopedRow(db, 'fa_locations', companyId, body.locationId);
+    const point = checkOne(await db.from('fa_locations').select('public_token_hash,public_token').eq('company_id', companyId).eq('id', locationId).single());
+    if (!point.public_token_hash) throw new FirstAidInputError('จุดนี้ยังไม่มี QR — กด “สร้าง QR” ก่อน');
+    if (action === 'qr-adopt') {
+      const found = /[a-f0-9]{64}/.exec(text(body.link, 'ลิงก์ QR', 600).toLowerCase());
+      if (!found || tokenHash(found[0]) !== point.public_token_hash) throw new FirstAidInputError('ลิงก์นี้ไม่ใช่ QR ที่ใช้งานอยู่ของจุดนี้ — ตรวจว่าคัดลอกมาครบ หรือเป็นลิงก์ของจุดอื่น / QR เก่าที่ถูกเปลี่ยนไปแล้ว');
+      check(await db.from('fa_locations').update({ public_token: found[0] }).eq('company_id', companyId).eq('id', locationId));
+      return qrFor(found[0]);
+    }
+    if (point.public_token && tokenHash(point.public_token) === point.public_token_hash) return qrFor(point.public_token);
+    return { ok: true, known: false };
+  }
   allowedKeys(body, ['action', 'locationId']); const locationId = await scopedRow(db, 'fa_locations', companyId, body.locationId);
   const point = checkOne(await db.from('fa_locations').select('issue_mode').eq('company_id', companyId).eq('id', locationId).single());
   if (point.issue_mode !== 'self_service') throw new FirstAidInputError('เปิดรูปแบบผู้เบิกบันทึกเองก่อนสร้างลิงก์');
   const token = randomBytes(32).toString('hex');
-  check(await db.from('fa_locations').update({ public_token_hash: tokenHash(token) }).eq('company_id', companyId).eq('id', locationId));
-  const url = new URL(`/first-aid/take/${token}`, request.nextUrl.origin).href;
-  const qrSvg = await QRCode.toString(url, { type: 'svg', errorCorrectionLevel: 'M', margin: 3, width: 400 });
-  return { ok: true, url, qrSvg };
+  check(await db.from('fa_locations').update({ public_token_hash: tokenHash(token), public_token: token }).eq('company_id', companyId).eq('id', locationId));
+  return qrFor(token);
 }
 
 

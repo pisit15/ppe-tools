@@ -425,3 +425,61 @@ test('shared default pictures reach every company and the public page, never rep
   await assert.rejects(() => server.manageFirstAid(request('manage', { action: 'default-image-delete', id: db.tables.fa_default_images[0].id })), /ผู้ดูแลระบบ/);
   assert.equal(db.tables.fa_default_images.length, 1);
 });
+
+test('current QR: shown again without changing it, older links adopted only when they match, token never in any state', async () => {
+  const hash = value => createHash('sha256').update(value).digest('hex');
+  const point = () => db.tables.fa_locations[0];
+  const link = `https://tools.eashe.org/first-aid/take/${token}`;
+  // A QR made before links were kept: the server only knows the fingerprint.
+  let state = await server.loadFirstAidState('amt', actor());
+  assert.equal(state.locations[0].hasPublicLink, true);
+  assert.equal(state.locations[0].qrViewable, false);
+  assert.deepEqual(await server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.location })), { ok: true, known: false });
+  assert.equal(point().public_token, undefined);
+  // Someone else's or an old link is refused and nothing is stored.
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'qr-adopt', locationId: ids.location, link: `https://tools.eashe.org/first-aid/take/${'b'.repeat(64)}` })), /ไม่ใช่ QR ที่ใช้งานอยู่/);
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'qr-adopt', locationId: ids.location, link: 'https://tools.eashe.org/first-aid' })), /ไม่ใช่ QR ที่ใช้งานอยู่/);
+  assert.equal(point().public_token, undefined);
+  // The live link (pasted with stray spaces / capitals) is accepted; the poster on the wall keeps working.
+  const adopted = await server.manageFirstAid(request('manage', { action: 'qr-adopt', locationId: ids.location, link: `  ${link.toUpperCase().replace('HTTPS://TOOLS.EASHE.ORG/FIRST-AID/TAKE/', 'https://tools.eashe.org/first-aid/take/')}  ` }));
+  assert.equal(adopted.url, link);
+  assert.equal(point().public_token, token);
+  assert.equal(point().public_token_hash, hash(token));
+  const shown = await server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.location }));
+  assert.equal(shown.known, true); assert.equal(shown.url, link); assert.equal(typeof shown.qrSvg, 'string');
+  assert.equal(point().public_token_hash, hash(token), 'looking at the QR must not change it');
+  // The token itself never travels in staff or public state.
+  state = await server.loadFirstAidState('amt', actor());
+  assert.equal(state.locations[0].qrViewable, true);
+  assert.equal(JSON.stringify(state).includes(token), false);
+  assert.equal(JSON.stringify(state).includes('public_token'), false);
+  const pub = await server.loadPublicFirstAidState(token);
+  assert.equal(JSON.stringify(pub).includes(token), false);
+  assert.equal(pub.locations[0].qrViewable, false);
+  // Changing the QR keeps the new link, so it can be shown again later.
+  const rotated = await server.manageFirstAid(request('manage', { action: 'rotate-token', locationId: ids.location }));
+  assert.notEqual(rotated.url, link);
+  assert.equal(point().public_token_hash, hash(point().public_token));
+  assert.equal((await server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.location }))).url, rotated.url);
+  // A stored link that no longer matches the fingerprint is never shown.
+  point().public_token = token;
+  assert.deepEqual(await server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.location })), { ok: true, known: false });
+  // A poster made before links were kept: the first scan teaches the server its link — nothing else changes.
+  delete point().public_token; point().public_token_hash = hash(token);
+  await server.loadPublicFirstAidState(token);
+  assert.equal(point().public_token, token);
+  assert.equal(point().public_token_hash, hash(token));
+  assert.equal((await server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.location }))).url, link);
+  // A dead link never gets stored, and a nurse-desk point is not opened up by a scan.
+  delete point().public_token;
+  await assert.rejects(server.loadPublicFirstAidState('b'.repeat(64)), error => error.status === 404);
+  point().issue_mode = 'controlled';
+  await assert.rejects(server.loadPublicFirstAidState(token), error => error.status === 403);
+  assert.equal(point().public_token, undefined);
+  point().issue_mode = 'self_service';
+  // Other companies' points and points without a QR are out of reach.
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.otherLocation })));
+  point().public_token_hash = null;
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.location })), /ยังไม่มี QR/);
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'qr-show', locationId: ids.location, link })), /ช่องข้อมูล/);
+});

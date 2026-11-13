@@ -14,13 +14,44 @@ export default function SettingsPage() {
   const [edit, setEdit] = useState<{ open: boolean; loc: FaLocation | null }>({ open: false, loc: null });
   const [thresholdsFor, setThresholdsFor] = useState<FaLocation | null>(null);
   const [qr, setQr] = useState<{ loc: FaLocation; url: string; svg: string } | null>(null);
+  // A QR made before links were kept: the server only knows its fingerprint, so ask for the link itself (or make a new one).
+  const [adopt, setAdopt] = useState<{ loc: FaLocation; link: string; err: string } | null>(null);
   const [busy, setBusy] = useState('');
   if (loading || !state) return <Spinner />;
   const locations = state.locations.filter(l => !l.isRegister);
+  type QrResult = { ok: true; known?: boolean; url?: string; qrSvg?: string };
+  /** Create a QR — replacing the point's current one, which stops working. */
   async function makeLink(loc: FaLocation) {
     setBusy(loc.id);
-    try { const r = await manage<{ ok: true; url: string; qrSvg: string }>(company, { action: 'rotate-token', locationId: loc.id }); await refresh(); setQr({ loc, url: r.url, svg: r.qrSvg }); }
+    try { const r = await manage<QrResult>(company, { action: 'rotate-token', locationId: loc.id }); await refresh(); setAdopt(null); setQr({ loc, url: r.url || '', svg: r.qrSvg || '' }); }
     catch (e) { setToast({ type: 'error', msg: errMsg(e) }); } finally { setBusy(''); }
+  }
+  /** Show the QR already in use, without changing it. */
+  async function showLink(loc: FaLocation, recheck = false) {
+    setBusy(loc.id);
+    try {
+      const r = await manage<QrResult>(company, { action: 'qr-show', locationId: loc.id });
+      if (r.known && r.url && r.qrSvg) { setAdopt(null); setQr({ loc, url: r.url, svg: r.qrSvg }); if (recheck) await refresh(); }
+      else setAdopt(a => ({ loc, link: recheck && a ? a.link : '', err: recheck ? 'ยังไม่พบ — สแกน QR เดิมให้หน้าเบิกยาเปิดขึ้นมาบนมือถือก่อน แล้วกด “ตรวจอีกครั้ง”' : '' }));
+    } catch (e) { setToast({ type: 'error', msg: errMsg(e) }); } finally { setBusy(''); }
+  }
+  async function adoptLink() {
+    if (!adopt || !adopt.link.trim()) return;
+    setBusy(adopt.loc.id);
+    try { const r = await manage<QrResult>(company, { action: 'qr-adopt', locationId: adopt.loc.id, link: adopt.link.trim() }); await refresh(); setQr({ loc: adopt.loc, url: r.url || '', svg: r.qrSvg || '' }); setAdopt(null); }
+    catch (e) { setAdopt(a => (a ? { ...a, err: errMsg(e) } : a)); } finally { setBusy(''); }
+  }
+  /** Save the QR alone as a picture (for a document, a sticker or a chat message). */
+  function downloadQr(q: { loc: FaLocation; svg: string }) {
+    const img = new Image();
+    img.onload = () => {
+      const size = 1200; const canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d'); if (!ctx) return;
+      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, size, size); ctx.imageSmoothingEnabled = false; ctx.drawImage(img, 0, 0, size, size);
+      canvas.toBlob(blob => { if (!blob) return; const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = `QR ${q.loc.name}.png`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(href), 2000); }, 'image/png');
+    };
+    img.onerror = () => setToast({ type: 'error', msg: 'บันทึกรูปไม่สำเร็จ — ใช้ “เปิดโปสเตอร์ A4” แทน' });
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(q.svg)}`;
   }
   function posterItems(q: { loc: FaLocation }) {
     const ids = new Set([...state!.thresholds.filter(t => t.locationId === q.loc.id).map(t => t.itemId), ...state!.lots.filter(l => l.locationId === q.loc.id && l.quantity > 0).map(l => l.itemId)]);
@@ -41,10 +72,13 @@ export default function SettingsPage() {
               <div className="flex flex-wrap gap-2 pt-1">
                 <button type="button" className={btnSecondary} onClick={() => setEdit({ open: true, loc })}>แก้ไข</button>
                 <button type="button" className={btnSecondary} onClick={() => setThresholdsFor(loc)}>ขั้นต่ำประจำจุด</button>
-                {loc.issueMode === 'self_service' && <button type="button" className={btnSecondary} disabled={busy === loc.id} onClick={() => void makeLink(loc)}><QrCode size={15} />{loc.hasPublicLink ? 'สร้าง QR ใหม่' : 'สร้าง QR'}</button>}
+                {loc.issueMode === 'self_service' && (loc.hasPublicLink
+                  ? <><button type="button" className={btnSecondary} disabled={busy === loc.id} onClick={() => void showLink(loc)}><QrCode size={15} />ดู / พิมพ์ QR</button>
+                    <ConfirmButton label="เปลี่ยน QR ใหม่" confirmLabel="QR เดิมจะใช้ไม่ได้ — ยืนยัน?" danger disabled={busy === loc.id} onConfirm={() => makeLink(loc)} /></>
+                  : <button type="button" className={btnSecondary} disabled={busy === loc.id} onClick={() => void makeLink(loc)}><QrCode size={15} />สร้าง QR</button>)}
                 <ConfirmButton label="ปิดใช้งาน" confirmLabel="ยืนยันปิด?" danger disabled={stocked > 0} onConfirm={() => manage(company, { action: 'archive-location', id: loc.id, active: false }).then(refresh).then(() => setToast({ type: 'success', msg: 'ปิดใช้งานจุดแล้ว' })).catch(e => setToast({ type: 'error', msg: errMsg(e) }))} />
               </div>
-              {loc.issueMode === 'self_service' && loc.hasPublicLink && <p className="text-[11px] text-gray-400">มีลิงก์ QR ใช้งานอยู่ · การสร้างใหม่จะทำให้ QR เดิมใช้ไม่ได้</p>}
+              {loc.issueMode === 'self_service' && loc.hasPublicLink && <p className="text-[11px] text-gray-400">มี QR ใช้งานอยู่ · “ดู / พิมพ์ QR” เปิดอันเดิม{loc.qrViewable ? 'ได้ตลอด' : ' (ครั้งแรกต้องสแกน QR เดิม 1 ครั้ง)'} · “เปลี่ยน QR ใหม่” ใช้เมื่อต้องการยกเลิกอันเดิม — โปสเตอร์ที่ติดไว้จะใช้ไม่ได้</p>}
             </div>); })}
           {locations.length === 0 && <p className="text-sm text-gray-500">ยังไม่มีจุดปฐมพยาบาล — เริ่มจากตู้ยา กล่อง หรือห้องพยาบาล</p>}
         </div>
@@ -65,8 +99,28 @@ export default function SettingsPage() {
 
       <LocationModal open={edit.open} loc={edit.loc} onClose={() => setEdit({ open: false, loc: null })} onSaved={() => { setEdit({ open: false, loc: null }); setToast({ type: 'success', msg: 'บันทึกจุดแล้ว' }); }} />
       <ThresholdsModal loc={thresholdsFor} onClose={() => setThresholdsFor(null)} onSaved={() => { setThresholdsFor(null); setToast({ type: 'success', msg: 'บันทึกขั้นต่ำแล้ว' }); }} />
-      <Modal open={!!qr} onClose={() => setQr(null)} title={`QR หยิบเอง · ${qr?.loc.name || ''}`} size="sm" footer={<div className="flex justify-end gap-2"><button type="button" className={btnSecondary} onClick={() => { if (qr) void navigator.clipboard?.writeText(qr.url); setToast({ type: 'success', msg: 'คัดลอกลิงก์แล้ว' }); }}>คัดลอกลิงก์</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} onClick={() => { if (qr) openPoster(qr, posterItems(qr), state.company.short); }}>เปิดโปสเตอร์ A4</button></div>}>
-        {qr && <div className="text-center"><div className="mx-auto w-56 [&_svg]:w-full [&_svg]:h-auto" dangerouslySetInnerHTML={{ __html: qr.svg }} /><p className="mt-2 text-xs text-gray-500 break-all">{qr.url}</p><p className="mt-2 text-xs" style={{ color: VIZ.secondary }}>ลิงก์นี้แสดงครั้งเดียว — พิมพ์หรือคัดลอกเก็บไว้ · สร้างใหม่ได้ตลอด (ของเดิมจะใช้ไม่ได้)</p></div>}
+      <Modal open={!!qr} onClose={() => setQr(null)} title={`QR หยิบเอง · ${qr?.loc.name || ''}`} size="sm" footer={<div className="flex flex-wrap justify-end gap-2"><button type="button" className={btnSecondary} onClick={() => { if (qr) void navigator.clipboard?.writeText(qr.url); setToast({ type: 'success', msg: 'คัดลอกลิงก์แล้ว' }); }}>คัดลอกลิงก์</button><button type="button" className={btnSecondary} onClick={() => { if (qr) downloadQr(qr); }}>บันทึกรูป QR</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} onClick={() => { if (qr) openPoster(qr, posterItems(qr), state.company.short); }}>เปิดโปสเตอร์ A4</button></div>}>
+        {qr && <div className="text-center"><div className="mx-auto w-56 [&_svg]:w-full [&_svg]:h-auto" dangerouslySetInnerHTML={{ __html: qr.svg }} /><p className="mt-2 text-xs text-gray-500 break-all">{qr.url}</p><p className="mt-2 text-xs text-gray-500">เปิดดูและพิมพ์ซ้ำได้ตลอดจากปุ่ม “ดู / พิมพ์ QR” · QR นี้ใช้ได้จนกว่าจะกด “เปลี่ยน QR ใหม่”</p></div>}
+      </Modal>
+      <Modal open={!!adopt} onClose={() => setAdopt(null)} title={`QR ปัจจุบัน · ${adopt?.loc.name || ''}`} size="sm" footer={<div className="flex justify-end"><button type="button" className={btnSecondary} onClick={() => setAdopt(null)}>ปิด</button></div>}>
+        {adopt && <div className="space-y-3 text-sm text-gray-700">
+          <p>QR ของจุดนี้สร้างไว้ก่อนที่ระบบจะเก็บลิงก์ จึงยังเปิดดูซ้ำไม่ได้ เลือกได้ 2 ทาง:</p>
+          <div className="rounded-lg border border-gray-200 p-3 space-y-2">
+            <p><b>1. ใช้ QR เดิมต่อ</b> — โปสเตอร์ที่ติดไว้ยังใช้ได้</p>
+            <p>สแกน QR เดิมด้วยมือถือให้หน้าเบิกยาเปิดขึ้นมา 1 ครั้ง ระบบจะจำลิงก์ให้เอง แล้วกด</p>
+            <button type="button" className={btnPrimary} style={{ background: FA_GREEN }} disabled={busy === adopt.loc.id} onClick={() => void showLink(adopt.loc, true)}>ตรวจอีกครั้ง</button>
+            <label className={`${labelClass} pt-1`} htmlFor="qr-link">หรือวางลิงก์ของ QR เดิม (ถ้าเคยคัดลอกเก็บไว้)</label>
+            <div className="flex gap-2">
+              <input id="qr-link" className={`${inputClass} min-w-0 flex-1`} value={adopt.link} onChange={e => setAdopt(a => (a ? { ...a, link: e.target.value, err: '' } : a))} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void adoptLink(); } }} placeholder="https://tools.eashe.org/first-aid/take/…" />
+              <button type="button" className={`${btnSecondary} shrink-0`} disabled={!adopt.link.trim() || busy === adopt.loc.id} onClick={() => void adoptLink()}>แสดง QR</button>
+            </div>
+            {adopt.err && <p className="text-xs" style={{ color: VIZ.accent }}>{adopt.err}</p>}
+          </div>
+          <div className="rounded-lg border border-gray-200 p-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="min-w-0 flex-1"><b>2. เปลี่ยนเป็น QR ใหม่</b> — QR เดิมและโปสเตอร์ที่ติดไว้จะใช้ไม่ได้ทันที</p>
+            <ConfirmButton label="เปลี่ยน QR ใหม่" confirmLabel="QR เดิมจะใช้ไม่ได้ — ยืนยัน?" danger disabled={busy === adopt.loc.id} onConfirm={() => makeLink(adopt.loc)} />
+          </div>
+        </div>}
       </Modal>
       <ToastView toast={toast} />
     </div>

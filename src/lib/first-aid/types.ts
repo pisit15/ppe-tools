@@ -34,7 +34,7 @@ export const FA_ICONS: { id: Exclude<FaIcon, ''>; label: string }[] = [
 ];
 
 // ---- Shapes returned by /api/first-aid/state (normalized at the API boundary) ----
-export type FaLocation = { id: string; name: string; type: string; area: string; issueMode: FirstAidMode; lastChecked: string | null; inspectionIssue: boolean; hasPublicLink: boolean; requireRequester: boolean; icon: string; isRegister: boolean };
+export type FaLocation = { id: string; name: string; type: string; area: string; issueMode: FirstAidMode; lastChecked: string | null; inspectionIssue: boolean; hasPublicLink: boolean; /** The current QR link is kept, so it can be shown and printed again without creating a new one. */ qrViewable: boolean; requireRequester: boolean; icon: string; isRegister: boolean };
 /** unit = handed out whole · shared = one opened container used many times · fixed = equipment kept at the point, never dispensed. */
 export type DispenseMode = 'unit' | 'shared' | 'fixed';
 export type FaItem = { id: string; name: string; generic: string; description: string; category: string; unit: string; min: number; trackExpiry: boolean; icon: FaIcon; imageUrl: string | null; /** The company's own picture. */ hasImage: boolean; /** No own picture: the one shown is the shared default set by an admin. */ imageDefault: boolean; imageSource: string; dispenseMode: DispenseMode; openLifeDays: number | null };
