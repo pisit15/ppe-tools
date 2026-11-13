@@ -54,7 +54,7 @@ export default function VisitorQueuePage() {
   useEffect(() => { const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
 
   // Sortable columns; default = arrival date ascending (soonest visit first), then start time.
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'arrival', dir: 'asc' });
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'arrival', dir: 'desc' });
   const toggleSort = (key: SortKey) => setSort(prev => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'created' ? 'desc' : 'asc' }));
   const batchSizes = useMemo(() => { const m: Record<string, number> = {}; for (const r of rows) if (r.batch_id) m[r.batch_id] = (m[r.batch_id] || 0) + 1; return m; }, [rows]);
   const sorted = useMemo(() => {
