@@ -159,9 +159,12 @@ export type BoardRequest = Pick<VisitorRequestRow,
 
 /** Guard board actions (POST /api/visitor/public/board/[company]). */
 export type BoardAction = 'arrive' | 'leave' | 'undo_arrive' | 'undo_leave' | 'no_show' | 'undo_no_show';
-export type BoardPost = { person_id: string; action: BoardAction } | { request_id: string; action: 'add_person'; name: string; detail?: string } | { request_id: string; action: 'no_show_all' };
+export type BoardPost = { person_id: string; action: BoardAction } | { request_id: string; action: 'add_person'; name: string; detail?: string } | { request_id: string; action: 'no_show_all' } | { request_id: string; action: 'notify_arrival' };
+/** Requests the guard may see but not act on: waiting for SHE (no names — PDPA; the guard does not check names of people who may not enter yet) or refused today. */
+export type BoardOtherRequest = Pick<VisitorRequestRow, 'id' | 'request_no' | 'visitor_company' | 'arrival_date' | 'time_from' | 'time_to' | 'purpose' | 'purpose_other' | 'status' | 'informer_name' | 'informer_department' | 'informer_phone' | 'decision_note' | 'batch_id'>
+  & { persons: number; vehicles: number; notified_at: string | null };
 
-export type BoardPayload = { company: { id: string; name: string }; today: string; requests: BoardRequest[]; background: VisitorBackground; gate_check: GateCheckConfig };
+export type BoardPayload = { company: { id: string; name: string }; today: string; requests: BoardRequest[]; pending: BoardOtherRequest[]; rejected: BoardOtherRequest[]; background: VisitorBackground; gate_check: GateCheckConfig };
 
 /** Public status view by track code — no phone numbers or decision details beyond the note. */
 export type TrackPayload = Pick<VisitorRequestRow,

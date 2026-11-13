@@ -3,7 +3,7 @@ import { getSupabaseServer } from '@/lib/supabase';
 import { AccessError } from '@/lib/toolsSession';
 import { VISITOR_LIMITS, gateCheckConfig, vehiclePolicyFor } from './constants';
 import { addDays, bangkokToday } from './validation';
-import type { BatchSibling, BoardPayload, BoardRequest, CreateVisitorRequestInput, GateCheckConfig, VisitorBackground, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons, VisitorVehicleRow } from './types';
+import type { BatchSibling, BoardOtherRequest, BoardPayload, BoardRequest, CreateVisitorRequestInput, GateCheckConfig, VisitorBackground, VisitorLinkRow, VisitorPersonRow, VisitorRequestRow, VisitorRequestWithPersons, VisitorVehicleRow } from './types';
 
 export const db = () => getSupabaseServer();
 export const newToken = (bytes = 24) => randomBytes(bytes).toString('base64url');
@@ -140,5 +140,26 @@ export async function boardPayload(companyId: string): Promise<BoardPayload> {
       persons: r.visitor_persons.map(p => ({ id: p.id, seq: p.seq, name: p.name, detail: p.detail, arrived_at: p.arrived_at, left_at: p.left_at, no_show_at: p.no_show_at, added_by_guard: p.added_by_guard })),
       vehicles: (r.visitor_vehicles || []).map(v => ({ id: v.id, seq: v.seq, plate: v.plate, province: v.province, vehicle_type: v.vehicle_type, decision: v.decision })),
     }));
-  return { company: { id: companyId, name }, today, requests, background: options.background, gate_check: options.gate_check };
+  // Not-yet-approved (today..tomorrow) and refused/cancelled (today only): summary rows without person names.
+  const { data: other, error: oErr } = await db().from('visitor_requests')
+    .select('id, request_no, visitor_company, arrival_date, time_from, time_to, purpose, purpose_other, status, informer_name, informer_department, informer_phone, decision_note, batch_id, visitor_persons(id), visitor_vehicles(id)')
+    .eq('company_id', companyId).in('status', ['submitted', 'need_info', 'rejected', 'cancelled'])
+    .gte('arrival_date', today).lte('arrival_date', addDays(today, VISITOR_LIMITS.boardDaysAhead))
+    .order('arrival_date').order('time_from');
+  if (oErr) throw oErr;
+  type O = Omit<BoardOtherRequest, 'persons' | 'vehicles' | 'notified_at'> & { visitor_persons: { id: string }[]; visitor_vehicles: { id: string }[] };
+  const ids = ((other || []) as O[]).map(r => r.id);
+  const notified = new Map<string, string>();
+  if (ids.length) {
+    const { data: ev } = await db().from('visitor_events').select('request_id, at').in('request_id', ids).eq('action', 'guard_notified').order('at', { ascending: false });
+    for (const e of (ev || []) as { request_id: string; at: string }[]) if (!notified.has(e.request_id)) notified.set(e.request_id, e.at);
+  }
+  const toOther = (r: O): BoardOtherRequest => ({
+    id: r.id, request_no: r.request_no, visitor_company: r.visitor_company, arrival_date: r.arrival_date, time_from: r.time_from, time_to: r.time_to,
+    purpose: r.purpose, purpose_other: r.purpose_other, status: r.status, informer_name: r.informer_name, informer_department: r.informer_department, informer_phone: r.informer_phone,
+    decision_note: r.decision_note, batch_id: r.batch_id, persons: r.visitor_persons.length, vehicles: r.visitor_vehicles.length, notified_at: notified.get(r.id) || null,
+  });
+  const pending = ((other || []) as O[]).filter(r => r.status === 'submitted' || r.status === 'need_info').map(toOther);
+  const rejected = ((other || []) as O[]).filter(r => (r.status === 'rejected' || r.status === 'cancelled') && r.arrival_date === today).map(toOther);
+  return { company: { id: companyId, name }, today, requests, pending, rejected, background: options.background, gate_check: options.gate_check };
 }

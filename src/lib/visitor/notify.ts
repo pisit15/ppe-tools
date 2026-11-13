@@ -74,3 +74,16 @@ export async function notifyPendingDigest(companyId: string, channel: NotifyChan
   const result = channel === 'telegram' ? await sendTelegram(companyId, Number(target), 'test', null, pendingDigestText(rows, name)) : await sendLine(companyId, target, 'test', null, pendingDigest(rows, name));
   return { ...result, count: rows.length };
 }
+
+/** Guard pressed "แจ้ง SHE ว่ามาถึงแล้ว" on a request that is still waiting: push the request card again, flagged as "at the gate". */
+export async function notifyArrivalWaiting(r: VisitorRequestWithPersons) {
+  try {
+    const s = await settings(r.company_id);
+    if (!s) return { sent: false };
+    const name = await companyName(r.company_id);
+    let sent = false;
+    if (s.line_group_id) { const res = await sendLine(r.company_id, s.line_group_id, 'new_request', r.id, newRequestCard(r, name, undefined, 'at_gate')); sent = sent || res.status < 300; }
+    if (s.telegram_chat_id) { const t = newRequestText(r, name, undefined, 'at_gate'); const res = await sendTelegram(r.company_id, s.telegram_chat_id, 'new_request', r.id, t.html, t.keyboard); sent = sent || res.status < 300; }
+    return { sent, configured: Boolean(s.line_group_id || s.telegram_chat_id) };
+  } catch (e) { console.error('visitor notify (arrival) failed', e instanceof Error ? e.message : e); return { sent: false }; }
+}

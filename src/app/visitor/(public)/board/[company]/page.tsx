@@ -3,8 +3,8 @@ export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { LogIn, LogOut, RotateCcw, Phone, MapPin, ShieldAlert, Maximize2, ChevronDown, ChevronRight, UserX, UserPlus, Settings2, X, Sun, Moon, ImagePlus, Trash2, Car } from 'lucide-react';
-import type { BoardAction, BoardPayload, BoardPost, BoardRequest } from '@/lib/visitor/types';
+import { LogIn, LogOut, RotateCcw, Phone, MapPin, ShieldAlert, Maximize2, ChevronDown, ChevronRight, UserX, UserPlus, Settings2, X, Sun, Moon, ImagePlus, Trash2, Car, Send, Clock, Ban } from 'lucide-react';
+import type { BoardAction, BoardOtherRequest, BoardPayload, BoardPost, BoardRequest } from '@/lib/visitor/types';
 import { DEFAULT_GATE_CHECK, VEHICLE_DECISION_LABEL, gateCheckRowFor, gateCheckText } from '@/lib/visitor/constants';
 import type { GateCheckConfig } from '@/lib/visitor/types';
 import { fileToDataUrl } from '../../../_components/image';
@@ -19,7 +19,7 @@ const PALETTES: Record<ThemeName, Palette> = {
 };
 type Tab = 'yesterday' | 'today' | 'tomorrow';
 type BgMode = 'company' | 'custom' | 'none';
-type Prefs = { theme: ThemeName; bgMode: BgMode; bg: string | null; dim: number; collapsed: string[] };
+type Prefs = { theme: ThemeName; bgMode: BgMode; bg: string | null; dim: number; collapsed: string[]; showPending?: boolean; showRejected?: boolean };
 const PREFS_KEY = 'visitor_board_prefs_v1';
 const DEFAULT_PREFS: Prefs = { theme: 'dark', bgMode: 'company', bg: null, dim: 65, collapsed: [] };
 
@@ -81,6 +81,13 @@ export default function BoardPage() {
     };
   }, [list]);
 
+  const pendingList = useMemo(() => {
+    if (!data) return [];
+    const day = tab === 'tomorrow' ? tomorrow : tab === 'today' ? data.today : '';
+    return day ? data.pending.filter(r => r.arrival_date === day) : [];
+  }, [data, tab, tomorrow]);
+  const rejectedList = useMemo(() => (data && tab === 'today' ? data.rejected : []), [data, tab]);
+
   async function post(key: string, body: BoardPost, okMsg?: string) {
     if (busy) return;
     setBusy(key);
@@ -139,6 +146,8 @@ export default function BoardPage() {
             <Kpi C={C} label="อยู่ในพื้นที่" value={counts.inside} color={C.positive} />
             <Kpi C={C} label="ออกแล้ว" value={counts.left} color={C.dim} />
             {counts.noShow > 0 && <Kpi C={C} label="ไม่มา" value={counts.noShow} color={C.danger} />}
+            {pendingList.length > 0 && <Kpi C={C} label="รออนุมัติ" value={pendingList.length} color={C.warn} />}
+            {rejectedList.length > 0 && <Kpi C={C} label="ไม่อนุมัติ" value={rejectedList.length} color={C.danger} />}
           </div>
           <button type="button" onClick={() => setShowSettings(s => !s)} className="p-2 rounded-lg" style={{ border: `1px solid ${C.line}`, color: C.dim, background: showSettings ? C.panel : 'transparent' }} aria-label="ตั้งค่าหน้าจอ" aria-expanded={showSettings}><Settings2 size={18} /></button>
           <button type="button" onClick={() => document.documentElement.requestFullscreen?.()} className="p-2 rounded-lg" style={{ border: `1px solid ${C.line}`, color: C.dim }} aria-label="เต็มจอ"><Maximize2 size={18} /></button>
@@ -156,6 +165,23 @@ export default function BoardPage() {
               onAdd={(name, detail) => post(`add:${r.id}`, { request_id: r.id, action: 'add_person', name, detail }, `เพิ่ม ${name} และบันทึกมาถึงแล้ว`)}
               onNoShowAll={() => post(`ns:${r.id}`, { request_id: r.id, action: 'no_show_all' }, 'บันทึกว่าไม่มาแล้ว')} />
           ))}
+          {pendingList.length > 0 && (
+            <OtherSection C={C} tone="warn" icon={<Clock size={20} />} title="รออนุมัติ / ขอข้อมูลเพิ่ม" badge="ยังเข้าไม่ได้ — ให้รอที่ป้อม" hint="แจ้งไว้แล้ว แต่ทีม SHE ยังไม่ได้ตัดสิน · ไม่แสดงรายชื่อ"
+              count={pendingList.length} open={Boolean(prefs.showPending)} onToggle={() => updatePrefs({ showPending: !prefs.showPending })}>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {pendingList.map(r => <OtherCard key={r.id} C={C} r={r} tone="warn" nowHm={nowHm} busy={busy === `nt:${r.id}`}
+                  onNotify={tab === 'today' ? () => post(`nt:${r.id}`, { request_id: r.id, action: 'notify_arrival' }, 'แจ้งทีม SHE แล้ว — รอการอนุมัติ') : undefined} />)}
+              </div>
+            </OtherSection>
+          )}
+          {rejectedList.length > 0 && (
+            <OtherSection C={C} tone="danger" icon={<Ban size={20} />} title="ไม่อนุมัติ / ยกเลิก วันนี้" badge="ห้ามเข้า" hint="ไม่ต้องติดต่อ SHE · ไม่แสดงรายชื่อ"
+              count={rejectedList.length} open={Boolean(prefs.showRejected)} onToggle={() => updatePrefs({ showRejected: !prefs.showRejected })}>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {rejectedList.map(r => <OtherCard key={r.id} C={C} r={r} tone="danger" nowHm={nowHm} busy={false} />)}
+              </div>
+            </OtherSection>
+          )}
         </main>
         <ToastView toast={toast} />
       </div>
@@ -316,6 +342,52 @@ function RequestCard({ C, r, gate, today, nowHm, busy, canMark, collapsed, onTog
     </section>
   );
 }
+
+/** Collapsible band for requests the guard may see but not act on. Collapsed by default; the header still shows the count. */
+function OtherSection({ C, tone, icon, title, badge, hint, count, open, onToggle, children }: { C: Palette; tone: 'warn' | 'danger'; icon: React.ReactNode; title: string; badge: string; hint: string; count: number; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  const color = tone === 'warn' ? C.warn : C.danger;
+  return (
+    <section className="rounded-xl" style={{ border: `2px ${tone === 'warn' ? 'dashed' : 'solid'} ${color}80`, background: `${color}0F` }}>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="w-full flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 text-left">
+        <span style={{ color }}>{open ? <ChevronDown size={22} /> : <ChevronRight size={22} />}</span>
+        <span className="inline-flex items-center gap-2 text-lg sm:text-xl font-semibold" style={{ color }}>{icon}{title} <span className="font-medium" style={{ color: C.dim }}>({count})</span></span>
+        <span className="rounded-full px-3 py-0.5 text-sm font-semibold" style={{ background: `${color}2E`, color }}>{badge}</span>
+        <span className="text-xs sm:text-sm ml-auto" style={{ color: C.dim }}>{hint}</span>
+      </button>
+      {open && <div className="px-3 sm:px-5 pb-4">{children}</div>}
+    </section>
+  );
+}
+
+/** Summary card: company, time, request no, purpose, counts, informer phone. No person names, no arrive/leave buttons. */
+function OtherCard({ C, r, tone, nowHm, busy, onNotify }: { C: Palette; r: BoardOtherRequest; tone: 'warn' | 'danger'; nowHm: string; busy: boolean; onNotify?: () => void }) {
+  const color = tone === 'warn' ? C.warn : C.danger;
+  const statusText = r.status === 'need_info' ? 'ขอข้อมูลเพิ่ม — SHE รอผู้แจ้งตอบ' : r.status === 'submitted' ? 'รออนุมัติ' : r.status === 'rejected' ? 'ไม่อนุมัติ' : 'ยกเลิก';
+  // Minutes since the guard last pinged SHE, from the board clock (nowHm, refreshed every second) — Bangkok wall time vs the event's Bangkok time.
+  const notifiedAgo = r.notified_at ? minutesBetween(bangkokTime(r.notified_at), nowHm) : null;
+  const dueNow = tone === 'warn' && nowHm >= hhmm(r.time_from);
+  return (
+    <div className="rounded-lg p-3 sm:p-4 flex flex-col gap-1.5" style={{ background: C.panel, border: `1px solid ${C.line}` }}>
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="text-lg sm:text-xl font-semibold leading-snug break-words">{r.visitor_company}</div>
+        <div className="font-mono text-xl sm:text-2xl font-semibold tabular-nums shrink-0" style={{ color }}>{hhmm(r.time_from)}–{hhmm(r.time_to)}</div>
+      </div>
+      <div className="text-sm sm:text-base" style={{ color: C.dim }}><span className="font-mono">{r.request_no}</span> · {r.purpose === 'อื่นๆ (Others)' ? r.purpose_other : r.purpose} · <strong style={{ color: C.text }}>{r.persons} คน</strong>{r.vehicles > 0 ? ` · รถ ${r.vehicles} คัน` : ''}{r.batch_id ? ' · หลายวัน' : ''}</div>
+      <div className="text-sm sm:text-base" style={{ color: C.dim }}>ผู้แจ้ง <span style={{ color: C.text }}>{r.informer_name}</span> ({r.informer_department}) · <a href={`tel:${r.informer_phone}`} className="font-semibold" style={{ color: C.primary }}>{r.informer_phone}</a></div>
+      {tone === 'danger' && r.decision_note && <div className="text-sm sm:text-base" style={{ color: C.dim }}>เหตุผลจาก SHE: <span style={{ color: C.text }}>{r.decision_note}</span></div>}
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <span className="rounded-full px-3 py-0.5 text-sm font-semibold" style={{ background: `${color}2E`, color }}>● {statusText}</span>
+        {onNotify && (
+          <button type="button" disabled={busy} onClick={onNotify} className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base font-semibold disabled:opacity-50" style={{ background: dueNow ? C.warn : 'transparent', color: dueNow ? C.onAccent : C.warn, border: `1px solid ${C.warn}` }}>
+            <Send size={16} />{notifiedAgo !== null && notifiedAgo < 10 ? `แจ้งแล้ว ${notifiedAgo} นาทีที่แล้ว` : 'แจ้ง SHE ว่ามาถึงแล้ว'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const minutesBetween = (fromHm: string, toHm: string) => { const [a, b] = [fromHm, toHm].map(t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))); return b >= a ? b - a : b + 1440 - a; };
 
 function Btn({ C, children, color, onClick, busy, ghost, label }: { C: Palette; children: React.ReactNode; color: string; onClick: () => void; busy: boolean; ghost?: boolean; label?: string }) {
   return (

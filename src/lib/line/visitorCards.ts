@@ -43,13 +43,14 @@ const button = (label: string, uri: string, color: string): Json => ({
 /** Pushed when an employee submits a request. */
 export const batchLabel = (dates: string[]) => `${dates.length} วัน: ${dates.map(d => { const [, m, dd] = d.split('-').map(Number); return `${dd} ${TH_MONTHS[m - 1]}`; }).join(', ')}`;
 
-export function newRequestCard(r: VisitorRequestWithPersons, companyName: string, batchDates?: string[]): LineMessage {
+export function newRequestCard(r: VisitorRequestWithPersons, companyName: string, batchDates?: string[], variant: 'new' | 'at_gate' = 'new'): LineMessage {
   const batch = batchDates && batchDates.length > 1 ? batchDates : null;
-  const alt = `คำขอเข้าพื้นที่ใหม่ ${r.request_no}${batch ? ` (ชุด ${batch.length} วัน)` : ''}: ${r.visitor_company} ${thaiDate(r.arrival_date)} ${hhmm(r.time_from)} (${r.visitor_persons.length} คน) — รออนุมัติ`;
+  const atGate = variant === 'at_gate';
+  const alt = `${atGate ? '🔔 มาถึงป้อมแล้ว ยังรออนุมัติ' : 'คำขอเข้าพื้นที่ใหม่'} ${r.request_no}${batch ? ` (ชุด ${batch.length} วัน)` : ''}: ${r.visitor_company} ${thaiDate(r.arrival_date)} ${hhmm(r.time_from)} (${r.visitor_persons.length} คน) — รออนุมัติ`;
   return flex(alt, {
     type: 'bubble', size: 'mega',
-    header: header('VISITOR ACCESS · รออนุมัติ', `คำขอใหม่ ${r.request_no}${batch ? ` · ชุด ${batch.length} วัน` : ''}`, C.warn),
-    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: [...(batch ? [row('หลายวัน', batchLabel(batch), true)] : []), ...body(r, companyName)] },
+    header: header(atGate ? 'VISITOR ACCESS · มาถึงป้อมแล้ว' : 'VISITOR ACCESS · รออนุมัติ', atGate ? `รออนุมัติ ${r.request_no} — รปภ. แจ้งว่ามาถึงแล้ว` : `คำขอใหม่ ${r.request_no}${batch ? ` · ชุด ${batch.length} วัน` : ''}`, atGate ? C.danger : C.warn),
+    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: [...(atGate ? [{ type: 'text', text: 'ผู้มาติดต่อรออยู่ที่ป้อม รปภ. — กรุณาพิจารณาทันที', size: 'sm', color: C.danger, weight: 'bold', wrap: true } as Json] : []), ...(batch ? [row('หลายวัน', batchLabel(batch), true)] : []), ...body(r, companyName)] },
     footer: {
       type: 'box', layout: 'vertical', spacing: 'sm',
       contents: [

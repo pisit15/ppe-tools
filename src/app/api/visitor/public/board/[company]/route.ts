@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AccessError, apiError, assertSameOrigin } from '@/lib/toolsSession';
-import { addEvent, boardPayload, db } from '@/lib/visitor/server';
+import { REQUEST_SELECT, addEvent, boardPayload, db, sortPersons } from '@/lib/visitor/server';
+import { notifyArrivalWaiting } from '@/lib/visitor/notify';
 import { VISITOR_LIMITS } from '@/lib/visitor/constants';
-import type { BoardAction, VisitorPersonRow } from '@/lib/visitor/types';
+import type { BoardAction, VisitorPersonRow, VisitorRequestWithPersons } from '@/lib/visitor/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +63,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (error) throw error;
       await addEvent(req.id, 'guard-board', 'guard_added', `${seq}. ${name}${detail ? ` (${detail})` : ''} — เพิ่มหน้างาน, มาถึง`);
       return NextResponse.json({ data: person as VisitorPersonRow }, { status: 201 });
+    }
+
+    if (action === 'notify_arrival') {
+      // Guard: visitors are at the gate but SHE has not decided yet → ping the company's chat (once per 10 minutes per request).
+      const id = String(body?.request_id || '');
+      if (!UUID.test(id)) throw new AccessError('คำสั่งไม่ถูกต้อง', 400);
+      const { data, error } = await client.from('visitor_requests').select(REQUEST_SELECT).eq('id', id).eq('company_id', company).in('status', ['submitted', 'need_info']).maybeSingle();
+      if (error) throw error;
+      if (!data) throw new AccessError('คำขอนี้ไม่ได้อยู่ในสถานะรออนุมัติแล้ว — รีเฟรชจอ', 409);
+      const req = sortPersons(data as VisitorRequestWithPersons);
+      const { data: last } = await client.from('visitor_events').select('at').eq('request_id', req.id).eq('action', 'guard_notified').order('at', { ascending: false }).limit(1);
+      const lastAt = (last?.[0] as { at: string } | undefined)?.at;
+      if (lastAt && Date.now() - Date.parse(lastAt) < 10 * 60 * 1000) throw new AccessError('แจ้งไปแล้วเมื่อสักครู่ — รอ SHE ตอบ (แจ้งซ้ำได้ทุก 10 นาที)', 429);
+      const result = await notifyArrivalWaiting(req);
+      await addEvent(req.id, 'guard-board', 'guard_notified', result.sent ? 'ผู้มาติดต่อมาถึงป้อม — แจ้งกลุ่ม SHE แล้ว' : 'ผู้มาติดต่อมาถึงป้อม (ส่งแจ้งเตือนไม่สำเร็จ/ไม่ได้ตั้งค่า)');
+      return NextResponse.json({ data: { sent: result.sent, configured: result.configured ?? false } });
     }
 
     if (action === 'no_show_all') {

@@ -30,9 +30,10 @@ function details(r: VisitorRequestWithPersons): string[] {
 
 const batchLabel = (dates: string[]) => `${dates.length} วัน: ${dates.map(d => { const [, m, dd] = d.split('-').map(Number); return `${dd} ${TH_MONTHS[m - 1]}`; }).join(', ')}`;
 
-export function newRequestText(r: VisitorRequestWithPersons, companyName: string, batchDates?: string[]): { html: string; keyboard: InlineKeyboard } {
+export function newRequestText(r: VisitorRequestWithPersons, companyName: string, batchDates?: string[], variant: 'new' | 'at_gate' = 'new'): { html: string; keyboard: InlineKeyboard } {
   const batch = batchDates && batchDates.length > 1 ? batchDates : null;
-  const html = [`🟠 <b>VISITOR ACCESS · รออนุมัติ</b>`, `<b>คำขอใหม่ ${esc(r.request_no)}${batch ? ` · ชุด ${batch.length} วัน` : ''}</b>`, '', ...(batch ? [`<b>หลายวัน:</b> ${esc(batchLabel(batch))}`] : []), ...details(r), '', `<i>${esc(companyName)} · ${esc(r.request_no)}</i>`].join('\n');
+  const atGate = variant === 'at_gate';
+  const html = [atGate ? `🔔 <b>VISITOR ACCESS · มาถึงป้อมแล้ว — ยังรออนุมัติ</b>` : `🟠 <b>VISITOR ACCESS · รออนุมัติ</b>`, atGate ? `<b>${esc(r.request_no)}</b> — รปภ. แจ้งว่าผู้มาติดต่อรออยู่ที่ป้อม กรุณาพิจารณาทันที` : `<b>คำขอใหม่ ${esc(r.request_no)}${batch ? ` · ชุด ${batch.length} วัน` : ''}</b>`, '', ...(batch ? [`<b>หลายวัน:</b> ${esc(batchLabel(batch))}`] : []), ...details(r), '', `<i>${esc(companyName)} · ${esc(r.request_no)}</i>`].join('\n');
   return {
     html,
     keyboard: { inline_keyboard: [
