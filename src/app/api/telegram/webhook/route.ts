@@ -74,7 +74,16 @@ export async function POST(request: NextRequest) {
         // Browse/detail buttons rendered from LINE Flex cards.
         const payload = await resolveCallback(db, data);
         await answerCallback(q.id);
-        if (payload && q.from?.id) await sendLineMessages(db, chat.id, await handlePostback(db, tgLinkId(q.from.id), payload));
+        if (!payload || !q.from?.id) return NextResponse.json({ ok: true });
+        const isGroup = chat.type === 'group' || chat.type === 'supergroup';
+        if (payload.kind === 'postback') {
+          await sendLineMessages(db, chat.id, await handlePostback(db, tgLinkId(q.from.id), payload.data));
+        } else if (isGroup) {
+          const scope = await telegramScope(db, chat.id);
+          if (scope) await sendLineMessages(db, chat.id, await handleGroupText(db, scope, payload.data));
+        } else {
+          await sendLineMessages(db, chat.id, (await handleInspectText({ db, lineUserId: tgLinkId(q.from.id), accessToken: '', fetchImage: downloadFile }, payload.data)) ?? (await handleText(db, tgLinkId(q.from.id), payload.data)));
+        }
         return NextResponse.json({ ok: true });
       }
       const scope = await telegramScope(db, chat.id);

@@ -12,22 +12,23 @@ const MAX_CB = 64;
 const bytes = (s: string) => Buffer.byteLength(s, 'utf8');
 const randKey = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
-/** Postback payload → callback_data; parks payloads over Telegram's 64-byte cap in telegram_callbacks. */
-export async function callbackFor(db: SupabaseClient, data: string): Promise<string> {
-  const direct = `p:${data}`;
-  if (bytes(direct) <= MAX_CB) return direct;
+/** Payload ("p:<postback>" or "m:<message text>") → callback_data; parks payloads over Telegram's 64-byte cap in telegram_callbacks. */
+export async function callbackFor(db: SupabaseClient, payload: string): Promise<string> {
+  if (bytes(payload) <= MAX_CB) return payload;
   const key = randKey();
-  await db.from('telegram_callbacks').insert([{ key, data }]);
+  await db.from('telegram_callbacks').insert([{ key, data: payload }]);
   return `k:${key}`;
 }
 
-/** Inverse: resolves "p:…" / "k:…" back to the LINE postback payload (null when unknown/expired). */
-export async function resolveCallback(db: SupabaseClient, cb: string): Promise<string | null> {
-  if (cb.startsWith('p:')) return cb.slice(2);
+/** Inverse: "p:…" → { kind: 'postback' }, "m:…" → { kind: 'message' } (text the user would have typed); "k:…" is looked up. */
+export async function resolveCallback(db: SupabaseClient, cb: string): Promise<{ kind: 'postback' | 'message'; data: string } | null> {
+  let payload = cb;
   if (cb.startsWith('k:')) {
     const { data } = await db.from('telegram_callbacks').select('data').eq('key', cb.slice(2)).maybeSingle();
-    return (data as { data: string } | null)?.data ?? null;
+    payload = (data as { data: string } | null)?.data ?? '';
   }
+  if (payload.startsWith('p:')) return { kind: 'postback', data: payload.slice(2) };
+  if (payload.startsWith('m:')) return { kind: 'message', data: payload.slice(2) };
   return null;
 }
 
@@ -87,17 +88,17 @@ export async function lineToTelegram(db: SupabaseClient, messages: LineMessage[]
       if (Array.isArray(t.actions)) for (const a of t.actions as Json[]) acc.actions.push(a as Action);
     }
     const inlineRows: InlineButton[][] = [];
-    const msgButtons: { text: string }[] = [];
     for (const a of acc.actions) {
       const label = String(a.label || a.text || '').slice(0, 40);
       if (!label) continue;
       if (a.type === 'uri' && a.uri && /^https?:/.test(a.uri)) inlineRows.push([{ text: label, url: a.uri }]);
-      else if (a.type === 'postback' && a.data) inlineRows.push([{ text: label, callback_data: await callbackFor(db, a.data) }]);
-      else if (a.type === 'message' && (a.text || a.label)) msgButtons.push({ text: String(a.text || a.label) });
+      else if (a.type === 'postback' && a.data) inlineRows.push([{ text: label, callback_data: await callbackFor(db, `p:${a.data}`) }]);
+      else if (a.type === 'message' && (a.text || a.label)) inlineRows.push([{ text: label, callback_data: await callbackFor(db, `m:${String(a.text || a.label)}`) }]);
     }
     const html = (acc.lines.length ? dedupe(acc.lines).join('\n') : esc(alt || 'ดูรายละเอียดที่ tools.eashe.org')).slice(0, 3800);
-    const replyAll = msgButtons.length || reply ? { keyboard: chunk([...(reply?.keyboard.flat() || []), ...msgButtons], 2), resize_keyboard: true as const, one_time_keyboard: true as const } : undefined;
-    out.push({ html, inline: inlineRows.length ? { inline_keyboard: inlineRows.slice(0, 12) } : undefined, reply: replyAll });
+    // Two buttons per row keeps long company lists compact (Telegram allows up to 100 buttons).
+    const rows2 = chunk(inlineRows.map(r => r[0]), inlineRows.length > 6 ? 2 : 1).slice(0, 50);
+    out.push({ html, inline: rows2.length ? { inline_keyboard: rows2 } : undefined, reply });
   }
   return out;
 }
