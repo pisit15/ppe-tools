@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, XCircle, MessageCircleQuestion, Ban, RefreshCw, Search, X, Phone, MapPin, ClipboardList, History, ChevronUp, ChevronDown, ChevronsUpDown, Car } from 'lucide-react';
+import { CheckCircle2, XCircle, MessageCircleQuestion, Ban, RefreshCw, Search, X, Phone, MapPin, ClipboardList, History, ChevronUp, ChevronDown, ChevronsUpDown, Car, Trash2 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import { HAS_PERMIT_LABEL, VEHICLE_DECISION_LABEL, VISITOR_STATUS_LABEL, vehiclePolicyFor } from '@/lib/visitor/constants';
 import type { DecisionAction, VehicleDecision, VisitorEventRow, VisitorRequestDetail, VisitorRequestWithPersons, VisitorStatus } from '@/lib/visitor/types';
@@ -181,6 +181,8 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
   const [confirm, setConfirm] = useState<DecisionAction | null>(null);
   const [vehicleDecisions, setVehicleDecisions] = useState<Record<string, VehicleDecision>>({});
   const [applyBatch, setApplyBatch] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteText, setDeleteText] = useState('');
 
   useEffect(() => {
     setData(null); setError(''); setConfirm(null);
@@ -188,6 +190,18 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
       .catch((e: unknown) => setError(e instanceof FetchError ? e.message : 'โหลดไม่สำเร็จ'));
   }, [id]);
   useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
+
+  async function remove() {
+    if (!data || busy) return;
+    if (deleteText.trim().toUpperCase() !== data.request_no.toUpperCase()) { notify({ type: 'error', msg: 'พิมพ์เลขคำขอให้ตรงก่อนลบ' }); return; }
+    setBusy(true);
+    try {
+      await postJson(`/api/visitor/requests/${id}`, { confirm: deleteText.trim() }, 'DELETE');
+      notify({ type: 'success', msg: `ลบ ${data.request_no} แล้ว` });
+      onChanged(); onClose();
+    } catch (e) { notify({ type: 'error', msg: e instanceof FetchError ? e.message : 'ลบไม่สำเร็จ' }); }
+    finally { setBusy(false); }
+  }
 
   async function decide(action: DecisionAction) {
     if (!data || busy) return;
@@ -307,7 +321,21 @@ function DetailDrawer({ id, onClose, onChanged, notify }: { id: string; onClose:
             )}
 
             <section className="text-sm">
-              <div className="text-xs text-gray-500 mb-1">ลิงก์ติดตามสถานะสำหรับผู้แจ้ง</div>
+              {!deleting
+                ? <button type="button" onClick={() => { setDeleting(true); setDeleteText(''); }} className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-red-600"><Trash2 size={14} />ลบคำขอนี้ออกจากระบบ (รายการทดสอบ / ซ้ำ)</button>
+                : (
+                  <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: VIZ.accent, background: `${VIZ.accent}0D` }}>
+                    <div className="font-semibold" style={{ color: VIZ.accent }}>ลบคำขอ {data.request_no} ถาวร?</div>
+                    <p className="text-xs text-gray-600">จะลบรายชื่อ รถ ประวัติ และหายจากจอ รปภ. ทันที <strong>ย้อนกลับไม่ได้</strong> — ถ้าเป็นคำขอจริงที่ไม่ต้องการแล้ว ให้ใช้ &quot;ยกเลิกคำขอ&quot; แทน (เก็บประวัติไว้)</p>
+                    <label className="block text-xs text-gray-600">พิมพ์เลขคำขอ <span className="font-mono font-semibold text-gray-900">{data.request_no}</span> เพื่อยืนยัน</label>
+                    <input className={`${inputClass} font-mono`} value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder={data.request_no} autoFocus />
+                    <div className="flex gap-2">
+                      <button type="button" disabled={busy || deleteText.trim().toUpperCase() !== data.request_no.toUpperCase()} onClick={() => void remove()} className="inline-flex items-center gap-1 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-40" style={{ background: VIZ.accent }}><Trash2 size={16} />ลบถาวร</button>
+                      <button type="button" disabled={busy} onClick={() => { setDeleting(false); setDeleteText(''); }} className="rounded-lg px-4 py-2 text-sm border border-gray-300 bg-white">ไม่ลบ</button>
+                    </div>
+                  </div>
+                )}
+              <div className="text-xs text-gray-500 mb-1 mt-4">ลิงก์ติดตามสถานะสำหรับผู้แจ้ง</div>
               <input readOnly value={trackUrl} className={`${inputClass} font-mono text-xs`} onFocus={e => e.currentTarget.select()} />
             </section>
 

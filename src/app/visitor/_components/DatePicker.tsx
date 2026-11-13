@@ -7,7 +7,6 @@ import { VIZ } from './ui';
 const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 const TH_DOW = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
-const addDays = (s: string, n: number) => { const d = new Date(`${s}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return ymd(d); };
 const dow = (s: string) => new Date(`${s}T00:00:00Z`).getUTCDay();
 
 type Props = {
@@ -18,14 +17,11 @@ type Props = {
   maxCount?: number;          // cap on selected dates
 };
 
-/** Multi-date picker: tap days on a month grid (any days, not just a range) + quick fills for consecutive / weekday runs. */
+/** Multi-date picker: tap days on a month grid (any days, not just a range). Calendar only — no range shortcuts (owner, 13 Nov). */
 export function MultiDatePicker({ value, onChange, min, max, maxCount = 14 }: Props) {
   const selected = useMemo(() => new Set(value), [value]);
   const [view, setView] = useState(() => (value[0] || min).slice(0, 7)); // YYYY-MM
-  const [runTo, setRunTo] = useState('');
-  const [weekdaysOnly, setWeekdaysOnly] = useState(true);
   const sorted = useMemo(() => [...value].sort(), [value]);
-  const first = sorted[0] || min;
 
   const cells = useMemo(() => {
     const [y, m] = view.split('-').map(Number);
@@ -43,12 +39,6 @@ export function MultiDatePicker({ value, onChange, min, max, maxCount = 14 }: Pr
     else if (value.length < maxCount) onChange([...value, d].sort());
   };
   const shiftMonth = (n: number) => { const [y, m] = view.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); setView(d.toISOString().slice(0, 7)); };
-  const fillRun = () => {
-    if (!runTo || runTo < first) return;
-    const out: string[] = [];
-    for (let d = first; d <= runTo && out.length < maxCount; d = addDays(d, 1)) if (!weekdaysOnly || (dow(d) !== 0 && dow(d) !== 6)) out.push(d);
-    onChange(out);
-  };
   const [vy, vm] = view.split('-').map(Number);
   const disabled = (d: string) => d < min || (max ? d > max : false);
 
@@ -71,13 +61,7 @@ export function MultiDatePicker({ value, onChange, min, max, maxCount = 14 }: Pr
       </div>
       <div className="mt-3 flex flex-wrap items-end gap-2 text-sm">
         <div className="text-gray-600">เลือกแล้ว <strong style={{ color: VIZ.primary }}>{value.length}</strong>/{maxCount} วัน{sorted.length > 0 && <span className="text-gray-400"> · {sorted.map(d => Number(d.slice(8, 10))).join(', ')}</span>}</div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <label className="text-xs text-gray-500">ติดกันจนถึง</label>
-          <input type="date" value={runTo} min={first} onChange={e => setRunTo(e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900" />
-          <label className="inline-flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={weekdaysOnly} onChange={e => setWeekdaysOnly(e.target.checked)} />เฉพาะ จ.–ศ.</label>
-          <button type="button" onClick={fillRun} disabled={!runTo} className="rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium disabled:opacity-40">เติม</button>
-          {value.length > 1 && <button type="button" onClick={() => onChange(sorted.slice(0, 1))} className="rounded-lg px-2.5 py-1 text-xs" style={{ color: VIZ.accent }}>เหลือวันแรก</button>}
-        </div>
+        {value.length > 1 && <button type="button" onClick={() => onChange(sorted.slice(0, 1))} className="ml-auto rounded-lg px-2.5 py-1 text-xs" style={{ color: VIZ.accent }}>ล้างเหลือวันแรก</button>}
       </div>
     </div>
   );

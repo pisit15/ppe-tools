@@ -83,3 +83,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return apiError(error);
   }
 }
+
+/**
+ * SHE: permanently delete a request (test entries, duplicates). Body { confirm: '<request_no>' } must match —
+ * the UI makes the user type it. Persons / vehicles / events cascade; notify log keeps a null reference.
+ */
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const actor = await requireVisitorApprover(request);
+    const row = await load((await params).id);
+    assertCompany(actor, row.company_id, true);
+    const body = (await request.json().catch(() => null)) as { confirm?: unknown } | null;
+    if (String(body?.confirm || '').trim().toUpperCase() !== row.request_no.toUpperCase()) throw new AccessError('กรุณาพิมพ์เลขคำขอให้ตรงเพื่อยืนยันการลบ', 400);
+    const { error } = await db().from('visitor_requests').delete().eq('id', row.id);
+    if (error) throw error;
+    console.info('visitor request deleted', row.request_no, 'by', actor.displayName || actor.username);
+    return NextResponse.json({ data: { deleted: row.request_no } });
+  } catch (error) {
+    return apiError(error);
+  }
+}
