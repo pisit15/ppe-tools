@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowLeft, ChevronDown, ClipboardCheck, Link2, LogOut, Eye, EyeOff, MonitorPlay } from 'lucide-react';
+import { ArrowLeft, BarChart3, ChevronDown, ClipboardCheck, Link2, LogOut, Eye, EyeOff, MonitorPlay } from 'lucide-react';
 import { useAuth, type LoginCompanyOption } from '@/components/AuthProvider';
 import { VIZ, cardClass, inputClass, labelClass } from '../_components/ui';
 
 const NAV = [
   { href: '/visitor', label: 'คิวคัดกรอง-อนุมัติ', icon: ClipboardCheck },
+  { href: '/visitor/reports', label: 'รายงาน', icon: BarChart3 },
   { href: '/visitor/settings', label: 'ลิงก์ขอ & จอ รปภ', icon: Link2 },
 ];
 

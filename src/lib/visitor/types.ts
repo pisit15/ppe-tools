@@ -170,3 +170,18 @@ export type TrackPayload = Pick<VisitorRequestRow,
 export type LineGroupOption = { group_id: string; group_name: string; active: boolean; joined_at: string };
 export type NotifyLogRow = { id: number; company_id: string; request_id: string | null; kind: 'new_request' | 'decision' | 'test'; channel: 'line' | 'telegram'; group_id: string; http_status: number | null; error: string | null; sent_at: string };
 export type TelegramChatOption = { chat_id: number; title: string; active: boolean; joined_at: string };
+
+/** GET /api/visitor/stats — aggregated for the reports page. */
+export type StatBucket = { label: string; requests: number; persons: number };
+export type VisitorStats = {
+  company: string; year: number; month: number | null; from: string; to: string;
+  totals: { requests: number; persons: number; arrived: number; no_show: number; walk_ins: number; vehicles: number; vehicles_inside: number; batches: number };
+  by_status: Record<VisitorStatus, number>;
+  by_month: { month: number; requests: number; approved: number; persons: number }[];
+  by_day: { date: string; requests: number; persons: number }[];
+  by_purpose: StatBucket[];
+  by_group: StatBucket[];
+  by_company: StatBucket[];
+  by_visitor_company: StatBucket[];
+  by_dow: number[];
+};

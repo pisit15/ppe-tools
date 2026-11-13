@@ -56,7 +56,7 @@ export const VISITOR_LIMITS = {
   maxPersons: 60,
   maxRequestsPerLinkPerHour: 60,
   boardDaysAhead: 1, // today + tomorrow
-  maxBatchDays: 14, // dates per multi-day request
+  maxBatchDays: 7, // dates per multi-day request (owner, 13 Nov)
 };
 
 // "ตรวจที่ทางเข้า โดย รปภ." — per-company matrix (visitor_company_options.gate_check). This is the AMT default
