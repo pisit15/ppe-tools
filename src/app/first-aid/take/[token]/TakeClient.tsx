@@ -51,7 +51,7 @@ export default function TakeClient({ token }: { token: string }) {
 
   if (step === 'done' && receipt) return (
     <Shell>
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center p-6 gap-3">
+      <div key="done" className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center p-6 gap-3">
         <div className="h-20 w-20 rounded-full flex items-center justify-center" style={{ background: `${VIZ.positive}22` }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={VIZ.positive} strokeWidth="2.5" aria-hidden="true"><path d="M5 12l4 4L19 6" /></svg></div>
         <div className="text-2xl font-semibold text-gray-900">บันทึกแล้ว</div>
         <div className="text-sm text-gray-600">{receipt.lines.map(l => `${l.name} ${l.label}`).join(' · ')}<br />{location.name} · {thaiDateTime(receipt.at)}</div>
@@ -64,7 +64,7 @@ export default function TakeClient({ token }: { token: string }) {
   if (step === 'confirm') return (
     <Shell>
       <header className="shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3"><button type="button" aria-label="ย้อนกลับ" onClick={() => setStep('pick')} className="h-11 w-11 rounded-xl border border-gray-300 text-xl">‹</button><div><div className="font-semibold text-gray-900">ยืนยันการหยิบ</div><div className="text-xs text-gray-500">{location.name}</div></div></header>
-      <div className="flex-1 min-h-0 overflow-y-auto p-4">
+      <div key="confirm" className="flex-1 min-h-0 overflow-y-auto p-4">
         <TicketPanel items={items} cart={cart} avail={avail} onQty={setQty} who={who} setWho={setWho} dept={dept} setDept={setDept} departments={state.departments || []} reason={reason} setReason={setReason} requireName={location.requireRequester} onSubmit={() => void submit()} busy={busy} err={err} submitLabel="บันทึกการหยิบ" hint="ชื่อและแผนกจะจำไว้ในเครื่องนี้สำหรับครั้งต่อไป" compact>
           <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={issue} onChange={e => setIssue(e.target.checked)} />ของในตู้มีปัญหา (หมด / หมดอายุ / ชำรุด) — แจ้ง จป.</label>
           {issue && <input value={issueText} onChange={e => setIssueText(e.target.value)} className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base text-gray-900" placeholder="เช่น ผ้าก๊อซหมด / เบตาดีนหมดอายุ" aria-label="รายละเอียดปัญหา" />}
@@ -75,7 +75,7 @@ export default function TakeClient({ token }: { token: string }) {
   return (
     <Shell>
       <header className="shrink-0 text-white px-4 py-3" style={{ background: FA_GREEN }}><div className="text-[11px] opacity-80">{state.company.short} · {location.type}</div><div className="text-lg font-semibold leading-tight">{location.name}</div></header>
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-4">
+      <div key="pick" className="flex-1 min-h-0 overflow-y-auto px-3 pb-4">
         <p className="pt-2.5 text-xs text-gray-500 truncate">แตะ “+ เลือก” ที่ของที่หยิบ แล้วกด ถัดไป · ไม่ต้อง login</p>
         <PickBoard items={items} avail={avail} opened={opened} cart={cart} onChange={setQty} columns="grid-cols-2" compact stickyFilters />
         {equipment.length > 0 && <p className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-600"><b className="text-gray-800">อุปกรณ์ประจำตู้</b> (ใช้แล้วเก็บคืนที่เดิม ไม่ต้องบันทึก): {equipment.join(' · ')}<br />หายหรือชำรุด → ติ๊ก “แจ้ง จป.” ในขั้นตอนถัดไป หรือแจ้ง จป. โดยตรง</p>}

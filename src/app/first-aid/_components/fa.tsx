@@ -55,14 +55,14 @@ export function Pictogram({ icon, size = 40 }: { icon: FaIcon; size?: number }) 
   return <svg viewBox="0 0 48 48" width={size} height={size} aria-hidden="true">{ICON_PATHS[key](ICON_COLOR[key])}</svg>;
 }
 /** Item picture if set, else its pictogram in a soft tile. */
-export function ItemImage({ item, size = 40, rounded = 10, className = '', aspect = '1 / 1' }: { item: Pick<FaItem, 'name' | 'icon' | 'imageUrl'>; size?: number | string; rounded?: number; className?: string; aspect?: string }) {
+export function ItemImage({ item, size = 40, rounded = 10, className = '', aspect = '1 / 1', iconBottom = false }: { item: Pick<FaItem, 'name' | 'icon' | 'imageUrl'>; size?: number | string; rounded?: number; className?: string; aspect?: string; /** Short tiles with a badge in the top corner: sit the pictogram at the bottom so the two never overlap. */ iconBottom?: boolean }) {
   // A string size ("100%") fills the parent's width at the given aspect ratio (square by default); a number is a fixed pixel tile.
   const box = typeof size === 'number' ? { width: size, height: size, borderRadius: rounded } as const : { width: '100%', aspectRatio: aspect, borderRadius: rounded } as const;
   if (item.imageUrl) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={item.imageUrl} alt={item.name} loading="lazy" className={`object-cover shrink-0 bg-gray-50 ${className}`} style={box} />;
   }
-  return <div className={`flex items-center justify-center shrink-0 ${className}`} style={{ ...box, background: '#F0F3F0' }}><Pictogram icon={item.icon} size={typeof size === 'number' ? Math.round(size * 0.7) : 48} /></div>;
+  return <div className={`flex ${iconBottom ? 'items-end pb-2' : 'items-center'} justify-center shrink-0 ${className}`} style={{ ...box, background: '#F0F3F0' }}><Pictogram icon={item.icon} size={typeof size === 'number' ? Math.round(size * 0.7) : iconBottom ? 42 : 48} /></div>;
 }
 
 export function StatusBadge({ status, small = false, item }: { status: ItemStatusKey; small?: boolean; item?: Pick<FaItem, 'dispenseMode'> }) {

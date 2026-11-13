@@ -72,8 +72,8 @@ export function PickBoard({ items: allItems, avail, opened, cart, onChange, freq
   const aspect = compact ? '3 / 2' : '1 / 1';
   const cardClass = (active: boolean, dim: boolean) => `rounded-2xl border bg-white flex flex-col h-full ${compact ? 'p-2' : 'p-2.5'} ${active ? 'border-[#246047] shadow-sm' : 'border-gray-200'} ${dim ? 'opacity-55' : ''}`;
   const badge = (text: string, tone: 'ok' | 'warn' | 'out') => <span className="absolute top-1.5 right-1.5 max-w-[85%] truncate rounded-full border bg-white/95 px-2 py-0.5 text-[11px] font-medium shadow-sm" style={{ color: tone === 'out' ? VIZ.accent : tone === 'warn' ? '#9a5410' : VIZ.text, borderColor: tone === 'out' ? `${VIZ.accent}66` : tone === 'warn' ? `${VIZ.secondary}88` : '#E5E7EB' }}>{text}</span>;
-  // Name (up to two lines) with its note directly underneath; the block reserves the two-line height so every row of the grid is equally tall.
-  const title = (i: FaItem) => <div className="mt-2 min-h-[3.9rem]"><div className="text-[15px] font-semibold text-gray-900 leading-snug line-clamp-2">{i.name}</div><div className="mt-0.5 text-xs text-gray-500 truncate">{itemSub(i)}</div></div>;
+  // Name with its note directly underneath. The block reserves the two-line height so rows are normally equally tall; a long name on a narrow phone may take a third line rather than be cut off.
+  const title = (i: FaItem) => <div className="mt-2 min-h-[3.9rem]"><div className="text-[15px] font-semibold text-gray-900 leading-snug line-clamp-3 break-words">{i.name}</div><div className="mt-0.5 text-xs text-gray-500 truncate">{itemSub(i)}</div></div>;
   const primary = 'h-10 w-full rounded-xl text-white font-semibold disabled:opacity-40';
   const soldOut = <div className="h-10 flex items-center justify-center rounded-xl bg-gray-100 text-sm font-semibold" style={{ color: VIZ.accent }}>หมด</div>;
   const quantity = (value: number, set: (n: number) => void, max: number, suffix = '') => <QtyPill value={value} onChange={set} max={max} suffix={suffix} editable={!compact} />;
@@ -98,7 +98,7 @@ export function PickBoard({ items: allItems, avail, opened, cart, onChange, freq
             return (
               <div key={i.id} className={cardClass(active, out)} style={active ? { background: `${FA_GREEN}0D` } : undefined}>
                 <button type="button" disabled={out || full || !inUse} onClick={() => onChange(i.id, qty + 1)} className="flex-1 flex flex-col justify-start text-left disabled:cursor-not-allowed" aria-label={`ใช้ ${i.name} 1 ครั้ง`}>
-                  <div className="relative"><ItemImage item={i} size="100%" aspect={aspect} rounded={12} />{badge(out ? 'หมด' : op?.expired ? 'เปิดเกินกำหนด' : inUse ? 'เปิดใช้อยู่' : 'ยังไม่เปิดขวด', out ? 'out' : op?.expired ? 'warn' : 'ok')}</div>
+                  <div className="relative"><ItemImage item={i} size="100%" aspect={aspect} rounded={12} iconBottom={compact} />{badge(out ? 'หมด' : op?.expired ? 'เปิดเกินกำหนด' : inUse ? 'เปิดใช้อยู่' : 'ยังไม่เปิดขวด', out ? 'out' : op?.expired ? 'warn' : 'ok')}</div>
                   {title(i)}
                   <div className="mt-0.5 text-xs leading-snug" style={{ color: op?.expired ? VIZ.accent : VIZ.lightText }}>{[inUse && op!.until ? `ใช้ได้ถึง ${thaiDate(op!.until, { short: true })}` : op?.expired && op.until ? `เกินกำหนด ${thaiDate(op.until, { short: true })}` : '', a > 0 ? `สำรอง ${fmtInt(a)} ${i.unit}` : ''].filter(Boolean).join(' · ')}</div>
                 </button>
@@ -116,7 +116,7 @@ export function PickBoard({ items: allItems, avail, opened, cart, onChange, freq
           return (
             <div key={i.id} className={cardClass(on, out)} style={on ? { background: `${FA_GREEN}0D` } : undefined}>
               <button type="button" disabled={out || full} onClick={() => onChange(i.id, on ? qty : lastQty(i.id))} className="flex-1 flex flex-col justify-start text-left disabled:cursor-not-allowed" aria-label={`เลือก ${i.name}`}>
-                <div className="relative"><ItemImage item={i} size="100%" aspect={aspect} rounded={12} />{badge(out ? 'หมด' : `เหลือ ${fmtInt(a)} ${i.unit}`, out ? 'out' : 'ok')}</div>
+                <div className="relative"><ItemImage item={i} size="100%" aspect={aspect} rounded={12} iconBottom={compact} />{badge(out ? 'หมด' : `เหลือ ${fmtInt(a)} ${i.unit}`, out ? 'out' : 'ok')}</div>
                 {title(i)}
               </button>
               <div className="mt-2">
@@ -166,9 +166,14 @@ export function TicketPanel({ items, cart, avail, onQty, who, setWho, dept, setD
     <div className="flex flex-col gap-3">
       <div className="rounded-xl border border-gray-200 bg-white px-3 divide-y divide-gray-100">
         {lines.length === 0 && <p className="py-6 text-center text-sm text-gray-500">ยังไม่ได้เลือกยา — แตะการ์ดยาด้านซ้าย</p>}
-        {lines.map(l => <div key={l.key} className="flex items-center gap-3 py-2"><ItemImage item={l.item} size={40} /><div className="flex-1 min-w-0"><div className="font-semibold text-gray-900 leading-snug line-clamp-2">{l.item.name}{l.usage === 'open' && <span className="ml-1 text-xs font-normal" style={{ color: '#9a5410' }}>เปิดขวดใหม่</span>}</div>
-          <div className="text-xs text-gray-500">{l.usage === 'use' ? 'ใช้จากขวดที่เปิดอยู่ · ไม่ตัดสต๊อก' : `${l.item.unit} · เหลือ ${fmtInt(avail(l.item))} → ${fmtInt(avail(l.item) - l.qty)}`}</div></div>
-          {l.usage === 'open' ? <button type="button" onClick={() => onQty(l.key, 0)} className="text-xs text-gray-500 underline">ยกเลิก</button> : <QtyPill narrow editable={!compact} value={l.qty} onChange={n => onQty(l.key, n)} max={l.usage === 'use' ? 99 : avail(l.item)} />}</div>)}
+        {/* The name gets the whole row to itself and wraps freely — it is never cut off, even on a 320 px phone; stock and quantity sit on the line below. */}
+        {lines.map(l => <div key={l.key} className="flex items-start gap-3 py-2.5"><ItemImage item={l.item} size={40} /><div className="flex-1 min-w-0">
+          <div className="font-semibold text-gray-900 leading-snug break-words">{l.item.name}{l.usage === 'open' && <span className="ml-1 text-xs font-normal" style={{ color: '#9a5410' }}>เปิดขวดใหม่</span>}</div>
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <span className="min-w-0 text-xs leading-snug text-gray-500">{l.usage === 'use' ? 'ใช้จากขวดที่เปิดอยู่ · ไม่ตัดสต๊อก' : `เหลือ ${fmtInt(avail(l.item))} → ${fmtInt(avail(l.item) - l.qty)} ${l.item.unit}`}</span>
+            {l.usage === 'open' ? <button type="button" onClick={() => onQty(l.key, 0)} className="shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-600">ยกเลิก</button> : <QtyPill narrow editable={!compact} value={l.qty} onChange={n => onQty(l.key, n)} max={l.usage === 'use' ? 99 : avail(l.item)} />}
+          </div>
+        </div></div>)}
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-800 mb-1" htmlFor="tk-who">ผู้เบิกยา {requireName ? <span style={{ color: VIZ.accent }}>* จำเป็น</span> : <span className="font-normal text-gray-400">(ไม่บังคับ)</span>}</label>
