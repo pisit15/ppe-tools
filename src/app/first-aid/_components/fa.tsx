@@ -55,9 +55,9 @@ export function Pictogram({ icon, size = 40 }: { icon: FaIcon; size?: number }) 
   return <svg viewBox="0 0 48 48" width={size} height={size} aria-hidden="true">{ICON_PATHS[key](ICON_COLOR[key])}</svg>;
 }
 /** Item picture if set, else its pictogram in a soft tile. */
-export function ItemImage({ item, size = 40, rounded = 10, className = '' }: { item: Pick<FaItem, 'name' | 'icon' | 'imageUrl'>; size?: number | string; rounded?: number; className?: string }) {
-  // A string size ("100%") fills the parent's width and stays square; a number is a fixed pixel tile.
-  const box = typeof size === 'number' ? { width: size, height: size, borderRadius: rounded } as const : { width: '100%', aspectRatio: '1 / 1', borderRadius: rounded } as const;
+export function ItemImage({ item, size = 40, rounded = 10, className = '', aspect = '1 / 1' }: { item: Pick<FaItem, 'name' | 'icon' | 'imageUrl'>; size?: number | string; rounded?: number; className?: string; aspect?: string }) {
+  // A string size ("100%") fills the parent's width at the given aspect ratio (square by default); a number is a fixed pixel tile.
+  const box = typeof size === 'number' ? { width: size, height: size, borderRadius: rounded } as const : { width: '100%', aspectRatio: aspect, borderRadius: rounded } as const;
   if (item.imageUrl) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={item.imageUrl} alt={item.name} loading="lazy" className={`object-cover shrink-0 bg-gray-50 ${className}`} style={box} />;

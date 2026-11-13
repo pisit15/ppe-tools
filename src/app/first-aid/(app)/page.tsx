@@ -75,7 +75,7 @@ export default function ItemsPage() {
           <Chip active={cat === 'all'} onClick={() => setCat('all')}>ทั้งหมด {counts.all}</Chip>
           {categories.map(([c, n]) => <Chip key={c} active={cat === c} onClick={() => setCat(c)}>{c} {n}</Chip>)}
           <span className="w-px bg-gray-300 mx-1 self-stretch" aria-hidden="true" />
-          {(['low', 'out', 'expired', 'open_expired', 'near', 'pending'] as Filter[]).map(f => <Chip key={f} active={filter === f} onClick={() => setFilter(filter === f ? 'all' : f)} color={f === 'near' ? VIZ.secondary : STATUS_COLOR[f as ItemStatusKey]}>{{ low: 'ต้องเติม', out: 'หมด', expired: 'หมดอายุ', open_expired: 'ขวดเปิดเกินกำหนด', near: 'ใกล้หมดอายุ', pending: 'รอวันหมดอายุ' }[f as Exclude<Filter, 'all' | 'ok'>]} {counts[f]}</Chip>)}
+          {(['low', 'out', 'expired', 'open_expired', 'near', 'pending'] as Filter[]).filter(f => f !== 'open_expired' || counts.open_expired > 0 || filter === 'open_expired').map(f => <Chip key={f} active={filter === f} onClick={() => setFilter(filter === f ? 'all' : f)} color={f === 'near' ? VIZ.secondary : STATUS_COLOR[f as ItemStatusKey]}>{{ low: 'ต้องเติม', out: 'หมด', expired: 'หมดอายุ', open_expired: 'ขวดเปิดเกินกำหนด', near: 'ใกล้หมดอายุ', pending: 'รอวันหมดอายุ' }[f as Exclude<Filter, 'all' | 'ok'>]} {counts[f]}</Chip>)}
         </div>
         <div className="flex-1" />
         <button type="button" className={btnSecondary} onClick={exportCsv}><Download size={15} />CSV</button>
