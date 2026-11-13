@@ -26,4 +26,5 @@ export const SYMPTOMS: SymptomTag[] = [
   { id: 'equipment', label: 'อุปกรณ์ / วัดไข้ / วัดความดัน', test: /ปรอท|thermo|เครื่องวัด|stethoscope|aed|ambu ?bag|mask with bag|tourniquet|forcep|scissor|กรรไกร|ไฟฉาย|atk/i },
   { id: 'ppe', label: 'หน้ากาก / ถุงมือ', test: /mask|หน้ากาก|glove|ถุงมือ/i },
 ];
-export const matchesSymptom = (tag: SymptomTag, item: { name: string; generic: string; description: string }) => tag.test.test(`${item.name} ${cleanGeneric(item.generic)} ${item.description}`);
+/** Some registers type "แ" as two "เ" ("ยาเเก้เเพ้"); fold them before matching. */
+export const matchesSymptom = (tag: SymptomTag, item: { name: string; generic: string; description: string }) => tag.test.test(`${item.name} ${cleanGeneric(item.generic)} ${item.description}`.replace(/เเ/g, 'แ'));

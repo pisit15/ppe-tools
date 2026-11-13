@@ -6,11 +6,12 @@ import { Download, Printer } from 'lucide-react';
 import type { FaEvent } from '@/lib/first-aid/types';
 import { FA_GREEN, ItemImage, KIND_LABEL, Spinner, Stat, ToastView, VIZ, bangkokToday, btnSecondary, currentPeriod, daysUntil, errMsg, expiryDays, fmtInt, loadHistory, manage, openedContainers, personLabel, shiftPeriod, thaiDate, thaiPeriod, useFa, useToast, writeOffReason } from '../../_components/fa';
 import type { FaItem, WriteOffReason } from '@/lib/first-aid/types';
+import { HealthTab } from './HealthTab';
 
 /** Shared-use items are tallied in uses (ครั้ง); opening a new container is a stock event, not a dispense. */
 const tallyUnit = (item: FaItem | undefined) => (item?.dispenseMode === 'shared' ? 'ครั้ง' : item?.unit || '');
 
-type Tab = 'tally' | 'months' | 'expiry' | 'history';
+type Tab = 'tally' | 'months' | 'health' | 'expiry' | 'history';
 const daysIn = (period: string) => { const [y, m] = period.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); };
 const isWeekend = (period: string, d: number) => { const [y, m] = period.split('-').map(Number); const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); return w === 0 || w === 6; };
 
@@ -20,7 +21,9 @@ export default function ReportPage() {
   const [tab, setTab] = useState<Tab>('tally');
   const [period, setPeriod] = useState(currentPeriod());
   const [events, setEvents] = useState<FaEvent[] | null>(null);
-  const [year, setYear] = useState<FaEvent[] | null>(null);
+  // 12 months of history, remembered together with the company it belongs to (an admin can switch company without a reload).
+  const [yearData, setYear] = useState<{ company: string; events: FaEvent[] } | null>(null);
+  const year = yearData && yearData.company === company ? yearData.events : null;
   const [dayPick, setDayPick] = useState<{ itemId: string; day: number } | null>(null);
   useEffect(() => {
     if (!state) return; let cancelled = false; setEvents(null);
@@ -29,8 +32,8 @@ export default function ReportPage() {
     return () => { cancelled = true; };
   }, [state, period, company, setToast]);
   useEffect(() => {
-    if (!state || tab !== 'months' || year) return; let cancelled = false;
-    loadHistory(company, `${shiftPeriod(currentPeriod(), -11)}-01`, bangkokToday()).then(r => { if (!cancelled) setYear(r.events); }).catch(() => { if (!cancelled) setYear([]); });
+    if (!state || (tab !== 'months' && tab !== 'health') || year) return; let cancelled = false;
+    loadHistory(company, `${shiftPeriod(currentPeriod(), -11)}-01`, bangkokToday()).then(r => { if (!cancelled) setYear({ company, events: r.events }); }).catch(() => { if (!cancelled) setYear({ company, events: [] }); });
     return () => { cancelled = true; };
   }, [state, tab, year, company]);
   const scoped = useMemo(() => (events || []).filter(e => scope === 'all' || e.locationId === scope), [events, scope]);
@@ -59,7 +62,7 @@ export default function ReportPage() {
   return (
     <div className="space-y-4">
       <section className="flex flex-wrap items-center gap-3 print:hidden">
-        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden max-w-full overflow-x-auto" role="tablist">{seg('tally', 'ตารางจ่ายยารายวัน')}{seg('months', 'สรุป 12 เดือน')}{seg('expiry', 'หมดอายุ 12 เดือนข้างหน้า')}{seg('history', 'ประวัติทุกรายการ')}</div>
+        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden max-w-full overflow-x-auto" role="tablist">{seg('tally', 'ตารางจ่ายยารายวัน')}{seg('months', 'สรุป 12 เดือน')}{seg('health', 'อาการเจ็บป่วย')}{seg('expiry', 'หมดอายุ 12 เดือนข้างหน้า')}{seg('history', 'ประวัติทุกรายการ')}</div>
         {(tab === 'tally' || tab === 'history') && <div className="flex items-center gap-1.5"><button type="button" className={btnSecondary} onClick={() => setPeriod(p => shiftPeriod(p, -1))}>‹</button><b className="text-sm min-w-[110px] text-center">{thaiPeriod(period, true)}</b><button type="button" className={btnSecondary} disabled={period >= currentPeriod()} onClick={() => setPeriod(p => shiftPeriod(p, 1))}>›</button></div>}
         <div className="flex-1" />
         {tab === 'tally' && <><button type="button" className={btnSecondary} onClick={() => void exportExcel()}><Download size={15} />Excel (รูปแบบเดิม)</button><button type="button" className={btnSecondary} onClick={() => window.print()}><Printer size={15} />พิมพ์</button></>}
@@ -100,6 +103,7 @@ export default function ReportPage() {
       </>)}
 
       {tab === 'months' && <MonthsTab events={year} />}
+      {tab === 'health' && <HealthTab events={year} onError={msg => setToast({ type: 'error', msg })} />}
       {tab === 'expiry' && <ExpiryTab />}
       {tab === 'history' && (
         <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">

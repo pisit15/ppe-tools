@@ -5,6 +5,7 @@ import { Search } from 'lucide-react';
 import type { FaItem, TransactionLine } from '@/lib/first-aid/types';
 import { isDispensable, type OpenedInfo } from '@/lib/first-aid/model';
 import { SYMPTOMS, itemGroup, matchesSymptom } from '@/lib/first-aid/browse';
+import { DISPENSE_REASONS } from '@/lib/first-aid/health';
 import { FA_GREEN, ItemImage, VIZ, fmtInt, itemSub, thaiDate } from './fa';
 
 /**
@@ -146,7 +147,7 @@ function QtyPill({ value, onChange, max, suffix = '', narrow = false, editable =
   );
 }
 
-const REASONS = ['ปวดหัว / ไข้', 'ปวดท้อง / ท้องเสีย', 'คลื่นไส้', 'แพ้ / คัน', 'ปวดเมื่อย', 'บาดแผล', 'หยิบให้เพื่อน', 'เติมกล่องประจำทีม'];
+const REASONS = DISPENSE_REASONS;
 
 /** The "ticket": who is collecting + what + why → one save. */
 export function TicketPanel({ items, cart, avail, onQty, who, setWho, dept, setDept, departments, reason, setReason, requireName, children, onSubmit, busy, err, submitLabel, hint, compact = false }: {

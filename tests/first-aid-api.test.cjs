@@ -497,3 +497,49 @@ test('symptom chips: short keys do not catch unrelated names, dizziness remedies
   assert.equal(tags('ยาดมตราโป๊ยเซียน', 'สูดดมแก้วิงเวียน คัดจมูก').includes('nausea'), true);
   assert.equal(tags('Trinolone oral paste 1 g', 'ทาแผลในปาก ร้อนใน', 'ยาใช้ภายนอก / ยาป้ายปาก').includes('allergy'), false);
 });
+
+test('illness report: stated reason first, medicine second, restocking and supplies kept apart, no names in rows', () => {
+  const health = load('src/lib/first-aid/health.ts');
+  const item = (name, description = '', generic = '') => ({ id: randomUUID(), name, generic, description, category: 'ยา', unit: 'เม็ด', dispenseMode: 'unit' });
+  const group = (name, description, generic) => health.itemHealthGroup(item(name, description, generic));
+  // medicine → group: body site before broad words, brand before description
+  assert.equal(group('Tylenol 500 mg', 'แก้ปวด ลดไข้', 'ยารับประทาน / ยาเม็ด (Paracetamol)'), 'fever');
+  assert.equal(group('Norgesic', 'คลายกล้ามเนื้อ ปวดเมื่อย', 'ยารับประทาน / ยาเม็ด (Orphenadrine + Paracetamol)'), 'muscle');
+  assert.equal(group('Hista-Oph ยาหยอดตา 5 ml', 'ตาแดง คันตา ระคายเคืองจากภูมิแพ้'), 'eye');
+  assert.equal(group('ยาธาตุน้ำขาวกระต่ายบิน 50 ml', 'ปวดท้อง ท้องเสีย ท้องอืด'), 'stomach');
+  assert.equal(group('ORS'), 'diarrhea');
+  assert.equal(group('Trinolone oral paste 1 g', 'ทาแผลในปาก ร้อนใน'), 'mouth');
+  assert.equal(group('Siverderm cream 25 g (หลอด)'), 'burn');
+  assert.equal(group('EB 3"'), 'muscle');
+  assert.equal(group('Conform 2"', '', 'เวชภัณฑ์ / ผ้าพันแผล'), 'wound');
+  assert.equal(group('ยาเเก้เเพ้', 'บรรเทาอาการแพ้'), 'allergy', 'double sara-e spelling is folded');
+  assert.equal(group('ครีมบรรเทาการปวด', 'อาการปวดกล้ามเนื้อ แบบอุ่น', 'ยาหลอดใหญ่ ขนาด 120 กรัม'), 'muscle', 'falls back to the description');
+  assert.equal(group('Face mask'), 'none');
+  assert.equal(group('Plastic Bott 60 CC'), 'none');
+  assert.equal(group('Vit.C'), 'other');
+  // what the person said wins over the medicine
+  const para = item('Paracetamol'); const ors = item('ORS'); const silver = item('Silverderm cream 25 g');
+  assert.deepEqual(health.classifyDispense('ปวดเมื่อย', para), { group: 'muscle', source: 'chip', reason: 'ปวดเมื่อย' });
+  assert.equal(health.classifyDispense('ปวดท้อง / ท้องเสีย · หลังอาหารกลางวัน', ors).group, 'diarrhea');
+  assert.equal(health.classifyDispense('ปวดท้อง / ท้องเสีย', para).group, 'stomach');
+  assert.equal(health.classifyDispense('บาดแผล', silver).group, 'burn');
+  assert.deepEqual(health.classifyDispense('เติมกล่องประจำทีม', para), { group: 'none', source: 'chip', reason: 'เติมกล่องประจำทีม' });
+  assert.deepEqual(health.classifyDispense('หยิบให้เพื่อน', para), { group: 'fever', source: 'medicine', reason: 'หยิบให้เพื่อน' });
+  assert.equal(health.classifyDispense('หยิบให้เพื่อน · เจ็บคอ', para).group, 'cold');
+  assert.deepEqual(health.classifyDispense('โดนมีดบาดนิ้ว', para), { group: 'wound', source: 'note', reason: 'โดนมีดบาดนิ้ว' });
+  assert.equal(health.classifyDispense('แจ้ง จป.: ของในตู้มีปัญหา — ยาแก้ไอหมด', para).source, 'medicine', 'a cabinet problem report is not a symptom');
+  assert.equal(health.classifyDispense('ฝ่ายไอที', para).source, 'medicine');
+  assert.equal(health.classifyDispense('Excel Sep 2026 แถว 12 ไข้', para, true).source, 'medicine', 'imported notes are bookkeeping');
+  // rows: dispenses only, department of the person treated, never a name
+  const ev = (over) => ({ id: randomUUID(), documentId: randomUUID(), date: '2026-11-03', datePrecision: 'day', kind: 'issue', itemId: para.id, locationId: 'L1', quantity: 2, usage: 'stock', allocations: [], requester: { name: 'Somchai Collector', department: 'Store' }, recipientPerson: null, recipient: '', onBehalf: false, note: '', recordedBy: { id: 'u', name: 'Nurse Name', identityMethod: 'authenticated_session' }, recordingMode: 'staff', recordedAt: '', ...over });
+  const rows = health.healthRows([
+    ev({ note: 'ปวดหัว / ไข้' }),
+    ev({ recipientPerson: { name: 'Patient Person', department: 'Production' }, onBehalf: true, recordingMode: 'self_service' }),
+    ev({ kind: 'receive' }), ev({ usage: 'open' }),
+    ev({ itemId: 'gone', recordingMode: 'legacy', datePrecision: 'month', requester: null }),
+  ], [para], [{ id: 'L1', name: 'Cabinet 1' }]);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map(r => [r.group, r.source, r.department, r.channel]), [['fever', 'chip', 'Store', 'staff'], ['fever', 'medicine', 'Production', 'self_service'], ['other', 'medicine', '', 'legacy']]);
+  assert.equal(rows[0].month, '2026-11'); assert.equal(rows[0].location, 'Cabinet 1'); assert.equal(rows[0].unit, 'เม็ด');
+  assert.equal(/Somchai|Patient|Nurse/.test(JSON.stringify(rows)), false);
+});
