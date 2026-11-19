@@ -140,8 +140,10 @@ function LocationModal({ open, loc, onClose, onSaved }: { open: boolean; loc: Fa
   const types = useMemo(() => [...new Set([...TYPES, ...(state?.locations || []).filter(l => !l.isRegister).map(l => l.type).filter(Boolean)])], [state]);
   const [form, setForm] = useState({ name: '', type: TYPES[0], area: '', issueMode: 'controlled' as 'controlled' | 'self_service', requireRequester: true });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
-  const createId = useMemo(() => crypto.randomUUID(), []);
-  useEffect(() => { if (open) { setErr(''); setForm(loc ? { name: loc.name, type: loc.type, area: loc.area, issueMode: loc.issueMode, requireRequester: loc.requireRequester } : { name: '', type: TYPES[0], area: '', issueMode: 'controlled', requireRequester: true }); } }, [open, loc]);
+  // One id per "add" attempt: stable while this dialog stays open (a double click or retry cannot create two points),
+  // new each time the dialog opens — the dialog stays mounted, so a single id would be reused for every new point.
+  const [createId, setCreateId] = useState(() => crypto.randomUUID());
+  useEffect(() => { if (open) { setErr(''); if (!loc) setCreateId(crypto.randomUUID()); setForm(loc ? { name: loc.name, type: loc.type, area: loc.area, issueMode: loc.issueMode, requireRequester: loc.requireRequester } : { name: '', type: TYPES[0], area: '', issueMode: 'controlled', requireRequester: true }); } }, [open, loc]);
   async function save() {
     if (!form.name.trim()) { setErr('กรุณาระบุชื่อจุด'); return; }
     setBusy(true); setErr('');

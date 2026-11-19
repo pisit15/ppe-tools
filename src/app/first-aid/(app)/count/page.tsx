@@ -48,7 +48,8 @@ function StockCount({ locationId, onDone }: { locationId: string; onDone: (msg: 
   const [dispose, setDispose] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState(''); const [cabinetOk, setCabinetOk] = useState(true); const [date, setDate] = useState(bangkokToday());
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
-  const [createId] = useState(() => crypto.randomUUID());
+  // One id per saved count: a retry of the same save is recognised, the next count of this point gets a new id.
+  const [createId, setCreateId] = useState(() => crypto.randomUUID());
   useEffect(() => {
     if (!state) return;
     const ids = new Set<string>([...state.thresholds.filter(t => t.locationId === locationId).map(t => t.itemId), ...state.lots.filter(l => l.locationId === locationId && l.quantity > 0).map(l => l.itemId)]);
@@ -75,7 +76,7 @@ function StockCount({ locationId, onDone }: { locationId: string; onDone: (msg: 
     setBusy(true); setErr('');
     try {
       const r = await manage<{ ok: true; adjustments: { itemId: string; delta: number }[]; disposedExpired: number }>(company, { action: 'count', createId, locationId, date, lines: parsed.filter(p => p.n !== null).map(p => ({ itemId: p.item.id, counted: Math.max(0, Math.round(p.n!)), expiry: p.expiry || null })), disposeLotIds: [...dispose], notes, hasIssue: !cabinetOk });
-      window.localStorage.removeItem(draftKey);
+      window.localStorage.removeItem(draftKey); setCreateId(crypto.randomUUID());
       await refresh();
       onDone(`บันทึกผลตรวจนับแล้ว · ปรับยอด ${r.adjustments.length} รายการ · ตัดทิ้งหมดอายุ ${r.disposedExpired} ล็อต`);
     } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }

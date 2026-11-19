@@ -94,10 +94,12 @@ export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean;
   const [form, setForm] = useState({ name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '' as FaIcon, dispenseMode: 'unit' as DispenseMode, openLifeDays: '' });
   const [saving, setSaving] = useState(false); const [err, setErr] = useState('');
   const [draft, setDraft] = useState<FaItem | null>(item);
-  const createId = useMemo(() => (typeof crypto !== 'undefined' ? crypto.randomUUID() : ''), []);
+  // One id per "add" attempt: stable while the form stays open (a retry cannot create two items), new each time it opens.
+  // The form stays mounted between uses, so a single id made the second new item of a visit fail.
+  const [createId, setCreateId] = useState(() => (typeof crypto !== 'undefined' ? crypto.randomUUID() : ''));
   useEffect(() => {
     if (!open) return;
-    setDraft(item); setErr('');
+    setDraft(item); setErr(''); if (!item) setCreateId(crypto.randomUUID());
     setForm(item ? { name: item.name, generic: item.generic, description: item.description, category: item.category, unit: item.unit, min: item.min, trackExpiry: item.trackExpiry, icon: item.icon, dispenseMode: item.dispenseMode, openLifeDays: item.openLifeDays ? String(item.openLifeDays) : '' } : { name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '', dispenseMode: 'unit', openLifeDays: '' });
   }, [open, item]);
   async function save() {
