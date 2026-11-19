@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, QrCode } from 'lucide-react';
 import type { FaLocation } from '@/lib/first-aid/types';
+import { ComboInput } from '../../_components/ComboInput';
 import { ConfirmButton, FA_GREEN, ItemImage, Modal, Spinner, ToastView, VIZ, balance, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, manage, thaiDate, useFa, useToast } from '../../_components/fa';
 
 const TYPES = ['ตู้ปฐมพยาบาล', 'ห้องพยาบาล', 'กระเป๋าปฐมพยาบาล', 'คลังสำรอง'];
@@ -134,7 +135,9 @@ function openPoster(qr: { loc: FaLocation; url: string; svg: string } | null, it
 }
 
 function LocationModal({ open, loc, onClose, onSaved }: { open: boolean; loc: FaLocation | null; onClose: () => void; onSaved: () => void }) {
-  const { company, refresh } = useFa();
+  const { company, refresh, state } = useFa();
+  // The standard kinds first, then any kind this company already uses.
+  const types = useMemo(() => [...new Set([...TYPES, ...(state?.locations || []).filter(l => !l.isRegister).map(l => l.type).filter(Boolean)])], [state]);
   const [form, setForm] = useState({ name: '', type: TYPES[0], area: '', issueMode: 'controlled' as 'controlled' | 'self_service', requireRequester: true });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const createId = useMemo(() => crypto.randomUUID(), []);
@@ -149,7 +152,7 @@ function LocationModal({ open, loc, onClose, onSaved }: { open: boolean; loc: Fa
     <Modal open={open} onClose={onClose} title={loc ? `แก้ไข · ${loc.name}` : 'เพิ่มจุดปฐมพยาบาล'} size="sm" footer={<div className="flex justify-end gap-2"><button type="button" className={btnSecondary} onClick={onClose}>ยกเลิก</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} disabled={busy} onClick={() => void save()}>บันทึก</button></div>}>
       <div className="space-y-3">
         <div><label className={labelClass} htmlFor="lf-name">ชื่อจุด *</label><input id="lf-name" className={inputClass} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="เช่น ตู้ปฐมพยาบาล สำนักงาน HSE" autoFocus /></div>
-        <div className="grid grid-cols-2 gap-2"><div><label className={labelClass} htmlFor="lf-type">ประเภท</label><input id="lf-type" list="fa-loc-types" className={inputClass} value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} /><datalist id="fa-loc-types">{TYPES.map(t => <option key={t} value={t} />)}</datalist></div><div><label className={labelClass} htmlFor="lf-area">พื้นที่ / ชั้น</label><input id="lf-area" className={inputClass} value={form.area} onChange={e => setForm(f => ({ ...f, area: e.target.value }))} /></div></div>
+        <div className="grid grid-cols-2 gap-2"><div><label className={labelClass} htmlFor="lf-type">ประเภท</label><ComboInput id="lf-type" value={form.type} onChange={type => setForm(f => ({ ...f, type }))} options={types} /></div><div><label className={labelClass} htmlFor="lf-area">พื้นที่ / ชั้น</label><input id="lf-area" className={inputClass} value={form.area} onChange={e => setForm(f => ({ ...f, area: e.target.value }))} /></div></div>
         <div><span className={labelClass}>ใครบันทึกการจ่าย</span>
           <label className="flex items-start gap-2 text-sm rounded-lg border border-gray-200 p-2.5 mb-2"><input type="radio" name="mode" className="mt-1" checked={form.issueMode === 'controlled'} onChange={() => setForm(f => ({ ...f, issueMode: 'controlled' }))} /><span><b>เจ้าหน้าที่จ่าย</b><span className="block text-xs text-gray-500">พยาบาล/จป. บันทึกจากหน้า จ่ายวันนี้ (ห้องพยาบาล)</span></span></label>
           <label className="flex items-start gap-2 text-sm rounded-lg border border-gray-200 p-2.5"><input type="radio" name="mode" className="mt-1" checked={form.issueMode === 'self_service'} onChange={() => setForm(f => ({ ...f, issueMode: 'self_service' }))} /><span><b>หยิบเองผ่าน QR</b><span className="block text-xs text-gray-500">พนักงานสแกน QR หน้าตู้ แตะของที่หยิบ บันทึกเอง ไม่ต้อง login (ตู้ยาตามพื้นที่)</span></span></label></div>

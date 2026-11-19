@@ -5,6 +5,10 @@ import { Camera, Link2, Share2, Trash2 } from 'lucide-react';
 import { compressImage } from '@/app/inspect/_components/photo';
 import { DISPENSE_MODES, FA_ICONS, type DispenseMode, type FaIcon, type FaItem } from '@/lib/first-aid/types';
 import { FA_GREEN, ItemImage, Modal, Pictogram, VIZ, btnPrimary, btnSecondary, errMsg, inputClass, labelClass, manage, useFa } from './fa';
+import { ComboInput } from './ComboInput';
+
+const BASE_CATEGORIES = ['ยา', 'เวชภัณฑ์', 'อุปกรณ์'];
+const BASE_UNITS = ['เม็ด', 'แผง', 'ซอง', 'ขวด', 'หลอด', 'ตลับ', 'ม้วน', 'แผ่น', 'ชิ้น', 'ห่อ', 'ถุง', 'กล่อง', 'คู่', 'ชุด', 'อัน', 'เครื่อง'];
 
 type ImageResult = { ok: true; imageUrl: string | null; hasImage: boolean; imageSource: string };
 
@@ -84,8 +88,9 @@ export function IconPicker({ value, onChange }: { value: FaIcon; onChange: (v: F
 /** Create / edit one medicine. `item` null = new. */
 export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean; item: FaItem | null; onClose: () => void; onSaved: (id: string) => void }) {
   const { company, state, refresh } = useFa();
-  const categories = useMemo(() => Array.from(new Set((state?.items || []).map(i => i.category))).sort((a, b) => a.localeCompare(b, 'th')), [state]);
-  const units = useMemo(() => Array.from(new Set((state?.items || []).map(i => i.unit))).sort((a, b) => a.localeCompare(b, 'th')), [state]);
+  // Standard choices first (a company with no items yet still gets a list), then whatever this company already uses.
+  const categories = useMemo(() => [...new Set([...BASE_CATEGORIES, ...(state?.items || []).map(i => i.category).sort((a, b) => a.localeCompare(b, 'th'))])], [state]);
+  const units = useMemo(() => [...new Set([...BASE_UNITS, ...(state?.items || []).map(i => i.unit).sort((a, b) => a.localeCompare(b, 'th'))])], [state]);
   const [form, setForm] = useState({ name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '' as FaIcon, dispenseMode: 'unit' as DispenseMode, openLifeDays: '' });
   const [saving, setSaving] = useState(false); const [err, setErr] = useState('');
   const [draft, setDraft] = useState<FaItem | null>(item);
@@ -112,8 +117,8 @@ export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean;
           <div><label className={labelClass} htmlFor="if-desc">คำอธิบายสั้น <span className="text-gray-400 font-normal">(แสดงใต้ชื่อ เช่น แก้ปวด ลดไข้)</span></label><input id="if-desc" className={inputClass} maxLength={160} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
           <div><label className={labelClass} htmlFor="if-gen">ชื่อสามัญ / รายละเอียด</label><input id="if-gen" className={inputClass} maxLength={200} value={form.generic} onChange={e => setForm(f => ({ ...f, generic: e.target.value }))} /></div>
           <div className="grid grid-cols-3 gap-2">
-            <div><label className={labelClass} htmlFor="if-cat">หมวด</label><input id="if-cat" list="fa-cats" className={inputClass} value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} /><datalist id="fa-cats">{categories.map(c => <option key={c} value={c} />)}</datalist></div>
-            <div><label className={labelClass} htmlFor="if-unit">หน่วย</label><input id="if-unit" list="fa-units" className={inputClass} value={form.unit} disabled={locked} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} /><datalist id="fa-units">{units.map(c => <option key={c} value={c} />)}</datalist></div>
+            <div><label className={labelClass} htmlFor="if-cat">หมวด</label><ComboInput id="if-cat" value={form.category} onChange={category => setForm(f => ({ ...f, category }))} options={categories} /></div>
+            <div><label className={labelClass} htmlFor="if-unit">หน่วย</label><ComboInput id="if-unit" value={form.unit} disabled={locked} onChange={unit => setForm(f => ({ ...f, unit }))} options={units} /></div>
             <div><label className={labelClass} htmlFor="if-min">{form.dispenseMode === 'fixed' ? 'ต้องมี' : 'ขั้นต่ำ'}</label><input id="if-min" type="number" min={0} className={inputClass} value={form.min} onChange={e => setForm(f => ({ ...f, min: Number(e.target.value) }))} /></div>
           </div>
           {locked && <p className="text-xs text-gray-500">รายการนี้มีสต็อก/ประวัติแล้ว จึงเปลี่ยนหน่วยไม่ได้</p>}
