@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Check } from 'lucide-react';
-import type { FaItem, FaState } from '@/lib/first-aid/types';
+import { ISSUE_KINDS, type FaItem, type FaState } from '@/lib/first-aid/types';
 import { FA_GREEN, VIZ, fmtInt, thaiDate, type ItemStatus } from './fa';
 
 type Row = { item: FaItem; st: ItemStatus };
@@ -48,8 +48,8 @@ export function SetupChecklist({ state }: { state: FaState }) {
  * Counts follow the point chosen in the top bar. A cabinet counts as "to be counted" when it holds stock and has not
  * been counted in the current calendar month (the stock take is monthly).
  */
-export function TodoBox({ state, scope, rows, onFilter, onBulkExpiry, onReorder, reorderBusy }: {
-  state: FaState; scope: string; rows: Row[]; onFilter: (filter: 'low' | 'out' | 'expired' | 'open_expired') => void; onBulkExpiry: () => void; onReorder: () => void; reorderBusy: boolean;
+export function TodoBox({ state, scope, rows, onFilter, onBulkExpiry, onReorder, reorderBusy, onReports }: {
+  state: FaState; scope: string; rows: Row[]; onFilter: (filter: 'low' | 'out' | 'expired' | 'open_expired') => void; onBulkExpiry: () => void; onReorder: () => void; reorderBusy: boolean; onReports: () => void;
 }) {
   const inScope = (locationId: string) => scope === 'all' || locationId === scope;
   const points = state.locations.filter(l => !l.isRegister && inScope(l.id));
@@ -68,7 +68,10 @@ export function TodoBox({ state, scope, rows, onFilter, onBulkExpiry, onReorder,
   const flagged = points.filter(p => p.inspectionIssue);
   const noQr = stocked.filter(p => p.issueMode === 'self_service' && !p.hasPublicLink);
 
+  const reports = state.issueReports.filter(r => r.status === 'open' && inScope(r.locationId));
+
   const lines: { key: string; tone: string; text: ReactNode; actions: ReactNode }[] = [];
+  if (reports.length) lines.push({ key: 'reports', tone: VIZ.accent, text: <><b>{fmtInt(reports.length)} เรื่อง</b> แจ้งจากจุดปฐมพยาบาล รอจัดการ — ล่าสุด: {ISSUE_KINDS.find(k => k.id === reports[0].kind)?.label}{reports[0].detail ? ` “${reports[0].detail.slice(0, 60)}”` : ''} ที่ {points.find(p => p.id === reports[0].locationId)?.name || '—'}</>, actions: <button type="button" className={smallBtn} onClick={onReports}>ดู / ปิดเรื่อง</button> });
   if (expired.length) lines.push({ key: 'expired', tone: VIZ.accent, text: <><b>{fmtInt(expired.length)} รายการ</b> มีของหมดอายุค้างอยู่ในตู้ — นำออกแล้วตัดทิ้งในระบบ</>, actions: <><button type="button" className={smallBtn} onClick={() => onFilter('expired')}>ดูรายการ</button><Link href="/first-aid/count" className={smallBtn}>ตัดทิ้งที่หน้าตรวจนับ</Link></> });
   if (openExpired.length) lines.push({ key: 'open', tone: VIZ.accent, text: <><b>{fmtInt(openExpired.length)} รายการ</b> เปิดขวดใช้เกินกำหนดแล้ว — เปลี่ยนขวดใหม่</>, actions: <button type="button" className={smallBtn} onClick={() => onFilter('open_expired')}>ดูรายการ</button> });
   if (flagged.length) lines.push({ key: 'flag', tone: VIZ.accent, text: <>ตรวจนับครั้งล่าสุดพบปัญหาที่ <b>{flagged.map(p => p.name).join(', ')}</b></>, actions: <Link href={`/first-aid/count?location=${flagged[0].id}`} className={smallBtn}>เปิดหน้าตรวจนับ</Link> });

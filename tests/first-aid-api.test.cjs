@@ -43,8 +43,11 @@ function fakeDb(tables) {
     const builder = {
       select(columns) { this.columns = columns; return this; },
       eq(key, value) { filters.push(['eq', key, value]); return this; },
-      is(key, value) { filters.push(['eq', key, value]); return this; },
+      is(key, value) { filters.push(['is', key, value]); return this; },
       gt(key, value) { filters.push(['gt', key, value]); return this; },
+      gte(key, value) { filters.push(['gte', key, value]); return this; },
+      lte(key, value) { filters.push(['lte', key, value]); return this; },
+      neq(key, value) { filters.push(['neq', key, value]); return this; },
       in(key, value) { filters.push(['in', key, value]); return this; },
       order() { return this; },
       range(start, end) { range = [start, end]; return this; },
@@ -55,7 +58,7 @@ function fakeDb(tables) {
       upsert(value) { mutation = 'upsert'; payload = value; return this; },
       then(resolve, reject) {
         calls.push({ table, filters: structuredClone(filters), columns: this.columns, mutation, payload });
-        let rows = (tables[table] || []).filter(row => filters.every(([op, key, value]) => op === 'in' ? value.includes(row[key]) : op === 'gt' ? row[key] > value : row[key] === value));
+        let rows = (tables[table] || []).filter(row => filters.every(([op, key, value]) => op === 'in' ? value.includes(row[key]) : op === 'gt' ? row[key] > value : op === 'gte' ? row[key] >= value : op === 'lte' ? row[key] <= value : op === 'neq' ? row[key] !== value : op === 'is' ? (row[key] ?? null) === value : row[key] === value));
         if (mutation === 'insert') { const row = { id: randomUUID(), ...payload }; (tables[table] ||= []).push(row); rows = [row]; }
         if (mutation === 'update') rows.forEach(row => Object.assign(row, payload));
         if (mutation === 'upsert') rows = [{ id: randomUUID(), ...payload }];
@@ -71,6 +74,7 @@ function fakeDb(tables) {
     rpc(name, args) {
       rpcCalls.push({ name, args });
       if (name === 'fa_usage_summary') return Promise.resolve({ data: { monthUsesByLocation: [], dailyUsesByLocation: [] }, error: null });
+      if (name === 'fa_void_issue') return Promise.resolve({ data: { documentId: args.p_document_id, restored: 2, already: false }, error: null });
       return Promise.resolve({ data: { document: { id: ids.doc, company_id: 'amt', kind: args.p_payload?.kind, location_id: args.p_payload?.locationId, date: args.p_payload?.date, actor_key: args.p_actor_key, actor_name: args.p_actor_name, requester: args.p_payload?.requester, recipient_person: args.p_payload?.recipientPerson, recording_mode: args.p_payload?.mode }, movements: [] }, error: null });
     },
   };
@@ -595,4 +599,52 @@ test('Thai date field: day/month/year in the Buddhist era, box-style expiry, mon
   assert.equal(iso('311227', { monthOnly: true }), '2027-12-31'); // six digits that are not month+year stay day/month/year
   // never month/day/year, never an impossible date
   for (const text of ['12/31/2570', '31/02/2570', '0/1/2570', '32/1/2570', '1/13/2570', 'abc', '2570', '31/12', '31/12/25700', '']) assert.equal(iso(text), null, text);
+});
+
+test('cancelled dispense tickets: cancelling needs a reason and the session actor, and they drop out of state and history unless asked for', async () => {
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'void-issue', documentId: ids.doc })), error => error.status === 400);
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'void-issue', documentId: randomUUID(), reason: 'ผิดคน' })), error => error.status === 404);
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'void-issue', documentId: ids.doc, reason: 'ผิดคน', actorName: 'Someone Else' })), error => error.status === 400);
+  await server.manageFirstAid(request('manage', { action: 'void-issue', documentId: ids.doc, reason: ' บันทึกผิดรายการ ' }));
+  const call = db.rpcCalls.find(row => row.name === 'fa_void_issue');
+  assert.deepEqual(call.args, { p_company_id: 'amt', p_document_id: ids.doc, p_actor_key: `tools_users:${ids.user}`, p_actor_name: 'Test Staff', p_reason: 'บันทึกผิดรายการ' });
+  // once the database has marked the ticket, it is gone from the working lists …
+  Object.assign(db.tables.fa_documents[0], { voided_at: '2026-11-20T03:00:00Z', voided_by_name: 'Test Staff', void_reason: 'บันทึกผิดรายการ' });
+  const state = await server.loadFirstAidState('amt', actor());
+  assert.equal(state.events.length, 0);
+  const history = await server.loadFirstAidHistory(request('history?company_id=amt&from=2026-11-01&to=2026-11-30'));
+  assert.equal(history.events.length, 0);
+  // … and still there, marked, for the day list that shows what was cancelled
+  const withVoided = await server.loadFirstAidHistory(request('history?company_id=amt&from=2026-11-01&to=2026-11-30&voided=1'));
+  assert.deepEqual(withVoided.events.map(e => e.voided), [{ at: '2026-11-20T03:00:00Z', by: 'Test Staff', reason: 'บันทึกผิดรายการ' }]);
+});
+
+test('problem reports: the QR page can report without picking, scoped to its own point, capped per day, closed by staff', async () => {
+  const report = (overrides = {}) => server.postPublicFirstAidTransaction(request('public/' + token, { type: 'issue-report', createId: randomUUID(), kind: 'out', detail: 'ผ้าก๊อซหมด', reporterName: 'สมชาย', reporterDepartment: 'ผลิต', ...overrides }, { auth: false }), token);
+  db.tables.fa_issue_reports = [];
+  assert.deepEqual(await report(), { ok: true });
+  const row = db.tables.fa_issue_reports[0];
+  assert.deepEqual([row.company_id, row.location_id, row.kind, row.detail, row.source, row.reporter_name], ['amt', ids.location, 'out', 'ผ้าก๊อซหมด', 'qr', 'สมชาย']);
+  assert.equal(db.rpcCalls.some(call => call.name === 'fa_post_transaction'), false); // nothing is dispensed by a report
+  // a retried request does not add a second row; the caller cannot choose the company, point or status
+  const createId = randomUUID(); await report({ createId }); await report({ createId });
+  assert.equal(db.tables.fa_issue_reports.length, 2);
+  await assert.rejects(report({ locationId: ids.otherLocation }), error => error.status === 400);
+  await assert.rejects(report({ status: 'closed' }), error => error.status === 400);
+  await assert.rejects(report({ kind: 'anything' }), /ประเภทปัญหา/);
+  await assert.rejects(report({ kind: 'other', detail: '' }), /รายละเอียด/);
+  // the open page cannot flood the list
+  for (const r of db.tables.fa_issue_reports) { r.created_at = new Date().toISOString(); r.status ??= 'open'; } // what the database defaults would have set
+  for (let i = db.tables.fa_issue_reports.length; i < 20; i++) db.tables.fa_issue_reports.push({ id: randomUUID(), company_id: 'amt', location_id: ids.location, source: 'qr', status: 'open', created_at: new Date().toISOString(), create_id: randomUUID(), kind: 'out' });
+  await assert.rejects(report(), error => error.status === 429);
+  // staff see open reports in the state and close them; another company's report is out of reach
+  const state = await server.loadFirstAidState('amt', actor());
+  assert.equal(state.issueReports.filter(r => r.status === 'open').length, 20);
+  assert.equal(state.issueReports.some(r => 'company_id' in r || 'create_id' in r), false);
+  await server.manageFirstAid(request('manage', { action: 'issue-close', id: row.id, note: 'เติมแล้ว' }));
+  assert.deepEqual([row.status, row.closed_by_name, row.closed_note, typeof row.closed_at], ['closed', 'Test Staff', 'เติมแล้ว', 'string']);
+  const foreign = { id: randomUUID(), company_id: 'aab', location_id: ids.otherLocation, status: 'open', kind: 'out', source: 'qr', created_at: new Date().toISOString() };
+  db.tables.fa_issue_reports.push(foreign);
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'issue-close', id: foreign.id })), error => error.status === 404);
+  assert.equal(foreign.status, 'open');
 });

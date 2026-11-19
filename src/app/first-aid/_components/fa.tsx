@@ -25,7 +25,7 @@ export async function manage<T = { ok: true }>(company: string, body: Record<str
 export async function postTransaction(company: string, body: Record<string, unknown>) {
   return postJson<{ documentId: string; events: FaEvent[] }>(`/api/first-aid/transactions?company_id=${encodeURIComponent(company)}`, body);
 }
-export async function loadHistory(company: string, from: string, to: string, extra: { item_id?: string; location_id?: string } = {}) {
+export async function loadHistory(company: string, from: string, to: string, extra: { item_id?: string; location_id?: string; /** '1' = include cancelled tickets (marked `voided`). */ voided?: '1' } = {}) {
   const q = new URLSearchParams({ company_id: company, from, to, ...extra });
   return getJson<{ from: string; to: string; events: FaEvent[]; truncated: boolean }>(`/api/first-aid/history?${q}`);
 }

@@ -50,12 +50,20 @@ export type FaEvent = {
   id: string; documentId: string; date: string; datePrecision: 'day' | 'month'; kind: TransactionKind; itemId: string; locationId: string; destinationId?: string; quantity: number; usage: MovementUsage;
   allocations: FaAllocation[]; requester: PersonSnapshot | null; recipientPerson: PersonSnapshot | null; recipient: string; onBehalf: boolean; note: string;
   recordedBy: { id: string; name: string; identityMethod: 'legacy_import' | 'self_declared' | 'authenticated_session' }; recordingMode: 'legacy' | 'staff' | 'self_service'; recordedAt: string;
+  /** The ticket was cancelled (stock returned). Cancelled tickets are left out of every list and report unless asked for. */ voided: { at: string; by: string; reason: string } | null;
 };
+/** A problem reported at a point — from its QR page or by staff — kept open until someone closes it. */
+export type IssueKind = 'out' | 'expired' | 'damaged' | 'other';
+export const ISSUE_KINDS: { id: IssueKind; label: string }[] = [{ id: 'out', label: 'ของหมด' }, { id: 'expired', label: 'ของหมดอายุ' }, { id: 'damaged', label: 'ชำรุด / สูญหาย' }, { id: 'other', label: 'อื่น ๆ' }];
+export type FaIssueReport = { id: string; locationId: string; kind: IssueKind; detail: string; reporterName: string; reporterDepartment: string; source: 'qr' | 'staff'; status: 'open' | 'closed'; createdAt: string; closedAt: string | null; closedBy: string; closedNote: string };
+/** How many days after the dispense date a ticket can still be cancelled (the database enforces the same limit). */
+export const VOID_WINDOW_DAYS = 7;
 export type FaUsageSummary = { monthUsesByLocation: { locationId: string; count: number }[]; dailyUsesByLocation: { locationId: string; date: string; count: number }[] };
 export type FaState = {
   schemaVersion: number; asOf: string; company: { id: string; name: string; short: string; infirmary: boolean };
   locations: FaLocation[]; archivedLocations: FaLocation[]; items: FaItem[]; archivedItems: FaItem[]; thresholds: FaThreshold[]; lots: FaLot[];
   events: FaEvent[]; inspections: FaInspection[]; visits: FaVisit[]; employees: FirstAidEmployee[]; departments: string[];
+  /** Open reports, plus those closed in the last 30 days. */ issueReports: FaIssueReport[];
   /** Admin sessions only: the shared default pictures, for the library on the pictures page. */ defaultImages: FaDefaultImage[];
   session: { id: string; name: string; identityMethod: string }; permissions: FirstAidPermissions; usageSummary: FaUsageSummary; historyLimit: number; historyHasMore: boolean;
 };

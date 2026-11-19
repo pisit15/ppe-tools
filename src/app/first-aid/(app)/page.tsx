@@ -10,6 +10,7 @@ import { DispenseModal, LotExpiryModal, WriteOffModal } from '../_components/act
 import { ItemFormModal } from '../_components/ItemForm';
 import { SetupChecklist, TodoBox } from '../_components/HomePanels';
 import { BulkExpiryModal } from '../_components/BulkExpiry';
+import { IssueReportsModal } from '../_components/IssueReports';
 
 type Filter = 'all' | ItemStatusKey | 'near';
 const PAGE = 40;
@@ -27,7 +28,7 @@ export default function ItemsPage() {
   const [writeOff, setWriteOff] = useState<FaItem | null>(null);
   const [edit, setEdit] = useState<{ open: boolean; item: FaItem | null }>({ open: false, item: null });
   const [lotEdit, setLotEdit] = useState<{ lot: FaLot; item: FaItem } | null>(null);
-  const [bulkExpiry, setBulkExpiry] = useState(false); const [reorderBusy, setReorderBusy] = useState(false);
+  const [bulkExpiry, setBulkExpiry] = useState(false); const [reorderBusy, setReorderBusy] = useState(false); const [reportsOpen, setReportsOpen] = useState(false);
   useEffect(() => { const h = (e: KeyboardEvent) => { if (e.key === '/' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) { e.preventDefault(); document.getElementById('fa-search')?.focus(); } }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
 
   const rows = useMemo(() => {
@@ -100,7 +101,7 @@ export default function ItemsPage() {
   return (
     <div className="space-y-4">
       <SetupChecklist state={state} />
-      {state.lots.length > 0 && <TodoBox state={state} scope={scope} rows={rows} onFilter={f => { setFilter(f); setCat('all'); setQ(''); document.getElementById('fa-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} onBulkExpiry={() => setBulkExpiry(true)} onReorder={() => void exportReorder()} reorderBusy={reorderBusy} />}
+      {(state.lots.length > 0 || state.issueReports.some(r => r.status === 'open')) && <TodoBox state={state} scope={scope} rows={state.lots.length > 0 ? rows : []} onReports={() => setReportsOpen(true)} onFilter={f => { setFilter(f); setCat('all'); setQ(''); document.getElementById('fa-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} onBulkExpiry={() => setBulkExpiry(true)} onReorder={() => void exportReorder()} reorderBusy={reorderBusy} />}
       {/* Phone: the four numbers that call for action, each one a filter. The full six-card strip needs a wider screen. */}
       <section className="grid grid-cols-4 gap-1.5 sm:hidden" aria-label="สรุป">
         {phoneTiles.map(([f, label, n, color]) => <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(filter === f ? 'all' : f)} className={`min-h-[3.75rem] rounded-xl border bg-white px-1 py-2 text-center shadow-sm ${filter === f ? 'border-gray-800' : 'border-gray-100'}`}><span className="block text-xl font-semibold leading-tight tabular-nums" style={{ color: n ? color : VIZ.neutral }}>{fmtInt(n)}</span><span className="block text-xs leading-tight text-gray-600">{label}</span></button>)}
@@ -194,6 +195,7 @@ export default function ItemsPage() {
       <WriteOffModal item={writeOff} onClose={() => setWriteOff(null)} onDone={msg => setToast({ type: 'success', msg })} />
       <ItemFormModal open={edit.open} item={edit.item} onClose={() => setEdit({ open: false, item: null })} onSaved={id => { setEdit({ open: false, item: null }); setSelected(id); setToast({ type: 'success', msg: 'บันทึกรายการแล้ว' }); }} />
       <LotExpiryModal lot={lotEdit?.lot || null} item={lotEdit?.item || null} onClose={() => setLotEdit(null)} onDone={msg => setToast({ type: 'success', msg })} />
+      <IssueReportsModal open={reportsOpen} onClose={() => setReportsOpen(false)} onDone={msg => setToast({ type: 'success', msg })} />
       <BulkExpiryModal open={bulkExpiry} onClose={() => setBulkExpiry(false)} onDone={msg => setToast({ type: 'success', msg })} />
       <ToastView toast={toast} />
     </div>

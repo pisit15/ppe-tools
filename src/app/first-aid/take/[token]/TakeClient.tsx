@@ -1,12 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { FaItem, FaPublicState } from '@/lib/first-aid/types';
+import { ISSUE_KINDS, type FaItem, type FaPublicState, type IssueKind } from '@/lib/first-aid/types';
 import { FA_GREEN, VIZ, balance, bangkokToday, errMsg, fmtInt, getJson, openedContainers, postJson, thaiDateTime } from '../../_components/fa';
 import { PickBoard, TicketPanel, cartLines, lineQtyLabel, rememberQty, toTransactionLines, type Cart } from '../../_components/PickBoard';
 
 const WHO_KEY = 'fa.take.who';
-type Step = 'pick' | 'confirm' | 'done';
+type Step = 'pick' | 'confirm' | 'done' | 'report' | 'reported';
 
 export default function TakeClient({ token }: { token: string }) {
   const [state, setState] = useState<FaPublicState | null>(null);
@@ -17,6 +17,8 @@ export default function TakeClient({ token }: { token: string }) {
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const [receipt, setReceipt] = useState<{ lines: { name: string; label: string }[]; low: string[]; at: string } | null>(null);
   const [idem, setIdem] = useState(() => crypto.randomUUID());
+  // Reporting a problem with the cabinet is its own short form: it does not need anything to be picked.
+  const [reportKind, setReportKind] = useState<IssueKind | ''>(''); const [reportText, setReportText] = useState(''); const [reportId, setReportId] = useState(() => crypto.randomUUID());
   useEffect(() => {
     getJson<FaPublicState>(`/api/first-aid/public/${token}`).then(setState).catch(e => setError(errMsg(e, 'ไม่พบลิงก์นี้')));
     try { const v = JSON.parse(window.localStorage.getItem(WHO_KEY) || '{}') as { who?: string; dept?: string }; setWho(v.who || ''); setDept(v.dept || ''); } catch { /* ignore */ }
@@ -42,12 +44,23 @@ export default function TakeClient({ token }: { token: string }) {
     try {
       await postJson(`/api/first-aid/public/${token}`, { idempotencyKey: idem, kind: 'issue', locationId: location.id, date: bangkokToday(), lines: toTransactionLines(picked), note: noteParts.join(' · ').slice(0, 500), requesterId: 'manual', requesterPerson: { name: who.trim(), department: dept.trim() } });
       window.localStorage.setItem(WHO_KEY, JSON.stringify({ who: who.trim(), dept: dept.trim() })); rememberQty(cart);
+      if (issue) postJson(`/api/first-aid/public/${token}`, { type: 'issue-report', createId: crypto.randomUUID(), kind: 'other', detail: (issueText.trim() || 'ของในตู้มีปัญหา (แจ้งพร้อมการหยิบ)').slice(0, 500), reporterName: who.trim(), reporterDepartment: dept.trim() }).catch(() => undefined);
       const low = picked.filter(l => { if (l.usage === 'use') return false; const min = state.thresholds.find(t => t.itemId === l.item.id)?.min ?? l.item.min; return avail(l.item) - l.qty < min; }).map(l => l.item.name);
       setReceipt({ lines: picked.map(l => ({ name: l.item.name, label: lineQtyLabel(l) })), low, at: new Date().toISOString() });
       setStep('done'); setCart({}); setReason(''); setIssue(false); setIssueText(''); setIdem(crypto.randomUUID());
       getJson<FaPublicState>(`/api/first-aid/public/${token}`).then(setState).catch(() => undefined);
     } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   }
+
+  async function sendReport() {
+    if (!reportKind || (reportKind === 'other' && !reportText.trim())) { setErr(reportKind ? 'พิมพ์รายละเอียดของปัญหา' : 'เลือกว่าเป็นปัญหาแบบไหน'); return; }
+    setBusy(true); setErr('');
+    try {
+      await postJson(`/api/first-aid/public/${token}`, { type: 'issue-report', createId: reportId, kind: reportKind, detail: reportText.trim().slice(0, 500), reporterName: who.trim(), reporterDepartment: dept.trim() });
+      setStep('reported'); setReportKind(''); setReportText(''); setReportId(crypto.randomUUID());
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
+  }
+  const reportButton = <button type="button" onClick={() => { setErr(''); setStep('report'); }} className="mt-3 flex min-h-12 w-full items-center justify-center rounded-xl border border-gray-300 bg-white px-3 text-center text-sm font-medium text-gray-800">แจ้งปัญหาของตู้นี้ (ของหมด / หมดอายุ / ชำรุด)</button>;
 
   if (error) return <Shell><div className="p-6 text-center"><div className="text-4xl mb-3" style={{ color: VIZ.accent }}>!</div><p className="font-semibold text-gray-900">{error}</p><p className="text-sm text-gray-500 mt-2">ติดต่อ จป. หรือเจ้าหน้าที่ประจำจุดเพื่อขอ QR ใหม่</p></div></Shell>;
   if (!state || !location) return <Shell><p className="p-8 text-center text-sm text-gray-500">กำลังโหลด…</p></Shell>;
@@ -62,6 +75,38 @@ export default function TakeClient({ token }: { token: string }) {
         <div className="w-full rounded-xl border border-gray-200 bg-white p-3 text-left text-sm leading-relaxed"><b>บาดแผลเล็ก:</b> ล้างด้วยน้ำสะอาด → ทายาฆ่าเชื้อ → ปิดพลาสเตอร์<br /><span className="text-xs text-gray-500">แผลลึก เลือดไม่หยุด หรือหมดสติ → แจ้งหัวหน้างาน / ห้องพยาบาล ทันที</span></div>
       </div>
       <div className="shrink-0 p-4 space-y-2" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}><button type="button" onClick={() => setStep('pick')} className="w-full h-12 rounded-xl border border-gray-300 bg-white font-semibold" style={{ color: FA_GREEN }}>หยิบเพิ่ม</button><p className="text-center text-xs text-gray-600">ปิดหน้านี้ได้เลย</p></div>
+    </Shell>);
+
+  if (step === 'reported') return (
+    <Shell>
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center p-6 gap-3">
+        <div className="h-20 w-20 rounded-full flex items-center justify-center" style={{ background: `${VIZ.positive}22` }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={VIZ.positive} strokeWidth="2.5" aria-hidden="true"><path d="M5 12l4 4L19 6" /></svg></div>
+        <div className="text-2xl font-semibold text-gray-900">ส่งเรื่องแล้ว</div>
+        <p className="text-sm leading-relaxed text-gray-700">ผู้ดูแลจุดปฐมพยาบาลจะเห็นเรื่องนี้ในระบบ<br />ถ้าเร่งด่วนหรือมีคนเจ็บ ให้แจ้ง จป. หรือหัวหน้างานโดยตรงทันที</p>
+      </div>
+      <div className="shrink-0 p-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}><button type="button" onClick={() => setStep('pick')} className="w-full h-12 rounded-xl border border-gray-300 bg-white font-semibold" style={{ color: FA_GREEN }}>กลับไปหน้าหยิบยา</button></div>
+    </Shell>);
+
+  if (step === 'report') return (
+    <Shell>
+      <header className="shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3"><button type="button" aria-label="ย้อนกลับ" onClick={() => { setErr(''); setStep('pick'); }} className="h-11 w-11 rounded-xl border border-gray-300 text-xl">‹</button><div><div className="font-semibold text-gray-900">แจ้งปัญหาของตู้นี้</div><div className="text-xs text-gray-600">{location.name}</div></div></header>
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+        <div>
+          <div className="text-sm font-medium text-gray-800 mb-1.5">เป็นปัญหาแบบไหน <span style={{ color: VIZ.accent }}>* จำเป็น</span></div>
+          <div className="grid grid-cols-2 gap-2">{ISSUE_KINDS.map(k => <button key={k.id} type="button" aria-pressed={reportKind === k.id} onClick={() => { setReportKind(k.id); setErr(''); }} className={`min-h-12 rounded-xl border px-3 text-base font-medium ${reportKind === k.id ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-800'}`} style={reportKind === k.id ? { background: FA_GREEN } : undefined}>{k.label}</button>)}</div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-800 mb-1" htmlFor="rp-text">รายละเอียด {reportKind === 'other' ? <span style={{ color: VIZ.accent }}>* จำเป็น</span> : <span className="font-normal text-gray-600">(ไม่บังคับ)</span>}</label>
+          <textarea id="rp-text" rows={3} value={reportText} onChange={e => setReportText(e.target.value)} maxLength={500} className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base text-gray-900" placeholder={reportKind === 'expired' ? 'เช่น เบตาดีนหมดอายุ' : reportKind === 'damaged' ? 'เช่น กรรไกรหาย / ฝาตู้ปิดไม่ได้' : 'เช่น ผ้าก๊อซหมด พลาสเตอร์เหลือน้อย'} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-800 mb-1" htmlFor="rp-who">ชื่อผู้แจ้ง <span className="font-normal text-gray-600">(ไม่บังคับ)</span></label>
+          <input id="rp-who" value={who} onChange={e => setWho(e.target.value)} className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base text-gray-900" placeholder="ชื่อ หรือรหัสพนักงาน" />
+        </div>
+        {err && <p className="text-sm" style={{ color: VIZ.accent }}>{err}</p>}
+        <button type="button" disabled={busy} onClick={() => void sendReport()} className="h-12 w-full rounded-xl text-white text-base font-semibold disabled:opacity-50" style={{ background: FA_GREEN }}>{busy ? 'กำลังส่ง…' : 'ส่งเรื่องให้ผู้ดูแล'}</button>
+        <p className="text-xs leading-relaxed text-gray-600">ระบบบันทึกเรื่องที่แจ้ง ชื่อ (ถ้ากรอก) และเวลา เพื่อให้ผู้ดูแลจุดปฐมพยาบาลของบริษัทมาแก้ไข</p>
+      </div>
     </Shell>);
 
   if (step === 'confirm') return (
@@ -82,7 +127,8 @@ export default function TakeClient({ token }: { token: string }) {
         <p className="pt-2.5 text-xs text-gray-500 truncate">แตะ “+ เลือก” ที่ของที่หยิบ แล้วกด ถัดไป · ไม่ต้อง login</p>
         <PickBoard items={items} avail={avail} opened={opened} cart={cart} onChange={setQty} columns="grid-cols-2" compact stickyFilters stocked={stocked}
           emptyHint={<div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 text-center"><p className="text-lg font-semibold text-gray-900">ตู้นี้ยังไม่มีของในระบบ</p><p className="mt-2 text-sm leading-relaxed text-gray-600">ผู้ดูแลยังไม่ได้ลงของของตู้นี้ จึงยังบันทึกการหยิบไม่ได้<br />ถ้าต้องใช้ยาตอนนี้ กรุณาติดต่อ จป. หรือห้องพยาบาล</p></div>} />
-        {equipment.length > 0 && <p className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-600"><b className="text-gray-800">อุปกรณ์ประจำตู้</b> (ใช้แล้วเก็บคืนที่เดิม ไม่ต้องบันทึก): {equipment.join(' · ')}<br />หายหรือชำรุด → ติ๊ก “แจ้ง จป.” ในขั้นตอนถัดไป หรือแจ้ง จป. โดยตรง</p>}
+        {reportButton}
+        {equipment.length > 0 && <p className="mt-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-600"><b className="text-gray-800">อุปกรณ์ประจำตู้</b> (ใช้แล้วเก็บคืนที่เดิม ไม่ต้องบันทึก): {equipment.join(' · ')}<br />หายหรือชำรุด → กด “แจ้งปัญหาของตู้นี้” ด้านบน หรือแจ้ง จป. โดยตรง</p>}
       </div>
       <div className="shrink-0 bg-white border-t border-gray-200 px-3 pt-2.5 flex items-center gap-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className="flex-1 min-w-0"><div className="font-semibold text-gray-900 truncate">{picked.length ? `หยิบ ${picked.length} รายการ · ${[totalQty ? `${fmtInt(totalQty)} ชิ้น` : '', totalUses ? `ใช้ ${fmtInt(totalUses)} ครั้ง` : ''].filter(Boolean).join(' · ')}` : 'ยังไม่ได้เลือก'}</div><div className="text-xs text-gray-500 truncate">{picked.map(l => `${l.item.name} ${lineQtyLabel(l)}`).join(', ') || 'แตะ “+ เลือก” ที่ของที่หยิบ'}</div></div>

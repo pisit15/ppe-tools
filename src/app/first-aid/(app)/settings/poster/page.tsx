@@ -65,7 +65,7 @@ export default function PosterPage() {
         </section>
 
         <footer className="mt-auto flex items-center justify-between gap-4 border-t border-gray-200 pt-3 text-xs text-gray-600">
-          <div>ของหมด / หมดอายุ / ตู้ชำรุด → ติ๊ก <b>“แจ้ง จป.”</b> ในหน้าสแกน หรือแจ้งทีม SHE · ใช้ของแล้วกรุณาบันทึก เพื่อให้มีของพร้อมใช้เสมอ</div>
+          <div>ของหมด / หมดอายุ / ตู้ชำรุด → กด <b>“แจ้งปัญหา”</b> ในหน้าสแกน หรือแจ้งทีม SHE · ใช้ของแล้วกรุณาบันทึก เพื่อให้มีของพร้อมใช้เสมอ</div>
           <div className="shrink-0 text-right"><div className="font-semibold" style={{ color: FA_GREEN }}>EA SHE Tools · First Aid</div><div>tools.eashe.org</div></div>
         </footer>
       </article>

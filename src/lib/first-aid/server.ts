@@ -19,7 +19,8 @@ export const FA_IMAGE_BUCKET = 'first-aid-images';
 const IMAGE_URL_SECONDS = 60 * 60;
 /** Pseudo-location holding imported company-wide history; hidden from pickers. */
 export const FA_REGISTER_TYPE = 'ทะเบียนประวัติ';
-const DOCUMENT_COLUMNS = 'id,company_id,kind,location_id,destination_id,date,actor_key,actor_name,recording_mode,requester,recipient_person,on_behalf,note,created_at';
+const DOCUMENT_COLUMNS = 'id,company_id,kind,location_id,destination_id,date,actor_key,actor_name,recording_mode,requester,recipient_person,on_behalf,note,created_at,voided_at,voided_by_name,void_reason';
+const ISSUE_REPORT_COLUMNS = 'id,location_id,kind,detail,reporter_name,reporter_department,source,status,created_at,closed_at,closed_by_name,closed_note';
 const MOVEMENT_COLUMNS = 'id,company_id,document_id,item_id,location_id,destination_id,quantity,allocations,usage,created_at';
 
 export const firstAidJson = (data: unknown, status = 200) => NextResponse.json(data, { status, headers: { 'Cache-Control': 'private, no-store, max-age=0', 'Pragma': 'no-cache', 'X-Content-Type-Options': 'nosniff' } });
@@ -161,7 +162,11 @@ export function mapEvent(movement: Row, document: Row) {
     recipient: document.recipient_person?.name || '', onBehalf: !!document.on_behalf, note: document.note || '',
     recordedBy: { id: document.actor_key, name: document.actor_name, identityMethod: imported ? 'legacy_import' : document.recording_mode === 'self_service' ? 'self_declared' : 'authenticated_session' },
     recordingMode: imported ? 'legacy' : document.recording_mode, recordedAt: document.created_at,
+    voided: document.voided_at ? { at: document.voided_at, by: document.voided_by_name || '', reason: document.void_reason || '' } : null,
   };
+}
+export function mapIssueReport(row: Row) {
+  return { id: row.id, locationId: row.location_id, kind: row.kind, detail: row.detail || '', reporterName: row.reporter_name || '', reporterDepartment: row.reporter_department || '', source: row.source, status: row.status, createdAt: row.created_at, closedAt: row.closed_at || null, closedBy: row.closed_by_name || '', closedNote: row.closed_note || '' };
 }
 
 async function companyInfo(db: DB, companyId: string) {
@@ -184,6 +189,11 @@ export async function loadFirstAidState(companyId: string, actor: ToolsActor) {
     actor.isAdmin ? db.from('fa_visits').select('id,date,person,service,note,time_in,time_out').eq('company_id', companyId).order('created_at', { ascending: false }).limit(200).then(check) : Promise.resolve([]),
     companyEmployees(db, companyId), db.rpc('fa_usage_summary', { p_company_id: companyId }),
   ]);
+  const recentlyClosed = new Date(Date.now() - 30 * 86400000).toISOString();
+  const [openReports, closedReports] = await Promise.all([
+    db.from('fa_issue_reports').select(ISSUE_REPORT_COLUMNS).eq('company_id', companyId).eq('status', 'open').order('created_at', { ascending: false }).limit(100),
+    db.from('fa_issue_reports').select(ISSUE_REPORT_COLUMNS).eq('company_id', companyId).eq('status', 'closed').gte('closed_at', recentlyClosed).order('closed_at', { ascending: false }).limit(50),
+  ]);
   const [departments, defaults] = await Promise.all([companyDepartments(db, companyId), loadDefaultImages(db)]);
   const movements: Row[] = (check(movementResult) || []).slice(0, 500);
   const documentIds = [...new Set(movements.map(row => row.document_id))]; const documents: Row[] = [];
@@ -192,8 +202,9 @@ export async function loadFirstAidState(companyId: string, actor: ToolsActor) {
   const [activeItems, archivedItems, defaultImages] = await Promise.all([mapItems(db, items.filter(row => row.active), defaults), mapItems(db, items.filter(row => !row.active), defaults), actor.isAdmin ? mapDefaultImages(db, defaults) : Promise.resolve([])]);
   return {
     schemaVersion: 4, asOf: bangkokDate(), company, locations: locations.filter(row => row.active).map(mapLocation), archivedLocations: locations.filter(row => !row.active).map(mapLocation), items: activeItems, archivedItems, thresholds: thresholds.map(mapThreshold), lots: lots.map(mapLot),
-    events: movements.filter(row => byId.has(row.document_id)).map(row => mapEvent(row, byId.get(row.document_id)!)),
+    events: movements.filter(row => byId.has(row.document_id) && !byId.get(row.document_id)!.voided_at).map(row => mapEvent(row, byId.get(row.document_id)!)),
     inspections: (check(inspectionResult) || []).map(mapInspection), visits: (visits || []).map(mapVisit), employees, departments, defaultImages,
+    issueReports: [...(check(openReports) || []), ...(check(closedReports) || [])].map(mapIssueReport),
     session: { id: `${actor.accountTable}:${actor.id}`, name: actor.displayName, identityMethod: 'authenticated_session' },
     permissions: { canManage: true, canClinical: actor.isAdmin, public: false }, usageSummary: check(usageResult), historyLimit: 500, historyHasMore: (movementResult.data?.length || 0) > 500,
   };
@@ -330,10 +341,32 @@ export async function loadPublicFirstAidState(token: string) {
   return { schemaVersion: 4, asOf: bangkokDate(), company: { name: company.name, short: company.short, infirmary: false }, locations: [mapLocation({ ...location, public_token_hash: null })], items: await mapItems(db, items, await loadDefaultImages(db)), lots: lots.map(mapLot), thresholds: thresholds.map(mapThreshold), departments, events: [], inspections: [], visits: [], employees: [], permissions: { canManage: false, canClinical: false, public: true } };
 }
 
+const ISSUE_KIND_IDS = ['out', 'expired', 'damaged', 'other'];
+/** At most this many reports from one cabinet's open page in a day: it has no login, so it must not be a way to flood the list. */
+const PUBLIC_REPORTS_PER_DAY = 20;
+async function recordPublicIssueReport(db: DB, location: Row, body: Record<string, unknown>) {
+  allowedKeys(body, ['type', 'createId', 'kind', 'detail', 'reporterName', 'reporterDepartment']);
+  const createId = uuid(body.createId, 'รหัสการแจ้ง');
+  const kind = text(body.kind, 'ประเภทปัญหา', 20);
+  if (!ISSUE_KIND_IDS.includes(kind)) throw new FirstAidInputError('กรุณาเลือกประเภทปัญหา');
+  const detail = text(body.detail, 'รายละเอียด', 500, false);
+  if (kind === 'other' && !detail) throw new FirstAidInputError('กรุณาพิมพ์รายละเอียดของปัญหา');
+  const companyId: string = location.company_id;
+  const existing = check(await db.from('fa_issue_reports').select('id').eq('company_id', companyId).eq('create_id', createId).maybeSingle());
+  if (existing) return { ok: true };
+  const since = new Date(`${bangkokDate()}T00:00:00+07:00`).toISOString(); // start of today in Bangkok, as a UTC instant
+  const today = check(await db.from('fa_issue_reports').select('id').eq('company_id', companyId).eq('location_id', location.id).eq('source', 'qr').gte('created_at', since).limit(PUBLIC_REPORTS_PER_DAY)) || [];
+  if (today.length >= PUBLIC_REPORTS_PER_DAY) throw new FirstAidInputError('วันนี้มีการแจ้งจากจุดนี้จำนวนมากแล้ว กรุณาแจ้ง จป. โดยตรง', 429);
+  check(await db.from('fa_issue_reports').insert({ company_id: companyId, location_id: location.id, create_id: createId, kind, detail, reporter_name: text(body.reporterName, 'ชื่อผู้แจ้ง', 120, false), reporter_department: text(body.reporterDepartment, 'แผนก', 120, false), source: 'qr' }));
+  return { ok: true };
+}
+
 export async function postPublicFirstAidTransaction(request: NextRequest, token: string) {
   assertSameOrigin(request);
   const db = getSupabaseServer(); const location = await publicLocation(db, token);
-  const input = parseTransaction(await readJsonBody(request));
+  const raw = await readJsonBody(request);
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && (raw as Record<string, unknown>).type === 'issue-report') return recordPublicIssueReport(db, location, raw as Record<string, unknown>);
+  const input = parseTransaction(raw);
   if (input.kind !== 'issue' || input.locationId !== location.id) throw new FirstAidInputError('ลิงก์นี้ใช้บันทึกการหยิบใช้ได้เฉพาะจุดที่ระบุ', 403);
   input.lines = await splitLinesByLot(db, location.company_id, location.id, input.lines);
   const payload = await transactionPayload(db, location.company_id, input, true);
@@ -367,7 +400,7 @@ async function createMasterRow(db: DB, table: 'fa_items' | 'fa_locations' | 'fa_
 export async function manageFirstAid(request: NextRequest) {
   const { actor, companyId } = await firstAidActor(request, true); const db = getSupabaseServer();
   const body = record(await readJsonBody(request)); const action = text(body.action, 'การดำเนินการ', 40);
-  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location', 'close-opened', 'default-image-add', 'default-image-add-all', 'default-image-update', 'default-image-delete', 'qr-show', 'qr-adopt'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
+  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location', 'close-opened', 'default-image-add', 'default-image-add-all', 'default-image-update', 'default-image-delete', 'qr-show', 'qr-adopt', 'void-issue', 'issue-close'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
   if (action === 'visit' && !actor.isAdmin) throw new AccessError('เฉพาะผู้ดูแลที่มีสิทธิ์ข้อมูลบริการห้องพยาบาล');
   // Authenticated writes initialize only their selected company's configuration.
   check(await db.from('fa_company_settings').upsert({ company_id: companyId }, { onConflict: 'company_id', ignoreDuplicates: true }));
@@ -503,6 +536,19 @@ export async function manageFirstAid(request: NextRequest) {
     } else check(await db.from('fa_lots').update({ expiry }).eq('company_id', companyId).eq('id', lotId));
     return { ok: true };
   }
+  if (action === 'void-issue') {
+    // Cancel a dispense ticket recorded by mistake: the database returns its stock to the original lots and marks it.
+    allowedKeys(body, ['action', 'documentId', 'reason']);
+    const documentId = await scopedRow(db, 'fa_documents', companyId, body.documentId);
+    const result = check(await db.rpc('fa_void_issue', { p_company_id: companyId, p_document_id: documentId, p_actor_key: `${actor.accountTable}:${actor.id}`, p_actor_name: actor.displayName, p_reason: text(body.reason, 'เหตุผลที่ยกเลิก', 300) }));
+    return { ok: true, already: !!result?.already };
+  }
+  if (action === 'issue-close') {
+    allowedKeys(body, ['action', 'id', 'note']);
+    const id = await scopedRow(db, 'fa_issue_reports', companyId, body.id);
+    check(await db.from('fa_issue_reports').update({ status: 'closed', closed_at: new Date().toISOString(), closed_by_key: `${actor.accountTable}:${actor.id}`, closed_by_name: actor.displayName, closed_note: text(body.note, 'หมายเหตุ', 500, false) }).eq('company_id', companyId).eq('id', id).eq('status', 'open'));
+    return { ok: true };
+  }
   if (action === 'count') return recordStockCount(db, companyId, actor, body);
   const qrFor = async (token: string) => {
     const url = new URL(`/first-aid/take/${token}`, request.nextUrl.origin).href;
@@ -570,6 +616,8 @@ export async function loadFirstAidHistory(request: NextRequest) {
   const locationId = params.get('location_id') ? uuid(params.get('location_id'), 'รหัสจุด') : null;
   let docQuery = db.from('fa_documents').select(DOCUMENT_COLUMNS).eq('company_id', companyId).gte('date', from).lte('date', to).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(4000);
   if (locationId) docQuery = docQuery.eq('location_id', locationId);
+  // Cancelled tickets are left out of every list and report; only the day list on the dispense page asks for them.
+  if (params.get('voided') !== '1') docQuery = docQuery.is('voided_at', null);
   const documents: Row[] = check(await docQuery) || [];
   const movements: Row[] = [];
   const ids = documents.map(row => row.id);

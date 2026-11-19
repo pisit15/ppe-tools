@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { WRITE_OFF_REASONS, type FaItem, type FaLot } from '@/lib/first-aid/types';
-import { FA_GREEN, ItemImage, itemSub, Modal, Stepper, VIZ, balance, bangkokToday, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, manage, physicalQty, postTransaction, thaiDate, useFa } from './fa';
+import { WRITE_OFF_REASONS, type FaEvent, type FaItem, type FaLot } from '@/lib/first-aid/types';
+import { FA_GREEN, ItemImage, itemSub, Modal, Stepper, VIZ, balance, bangkokToday, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, manage, personLabel, physicalQty, postTransaction, thaiDate, useFa } from './fa';
 import { ThaiDateInput } from './ThaiDateInput';
 
 const REASONS = ['ปวดหัว / ไข้', 'ปวดท้อง / ท้องเสีย', 'คลื่นไส้', 'แพ้ / คัน', 'ปวดเมื่อย', 'บาดแผล', 'อื่น ๆ'];
@@ -32,7 +32,7 @@ export function DispenseModal({ item, onClose, onDone, defaultLocation }: { item
     if (locations.find(l => l.id === locationId)?.requireRequester && !who.trim()) { setErr('จุดนี้ต้องระบุชื่อผู้เบิกยา'); return; }
     setBusy(true); setErr('');
     try {
-      await postTransaction(company, { idempotencyKey: crypto.randomUUID(), kind: 'issue', locationId, date: bangkokToday(), lines: [{ itemId: item.id, quantity: qty }], note: note.trim(), ...(who.trim() ? { requesterId: 'manual', requesterPerson: { name: who.trim(), department: dept.trim() } } : {}) });
+      await postTransaction(company, { idempotencyKey: crypto.randomUUID(), kind: 'issue', locationId, date: bangkokToday(), lines: [{ itemId: item.id, quantity: qty }], note: note.trim(), ...(who.trim() || dept.trim() ? { requesterId: 'manual', requesterPerson: { name: who.trim(), department: dept.trim() } } : {}) });
       window.localStorage.setItem(WHO_KEY, JSON.stringify({ who: '', dept: dept.trim() }));
       await refresh(); onDone(`จ่าย ${item.name} ${fmtInt(qty)} ${item.unit} แล้ว`); onClose();
     } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
@@ -122,6 +122,35 @@ export function WriteOffModal({ item, onClose, onDone }: { item: FaItem | null; 
       <div className="mb-3"><span className={labelClass}>เหตุผล</span><div className="flex flex-wrap gap-1.5">{reasons.map(r => <button key={r} type="button" aria-pressed={reason === r} onClick={() => setReason(r)} className={`rounded-full border px-3 py-1.5 text-sm ${reason === r ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={reason === r ? { background: VIZ.accent } : undefined}>{r}</button>)}</div></div>
       <input className={inputClass} value={detail} onChange={e => setDetail(e.target.value)} placeholder={reason === 'อื่น ๆ' ? 'ระบุเหตุผล' : 'รายละเอียด (ไม่บังคับ) เช่น จอแตก / หายจากตู้'} aria-label="รายละเอียด" />
       <p className="mt-3 text-xs" style={{ color: VIZ.lightText }}>{have === 0 ? 'จุดนี้ไม่มีรายการนี้อยู่แล้ว' : `หลังตัดออกเหลือ ${fmtInt(have - qty)} ${item.unit} · ของใหม่ที่ซื้อมาแทนให้บันทึกที่ “รับเข้า”`}</p>
+      {err && <p className="mt-2 text-sm" style={{ color: VIZ.accent }}>{err}</p>}
+    </Modal>
+  );
+}
+
+const VOID_REASONS = ['บันทึกผิดรายการ', 'ผิดจำนวน', 'ผิดคน', 'บันทึกซ้ำ'];
+/** Cancel a whole dispense ticket recorded by mistake: its stock returns to the lots it came from and the ticket stays in the day list, struck through. */
+export function VoidTicketModal({ events, onClose, onDone }: { events: FaEvent[] | null; onClose: () => void; onDone: (msg: string) => void }) {
+  const { state, company, refresh } = useFa();
+  const [reason, setReason] = useState(''); const [more, setMore] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const documentId = events?.[0]?.documentId || '';
+  useEffect(() => { setReason(''); setMore(''); setErr(''); }, [documentId]);
+  if (!events || !events.length || !state) return null;
+  const text = [reason, more.trim()].filter(Boolean).join(' · ').slice(0, 300);
+  async function save() {
+    setBusy(true); setErr('');
+    try { await manage(company, { action: 'void-issue', documentId, reason: text }); await refresh(); onDone('ยกเลิกใบจ่ายยาแล้ว · คืนยอดเข้าสต๊อก'); onClose(); }
+    catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
+  }
+  const who = personLabel(events[0].requester);
+  return (
+    <Modal open onClose={onClose} title="ยกเลิกใบจ่ายยานี้" size="sm" footer={<div className="flex gap-2 justify-end"><button type="button" className={btnSecondary} onClick={onClose}>ไม่ยกเลิก</button><button type="button" className={btnPrimary} style={{ background: VIZ.accent }} disabled={busy || !text} onClick={() => void save()}>{busy ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิก'}</button></div>}>
+      <ul className="mb-3 divide-y divide-gray-100 rounded-lg border border-gray-200">
+        {events.map(e => { const it = state.items.find(i => i.id === e.itemId) || state.archivedItems.find(i => i.id === e.itemId); return <li key={e.id} className="flex items-center gap-2.5 px-3 py-2">{it && <ItemImage item={it} size={32} rounded={8} />}<span className="min-w-0 flex-1 font-medium text-gray-900">{it?.name || '?'}</span><span className="shrink-0 tabular-nums text-gray-700">{e.usage === 'use' ? `ใช้ ${fmtInt(e.quantity)} ครั้ง` : `${fmtInt(e.quantity)} ${it?.unit || ''}`}</span></li>; })}
+      </ul>
+      <p className="mb-3 text-sm text-gray-600">{who ? `ผู้เบิก ${who} · ` : ''}ยอดที่จ่ายไปจะกลับเข้าสต๊อกในล็อตเดิม ใบนี้ยังอยู่ในรายการของวัน โดยขีดฆ่าและบอกเหตุผล และจะไม่ถูกนับในรายงาน</p>
+      <span className={labelClass}>เหตุผล <span style={{ color: VIZ.accent }}>* จำเป็น</span></span>
+      <div className="mb-2 flex flex-wrap gap-1.5">{VOID_REASONS.map(r => <button key={r} type="button" onClick={() => setReason(reason === r ? '' : r)} className={`inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm ${reason === r ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-300 bg-white text-gray-700'}`}>{r}</button>)}</div>
+      <input className={inputClass} value={more} onChange={e => setMore(e.target.value)} placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)" aria-label="รายละเอียดเหตุผล" maxLength={200} />
       {err && <p className="mt-2 text-sm" style={{ color: VIZ.accent }}>{err}</p>}
     </Modal>
   );
