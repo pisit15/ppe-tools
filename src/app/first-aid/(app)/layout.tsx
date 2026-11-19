@@ -62,6 +62,24 @@ export default function FirstAidLayout({ children }: { children: React.ReactNode
   useEffect(() => { if (state && scope !== 'all' && !state.locations.some(l => l.id === scope && !l.isRegister)) setScope('all'); }, [state, scope, setScope]);
 
   const companyName = useMemo(() => companies.find(c => c.company_id === company)?.company_name || company.toUpperCase(), [companies, company]);
+  // Back button: the arrow is always there; "EA SHE Tools" is spelled out next to it whenever the top bar really has room
+  // (it depends on the company picker, the point picker and the screen, so it is measured rather than guessed).
+  const topRow = useRef<HTMLDivElement>(null);
+  const [backLabel, setBackLabel] = useState(false);
+  const pointCount = state?.locations.filter(l => !l.isRegister).length || 0;
+  useEffect(() => {
+    const row = topRow.current; if (!row) return;
+    const LABEL = 104; // width of the label and its gap
+    const fit = () => {
+      const kids = (Array.from(row.children) as HTMLElement[]).filter(k => k.offsetWidth > 0);
+      const style = getComputedStyle(row);
+      const spare = row.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - kids.reduce((sum, k) => sum + k.scrollWidth, 0) - (parseFloat(style.columnGap) || 0) * Math.max(0, kids.length - 1);
+      setBackLabel(shown => (shown ? spare >= 0 : spare >= LABEL + 8)); // margin so it does not flip back and forth
+    };
+    fit();
+    const watch = new ResizeObserver(fit); watch.observe(row); Array.from(row.children).forEach(k => watch.observe(k));
+    return () => watch.disconnect();
+  }, [user, isAdmin, companyName, pointCount, pathname]);
   const ctx = useMemo(() => ({ state, loading, error, refresh, company, setCompany, companies, isAdmin, scope, setScope }), [state, loading, error, refresh, company, setCompany, companies, isAdmin, scope, setScope]);
 
   if (!user) return <FirstAidLogin />;
@@ -73,21 +91,26 @@ export default function FirstAidLayout({ children }: { children: React.ReactNode
     <FaContext.Provider value={ctx}>
       <div className="min-h-screen" style={{ background: PAGE_BG, color: VIZ.text }}>
         <header className={`bg-white border-b border-gray-200 sticky top-0 z-30 ${isPrint ? 'print:hidden' : ''}`}>
-          <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-3">
-            <Link href="/first-aid" className="flex items-center gap-2.5 shrink-0">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-white text-xl font-bold" style={{ background: FA_GREEN }} aria-hidden="true">+</span>
-              <span className="hidden sm:block leading-tight"><span className="block font-semibold text-sm" style={{ color: FA_GREEN }}>First Aid</span><span className="block text-[11px] text-gray-500">{companyName}</span></span>
-            </Link>
-            <nav className="hidden md:flex items-center gap-1" aria-label="เมนูหลัก">
+          <div ref={topRow} className="max-w-[1360px] mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <Link href="/" title="กลับ EA SHE Tools" aria-label="กลับ EA SHE Tools" className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-300 bg-white px-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50">
+                <ArrowLeft size={16} aria-hidden="true" />{backLabel && <span>EA SHE Tools</span>}
+              </Link>
+              <Link href="/first-aid" className="flex items-center gap-2.5">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-white text-xl font-bold" style={{ background: FA_GREEN }} aria-hidden="true">+</span>
+                <span className="hidden sm:block leading-tight"><span className="block whitespace-nowrap font-semibold text-sm" style={{ color: FA_GREEN }}>First Aid</span><span className="block max-w-[120px] truncate text-[11px] text-gray-500">{companyName}</span></span>
+              </Link>
+            </div>
+            <nav className="hidden xl:flex items-center gap-1" aria-label="เมนูหลัก">
               {NAV.map(({ href, label, icon: Icon }) => {
                 const active = href === '/first-aid' ? pathname === href : pathname.startsWith(href);
-                return <Link key={href} href={href} aria-current={active ? 'page' : undefined} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition ${active ? 'text-white' : 'text-gray-600 hover:bg-gray-100'}`} style={active ? { background: FA_GREEN } : undefined}><Icon size={15} />{label}</Link>;
+                return <Link key={href} href={href} aria-current={active ? 'page' : undefined} className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${active ? 'text-white' : 'text-gray-600 hover:bg-gray-100'}`} style={active ? { background: FA_GREEN } : undefined}><Icon size={15} />{label}</Link>;
               })}
             </nav>
             <div className="flex items-center gap-2 text-sm">
               {visibleLocations.length > 1 && (
-                <label className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500">จุด
-                  <select aria-label="เลือกจุดปฐมพยาบาล" value={scope} onChange={e => setScope(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 max-w-[200px]">
+                <label className="hidden sm:flex items-center">
+                  <select aria-label="เลือกจุดปฐมพยาบาล" title="เลือกจุดปฐมพยาบาล" value={scope} onChange={e => setScope(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 max-w-[180px]">
                     <option value="all">ทุกจุด ({visibleLocations.length})</option>
                     {visibleLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
@@ -105,10 +128,10 @@ export default function FirstAidLayout({ children }: { children: React.ReactNode
                   </>)}
                 </div>
               )}
-              <button type="button" onClick={() => void logout()} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs bg-white hover:bg-gray-50"><LogOut size={14} /><span className="hidden sm:inline">ออกจากระบบ</span></button>
+              <button type="button" onClick={() => void logout()} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs bg-white hover:bg-gray-50"><LogOut size={14} /><span className="hidden sm:inline">ออกจากระบบ</span></button>
             </div>
           </div>
-          <nav className="md:hidden flex gap-1 px-2 pb-2 overflow-x-auto" aria-label="เมนูหลัก">
+          <nav className="xl:hidden flex gap-1 px-2 pb-2 overflow-x-auto" aria-label="เมนูหลัก">
             {NAV.map(({ href, label, icon: Icon }) => {
               const active = href === '/first-aid' ? pathname === href : pathname.startsWith(href);
               return <Link key={href} href={href} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm whitespace-nowrap ${active ? 'text-white font-medium' : 'text-gray-600'}`} style={active ? { background: FA_GREEN } : undefined}><Icon size={14} />{label}</Link>;
@@ -120,7 +143,7 @@ export default function FirstAidLayout({ children }: { children: React.ReactNode
           {!company && isAdmin && <p className="text-sm text-gray-500">กรุณาเลือกบริษัทที่มุมขวาบน</p>}
           {children}
         </main>
-        {!isPrint && <footer className="max-w-7xl mx-auto px-6 pb-8 text-xs text-gray-400"><Link href="/" className="inline-flex items-center gap-1 hover:text-gray-600"><ArrowLeft size={12} />กลับ EA SHE Tools</Link></footer>}
+        {!isPrint && <footer className="max-w-7xl mx-auto px-3 sm:px-6 pb-8"><Link href="/" className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"><ArrowLeft size={16} aria-hidden="true" />กลับ EA SHE Tools</Link></footer>}
       </div>
     </FaContext.Provider>
   );
@@ -141,7 +164,7 @@ function FirstAidLogin() {
   return (
     <main className="min-h-screen flex items-center justify-center px-4" style={{ background: PAGE_BG }}>
       <div className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
-        <Link href="/" className="text-xs text-gray-500">← กลับ EA SHE Tools</Link>
+        <Link href="/" className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"><ArrowLeft size={16} aria-hidden="true" />กลับ EA SHE Tools</Link>
         <div className="mt-6 mb-6 flex items-center gap-3"><span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl text-white text-3xl font-bold" style={{ background: FA_GREEN }} aria-hidden="true">+</span><div><h1 className="text-xl font-semibold" style={{ color: FA_GREEN }}>First Aid & Medicine Control</h1><p className="text-sm text-gray-500">เข้าสู่ระบบด้วยบัญชี EA SHE Tools</p></div></div>
         {companies ? (
           <div className="space-y-2">
