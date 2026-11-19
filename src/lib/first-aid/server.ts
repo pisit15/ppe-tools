@@ -214,12 +214,29 @@ async function resolvePerson(db: DB, companyId: string, id: string | undefined, 
   return { id, code: row.employee_code || '', name: row.name, department: row.department || 'ไม่ได้ระบุแผนก', identityMethod: 'self_declared' };
 }
 
-/** The person collecting is optional since the 6 Nov 2026 redesign: a blank name is stored as a placeholder, a bare name gets a placeholder department. */
+/**
+ * The person collecting is optional since the 6 Nov 2026 redesign: a blank name is stored as a placeholder.
+ * The department is kept whenever it was chosen, with or without a name — the illness report groups by it.
+ */
 function optionalPerson(supplied: unknown): PersonSnapshot {
   const person = supplied && typeof supplied === 'object' && !Array.isArray(supplied) ? (supplied as Record<string, unknown>) : {};
   const name = text(person.name, 'ชื่อผู้เบิก / ผู้รับ', 120, false);
-  if (!name) return { id: null, name: FA_ANON_NAME, department: FA_ANON_DEPARTMENT, identityMethod: 'self_declared' };
-  return { id: null, name, department: text(person.department, 'หน่วยงาน / บริษัท', 120, false) || FA_ANON_DEPARTMENT, code: text(person.code, 'รหัสพนักงาน', 40, false), identityMethod: 'self_declared' };
+  const department = text(person.department, 'หน่วยงาน / บริษัท', 120, false) || FA_ANON_DEPARTMENT;
+  if (!name) return { id: null, name: FA_ANON_NAME, department, identityMethod: 'self_declared' };
+  return { id: null, name, department, code: text(person.code, 'รหัสพนักงาน', 40, false), identityMethod: 'self_declared' };
+}
+const foldPerson = (value: string) => value.normalize('NFC').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+/**
+ * A typed employee code, or a full name typed exactly as in the register, is replaced by the register's name, code and
+ * department, so one person is not recorded under several spellings. Only an unambiguous match counts.
+ * Nothing about the match goes back to the QR page (see postPublicFirstAidTransaction): it must not work as a name lookup.
+ */
+async function matchEmployee(db: DB, companyId: string, person: PersonSnapshot): Promise<PersonSnapshot> {
+  if (!person.name || person.name === FA_ANON_NAME) return person;
+  const key = foldPerson(person.name); if (key.length < 2) return person;
+  const hits = (await companyEmployees(db, companyId)).filter(e => (e.code && foldPerson(e.code) === key) || foldPerson(e.name) === key);
+  if (hits.length !== 1) return person;
+  return { ...person, name: hits[0].name, code: hits[0].code, department: hits[0].department.trim() || person.department };
 }
 async function transactionPayload(db: DB, companyId: string, input: TransactionInput, publicRequest = false) {
   let requester: PersonSnapshot | undefined; let recipientPerson: PersonSnapshot | undefined;
@@ -228,12 +245,12 @@ async function transactionPayload(db: DB, companyId: string, input: TransactionI
     if (publicRequest) {
       if (input.requesterId && input.requesterId !== 'manual') throw new FirstAidInputError('หน้านี้ให้ระบุชื่อผู้เบิกด้วยตนเอง');
       if (input.onBehalf && input.recipientId && input.recipientId !== 'manual') throw new FirstAidInputError('กรุณาระบุชื่อผู้รับจริงด้วยตนเอง');
-      requester = optionalPerson(supplied);
+      requester = await matchEmployee(db, companyId, optionalPerson(supplied));
       recipientPerson = input.onBehalf ? manualPerson(input.recipientPerson) : requester;
     } else if (!input.requesterId && !supplied) {
       requester = optionalPerson(undefined); recipientPerson = requester;
     } else {
-      requester = input.requesterId && input.requesterId !== 'manual' ? await resolvePerson(db, companyId, input.requesterId, supplied) : optionalPerson(supplied);
+      requester = input.requesterId && input.requesterId !== 'manual' ? await resolvePerson(db, companyId, input.requesterId, supplied) : await matchEmployee(db, companyId, optionalPerson(supplied));
       recipientPerson = input.onBehalf ? await resolvePerson(db, companyId, input.recipientId, input.recipientPerson) : requester;
     }
   }
@@ -322,7 +339,10 @@ export async function postPublicFirstAidTransaction(request: NextRequest, token:
   const payload = await transactionPayload(db, location.company_id, input, true);
   if (location.require_requester && (!payload.requester || payload.requester.name === FA_ANON_NAME)) throw new FirstAidInputError('จุดนี้ต้องระบุชื่อผู้เบิกยา');
   const data = check(await db.rpc('fa_post_transaction', { p_company_id: location.company_id, p_actor_key: 'self_declared', p_actor_name: payload.requester?.name || '', p_idempotency_key: input.idempotencyKey, p_payload: payload, p_public_token_hash: tokenHash(token) }));
-  return transactionReceipt(data);
+  // The page needs only the confirmation. The recorded person is left out: a typed employee code is matched to the
+  // register on the server, and echoing the result would turn this open page into a code-to-name lookup.
+  const receipt = transactionReceipt(data);
+  return { documentId: receipt.documentId, lines: receipt.events.length };
 }
 
 async function scopedRow(db: DB, table: string, companyId: string, id: unknown) {

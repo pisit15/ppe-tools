@@ -73,4 +73,10 @@ export function writeOffReason(note: string): WriteOffReason {
   if (/หาย/.test(n)) return 'lost';
   return 'other';
 }
-export const personLabel = (p: { name?: string; department?: string } | null | undefined) => !p || !p.name || p.name === FA_ANON_NAME ? '' : p.department && p.department !== FA_ANON_NAME ? `${p.name} · ${p.department}` : p.name;
+/** "Name · department"; a pick recorded with a department but no name reads "ไม่ระบุชื่อ · department"; nothing recorded → ''. */
+export function personLabel(p: { name?: string; department?: string } | null | undefined) {
+  if (!p) return '';
+  const named = !!p.name && p.name !== FA_ANON_NAME; const dept = p.department && p.department !== FA_ANON_NAME ? p.department : '';
+  if (!named) return dept ? `ไม่ระบุชื่อ · ${dept}` : '';
+  return dept ? `${p.name} · ${dept}` : p.name!;
+}

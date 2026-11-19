@@ -66,8 +66,8 @@ export function ImageField({ item, onChanged, compact = false }: { item: FaItem;
         {busy && <p className="text-xs text-gray-500">{busy}</p>}
         {err && <p className="text-xs" style={{ color: VIZ.accent }}>{err}</p>}
         {sharedNote && !busy && <p className="text-xs" style={{ color: VIZ.positive }}>{sharedNote}</p>}
-        {!busy && !item.hasImage && item.imageDefault && <p className="text-[11px] text-gray-500">กำลังใช้รูปเริ่มต้นร่วม — ใส่รูปของบริษัทเองเพื่อแทนที่ได้</p>}
-        {!busy && item.imageSource && item.imageSource !== 'upload' && <p className="text-[11px] text-gray-400 truncate" title={item.imageSource}>ที่มา: {item.imageSource}</p>}
+        {!busy && !item.hasImage && item.imageDefault && <p className="text-xs text-gray-500">กำลังใช้รูปเริ่มต้นร่วม — ใส่รูปของบริษัทเองเพื่อแทนที่ได้</p>}
+        {!busy && item.imageSource && item.imageSource !== 'upload' && <p className="text-xs text-gray-500 truncate" title={item.imageSource}>ที่มา: {item.imageSource}</p>}
       </div>
     </div>
   );
@@ -116,7 +116,7 @@ export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean;
       <div className="grid gap-4 sm:grid-cols-[1fr_220px]">
         <div className="space-y-3">
           <div><label className={labelClass} htmlFor="if-name">ชื่อยา / เวชภัณฑ์ *</label><input id="if-name" className={inputClass} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
-          <div><label className={labelClass} htmlFor="if-desc">คำอธิบายสั้น <span className="text-gray-400 font-normal">(แสดงใต้ชื่อ เช่น แก้ปวด ลดไข้)</span></label><input id="if-desc" className={inputClass} maxLength={160} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
+          <div><label className={labelClass} htmlFor="if-desc">คำอธิบายสั้น <span className="text-gray-500 font-normal">(แสดงใต้ชื่อ เช่น แก้ปวด ลดไข้)</span></label><input id="if-desc" className={inputClass} maxLength={160} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
           <div><label className={labelClass} htmlFor="if-gen">ชื่อสามัญ / รายละเอียด</label><input id="if-gen" className={inputClass} maxLength={200} value={form.generic} onChange={e => setForm(f => ({ ...f, generic: e.target.value }))} /></div>
           <div className="grid grid-cols-3 gap-2">
             <div><label className={labelClass} htmlFor="if-cat">หมวด</label><ComboInput id="if-cat" value={form.category} onChange={category => setForm(f => ({ ...f, category }))} options={categories} /></div>
@@ -128,7 +128,7 @@ export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean;
           <div>
             <span className={labelClass}>วิธีจ่าย</span>
             <div className="grid gap-1.5">{DISPENSE_MODES.map(m => <label key={m.id} className="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer" style={{ borderColor: form.dispenseMode === m.id ? FA_GREEN : '#E5E7EB', background: form.dispenseMode === m.id ? `${FA_GREEN}0D` : '#fff' }}><input type="radio" name="if-mode" className="mt-1 h-4 w-4" checked={form.dispenseMode === m.id} onChange={() => setForm(f => ({ ...f, dispenseMode: m.id, ...(m.id === 'fixed' && !item ? { trackExpiry: false } : {}) }))} /><span><b className="text-gray-900">{m.label}</b><span className="block text-xs text-gray-500">{m.hint}</span></span></label>)}</div>
-            {form.dispenseMode === 'shared' && <div className="mt-2 flex items-center gap-2 text-sm"><label htmlFor="if-life" className="text-gray-700">อายุหลังเปิดขวด</label><input id="if-life" type="number" min={1} max={3650} className={`${inputClass} w-24`} value={form.openLifeDays} onChange={e => setForm(f => ({ ...f, openLifeDays: e.target.value }))} placeholder="เช่น 28" /><span className="text-gray-500">วัน <span className="text-xs text-gray-400">(เว้นว่าง = ใช้วันหมดอายุบนฉลากอย่างเดียว · ยาล้างตาส่วนใหญ่ 28 วัน)</span></span></div>}
+            {form.dispenseMode === 'shared' && <div className="mt-2 flex items-center gap-2 text-sm"><label htmlFor="if-life" className="text-gray-700">อายุหลังเปิดขวด</label><input id="if-life" type="number" min={1} max={3650} className={`${inputClass} w-24`} value={form.openLifeDays} onChange={e => setForm(f => ({ ...f, openLifeDays: e.target.value }))} placeholder="เช่น 28" /><span className="text-gray-500">วัน <span className="text-xs text-gray-500">(เว้นว่าง = ใช้วันหมดอายุบนฉลากอย่างเดียว · ยาล้างตาส่วนใหญ่ 28 วัน)</span></span></div>}
           </div>
           <div><span className={labelClass}>ไอคอนสำรอง (ใช้เมื่อไม่มีรูป · เว้นว่าง = ระบบเลือกให้)</span><IconPicker value={form.icon} onChange={v => setForm(f => ({ ...f, icon: f.icon === v ? '' : v }))} /></div>
           {err && <p className="text-sm" style={{ color: VIZ.accent }}>{err}</p>}

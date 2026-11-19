@@ -80,7 +80,7 @@ export function HealthTab({ events, onError }: { events: FaEvent[] | null; onErr
             </tr></thead>
             <tbody>
               {stats.groups.map(g => { const on = sel === g.id; return (
-                <tr key={g.id} className={`border-t border-gray-50 ${on ? 'bg-[#EDF2F7]' : ''} ${g.illness ? '' : 'text-gray-400'}`}>
+                <tr key={g.id} className={`border-t border-gray-50 ${on ? 'bg-[#EDF2F7]' : ''} ${g.illness ? '' : 'text-gray-500'}`}>
                   <td className={`sticky left-0 z-10 px-3 py-1.5 ${on ? 'bg-[#EDF2F7]' : 'bg-white'}`}><button type="button" aria-pressed={on} onClick={() => setSel(on ? null : g.id)} className={`text-left hover:underline ${g.illness ? 'font-semibold text-gray-900' : 'italic'}`}>{g.label}</button></td>
                   {g.perMonth.map((v, i) => <td key={i} className="px-1.5 py-1.5 text-right tabular-nums" style={v && g.illness ? { background: `rgba(78,121,167,${(0.08 + 0.5 * (v / stats.maxCell)).toFixed(2)})` } : undefined}>{v ? fmtInt(v) : <span className="text-gray-300">·</span>}</td>)}
                   <td className="px-2 py-1.5 text-right tabular-nums font-semibold" style={{ background: `${FA_GREEN}0F` }}>{fmtInt(g.total)}</td>

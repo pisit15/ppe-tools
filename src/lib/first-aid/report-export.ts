@@ -99,3 +99,47 @@ export async function healthWorkbook(company: string, months: string[], rows: He
   note.getColumn(1).width = 140;
   return wb.xlsx.writeBuffer();
 }
+
+/**
+ * How much to order: enough to get back to the minimum, plus one month of use at the recent rate; at least 1.
+ * Kept as a plain formula on purpose, so purchasing can check it by eye and overrule it.
+ */
+export function reorderQuantity(balance: number, min: number, perMonth: number) {
+  return Math.max(1, Math.max(0, min - balance) + Math.ceil(perMonth));
+}
+export type ReorderRow = { name: string; generic: string; category: string; unit: string; balance: number; min: number; perMonth: number; suggest: number; status: string; points: number[] };
+/** Order list for purchasing: what is below its minimum or out, the recent rate of use, a suggested quantity and an empty column to write the real order in. */
+export async function reorderWorkbook(company: string, rows: ReorderRow[], pointNames: string[], generatedOn: string, historyTruncated: boolean) {
+  const wb = new ExcelJS.Workbook(); wb.creator = 'EA SHE Tools · First Aid';
+  const font = { name: 'Tahoma', size: 11 }; const GREEN = 'FF246047';
+  const sheet = wb.addWorksheet('รายการสั่งซื้อ');
+  const showPoints = pointNames.length > 1;
+  const header = ['ลำดับ', 'รายการ', 'ชื่อสามัญ', 'หมวด', 'หน่วย', ...(showPoints ? pointNames.map(n => `คงเหลือ ${n}`) : []), 'คงเหลือรวม', 'ขั้นต่ำ', 'จ่ายเฉลี่ย/เดือน (90 วัน)', 'แนะนำสั่ง', 'สถานะ', 'สั่งจริง', 'หมายเหตุ'];
+  sheet.mergeCells(1, 1, 1, header.length);
+  sheet.getCell(1, 1).value = `First Aid · รายการสั่งซื้อ · ${company.toUpperCase()} · ข้อมูล ณ ${generatedOn}`;
+  sheet.getRow(1).font = { name: 'Tahoma', size: 14, bold: true, color: { argb: GREEN } };
+  sheet.getRow(3).values = header;
+  sheet.getRow(3).font = { name: 'Tahoma', bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getRow(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREEN } };
+  sheet.getRow(3).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  rows.forEach((r, i) => {
+    const row = sheet.addRow([i + 1, r.name, r.generic, r.category, r.unit, ...(showPoints ? r.points : []), r.balance, r.min || null, Math.round(r.perMonth * 10) / 10 || null, r.suggest, r.status, null, null]);
+    row.font = font; row.getCell(header.length - 3).font = { ...font, bold: true };
+  });
+  const widths = [7, 36, 28, 12, 9, ...(showPoints ? pointNames.map(() => 14) : []), 12, 9, 16, 11, 12, 11, 26];
+  widths.forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
+  sheet.views = [{ state: 'frozen', xSplit: 2, ySplit: 3 }];
+  const note = wb.addWorksheet('คำอธิบาย');
+  const lines = [
+    `First Aid · รายการสั่งซื้อ · ${company.toUpperCase()} · ออกรายงาน ${generatedOn}`, '',
+    'รายการในไฟล์นี้คือของที่คงเหลือต่ำกว่าขั้นต่ำ หรือหมด (เฉพาะของที่ตั้งขั้นต่ำไว้ หรือเคยมีในจุดนั้น)',
+    'คงเหลือ = ของที่ยังไม่หมดอายุและมีวันหมดอายุในระบบแล้ว ไม่นับของหมดอายุและของที่ยังไม่ระบุวันหมดอายุ',
+    'จ่ายเฉลี่ย/เดือน = จำนวนที่จ่ายใน 90 วันล่าสุด หาร 3 (ไม่นับการใช้จากขวดที่เปิดอยู่ ซึ่งไม่ตัดสต๊อก)',
+    'แนะนำสั่ง = (ขั้นต่ำ − คงเหลือ) + จ่ายเฉลี่ย 1 เดือน ปัดขึ้น อย่างน้อย 1 — เป็นค่าตั้งต้นให้ฝ่ายจัดซื้อปรับได้ ไม่ใช่คำสั่งซื้อ',
+    'กรอกจำนวนที่สั่งจริงในคอลัมน์ "สั่งจริง" แล้วใช้ไฟล์นี้แนบ PR ได้',
+    ...(historyTruncated ? ['หมายเหตุ: ประวัติการจ่ายในช่วง 90 วันมีมากกว่าที่ระบบดึงได้ในครั้งเดียว ค่าเฉลี่ยอาจต่ำกว่าจริง'] : []),
+  ];
+  lines.forEach((text, i) => { note.getCell(i + 1, 1).value = text; note.getRow(i + 1).font = i === 0 ? { ...font, size: 13, bold: true, color: { argb: GREEN } } : font; });
+  note.getColumn(1).width = 130;
+  return wb.xlsx.writeBuffer();
+}

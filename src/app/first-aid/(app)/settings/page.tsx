@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, QrCode } from 'lucide-react';
 import type { FaLocation } from '@/lib/first-aid/types';
 import { ComboInput } from '../../_components/ComboInput';
-import { ConfirmButton, FA_GREEN, ItemImage, Modal, Spinner, ToastView, VIZ, balance, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, manage, thaiDate, useFa, useToast } from '../../_components/fa';
+import { ConfirmButton, FA_GREEN, ItemImage, Modal, Spinner, ToastView, VIZ, addDays, balance, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, loadHistory, manage, thaiDate, useFa, useToast } from '../../_components/fa';
 
 const TYPES = ['ตู้ปฐมพยาบาล', 'ห้องพยาบาล', 'กระเป๋าปฐมพยาบาล', 'คลังสำรอง'];
 
@@ -14,6 +14,8 @@ export default function SettingsPage() {
   const { toast, setToast } = useToast();
   const [edit, setEdit] = useState<{ open: boolean; loc: FaLocation | null }>({ open: false, loc: null });
   const [thresholdsFor, setThresholdsFor] = useState<FaLocation | null>(null);
+  // /first-aid/settings?minimum=<point id> (from the to-do box) opens that point's minimums straight away.
+  const [autoMinimum, setAutoMinimum] = useState(() => (typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('minimum') || ''));
   const [qr, setQr] = useState<{ loc: FaLocation; url: string; svg: string } | null>(null);
   // A QR made before links were kept: the server only knows its fingerprint, so ask for the link itself (or make a new one).
   const [adopt, setAdopt] = useState<{ loc: FaLocation; link: string; err: string } | null>(null);
@@ -79,7 +81,7 @@ export default function SettingsPage() {
                   : <button type="button" className={btnSecondary} disabled={busy === loc.id} onClick={() => void makeLink(loc)}><QrCode size={15} />สร้าง QR</button>)}
                 <ConfirmButton label="ปิดใช้งาน" confirmLabel="ยืนยันปิด?" danger disabled={stocked > 0} onConfirm={() => manage(company, { action: 'archive-location', id: loc.id, active: false }).then(refresh).then(() => setToast({ type: 'success', msg: 'ปิดใช้งานจุดแล้ว' })).catch(e => setToast({ type: 'error', msg: errMsg(e) }))} />
               </div>
-              {loc.issueMode === 'self_service' && loc.hasPublicLink && <p className="text-[11px] text-gray-400">มี QR ใช้งานอยู่ · “ดู / พิมพ์ QR” เปิดอันเดิม{loc.qrViewable ? 'ได้ตลอด' : ' (ครั้งแรกต้องสแกน QR เดิม 1 ครั้ง)'} · “เปลี่ยน QR ใหม่” ใช้เมื่อต้องการยกเลิกอันเดิม — โปสเตอร์ที่ติดไว้จะใช้ไม่ได้</p>}
+              {loc.issueMode === 'self_service' && loc.hasPublicLink && <p className="text-xs text-gray-500">มี QR ใช้งานอยู่ · “ดู / พิมพ์ QR” เปิดอันเดิม{loc.qrViewable ? 'ได้ตลอด' : ' (ครั้งแรกต้องสแกน QR เดิม 1 ครั้ง)'} · “เปลี่ยน QR ใหม่” ใช้เมื่อต้องการยกเลิกอันเดิม — โปสเตอร์ที่ติดไว้จะใช้ไม่ได้</p>}
             </div>); })}
           {locations.length === 0 && <p className="text-sm text-gray-500">ยังไม่มีจุดปฐมพยาบาล — เริ่มจากตู้ยา กล่อง หรือห้องพยาบาล</p>}
         </div>
@@ -99,7 +101,7 @@ export default function SettingsPage() {
         </section>)}
 
       <LocationModal open={edit.open} loc={edit.loc} onClose={() => setEdit({ open: false, loc: null })} onSaved={() => { setEdit({ open: false, loc: null }); setToast({ type: 'success', msg: 'บันทึกจุดแล้ว' }); }} />
-      <ThresholdsModal loc={thresholdsFor} onClose={() => setThresholdsFor(null)} onSaved={() => { setThresholdsFor(null); setToast({ type: 'success', msg: 'บันทึกขั้นต่ำแล้ว' }); }} />
+      <ThresholdsModal loc={thresholdsFor || (autoMinimum ? state.locations.find(l => l.id === autoMinimum) || null : null)} onClose={() => { setThresholdsFor(null); setAutoMinimum(''); }} onSaved={() => { setThresholdsFor(null); setAutoMinimum(''); setToast({ type: 'success', msg: 'บันทึกขั้นต่ำแล้ว' }); }} />
       <Modal open={!!qr} onClose={() => setQr(null)} title={`QR หยิบเอง · ${qr?.loc.name || ''}`} size="sm" footer={<div className="flex flex-wrap justify-end gap-2"><button type="button" className={btnSecondary} onClick={() => { if (qr) void navigator.clipboard?.writeText(qr.url); setToast({ type: 'success', msg: 'คัดลอกลิงก์แล้ว' }); }}>คัดลอกลิงก์</button><button type="button" className={btnSecondary} onClick={() => { if (qr) downloadQr(qr); }}>บันทึกรูป QR</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} onClick={() => { if (qr) openPoster(qr, posterItems(qr), state.company.short); }}>เปิดโปสเตอร์ A4</button></div>}>
         {qr && <div className="text-center"><div className="mx-auto w-56 [&_svg]:w-full [&_svg]:h-auto" dangerouslySetInnerHTML={{ __html: qr.svg }} /><p className="mt-2 text-xs text-gray-500 break-all">{qr.url}</p><p className="mt-2 text-xs text-gray-500">เปิดดูและพิมพ์ซ้ำได้ตลอดจากปุ่ม “ดู / พิมพ์ QR” · QR นี้ใช้ได้จนกว่าจะกด “เปลี่ยน QR ใหม่”</p></div>}
       </Modal>
@@ -168,26 +170,48 @@ function LocationModal({ open, loc, onClose, onSaved }: { open: boolean; loc: Fa
 function ThresholdsModal({ loc, onClose, onSaved }: { loc: FaLocation | null; onClose: () => void; onSaved: () => void }) {
   const { state, company, refresh } = useFa();
   const [mins, setMins] = useState<Record<string, number>>({}); const [q, setQ] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  // Use over the last 90 days at this point, per item: the basis of the suggested minimum (one month of use).
+  const [used, setUsed] = useState<{ locationId: string; byItem: Record<string, number> } | null>(null);
+  const locId = loc?.id || ''; const asOf = state?.asOf || '';
   useEffect(() => { if (!loc || !state) return; const m: Record<string, number> = {}; state.thresholds.filter(t => t.locationId === loc.id).forEach(t => { m[t.itemId] = t.min; }); setMins(m); setQ(''); setErr(''); }, [loc, state]);
+  useEffect(() => {
+    if (!locId || !asOf) return;
+    let cancelled = false;
+    loadHistory(company, addDays(asOf, -90), asOf, { location_id: locId }).then(r => { if (cancelled) return; const byItem: Record<string, number> = {}; for (const e of r.events) if (e.kind === 'issue' && e.usage !== 'use') byItem[e.itemId] = (byItem[e.itemId] || 0) + e.quantity; setUsed({ locationId: locId, byItem }); }).catch(() => { if (!cancelled) setUsed({ locationId: locId, byItem: {} }); });
+    return () => { cancelled = true; };
+  }, [locId, asOf, company]);
   if (!loc || !state) return null;
-  const items = state.items.filter(i => !q.trim() || i.name.toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => ((mins[b.id] ?? -1) >= 0 ? 1 : 0) - ((mins[a.id] ?? -1) >= 0 ? 1 : 0) || a.name.localeCompare(b.name, 'th'));
+  const usage = used?.locationId === loc.id ? used.byItem : null;
+  const here = new Set(state.lots.filter(l => l.locationId === loc.id && l.quantity > 0).map(l => l.itemId));
+  /** One month of use at the recent rate, rounded up; an item kept here but not used lately → 1; nothing known → no suggestion. */
+  const suggest = (itemId: string) => { const n = usage?.[itemId] || 0; return n > 0 ? Math.ceil(n / 3) : here.has(itemId) ? 1 : null; };
+  const items = state.items.filter(i => !q.trim() || i.name.toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => ((mins[b.id] ?? -1) >= 0 ? 1 : 0) - ((mins[a.id] ?? -1) >= 0 ? 1 : 0) || Number(here.has(b.id)) - Number(here.has(a.id)) || a.name.localeCompare(b.name, 'th'));
   async function save() {
     const rows = Object.entries(mins).filter(([, v]) => Number.isFinite(v)).map(([itemId, min]) => ({ itemId, min: Math.max(0, Math.round(min)) }));
     if (!rows.length) { setErr('เลือกรายการประจำจุดอย่างน้อย 1 รายการ'); return; }
+    if (rows.length > 200) { setErr('บันทึกได้ครั้งละไม่เกิน 200 รายการ — ลดจำนวนที่ติ๊กลง'); return; }
     setBusy(true); setErr('');
     try { await manage(company, { action: 'thresholds', locationId: loc!.id, thresholds: rows }); await refresh(); onSaved(); } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   }
-  const assigned = Object.keys(mins).length;
+  const assigned = Object.keys(mins).length; const zero = Object.values(mins).filter(v => !v).length;
+  const tickStocked = () => setMins(m => { const n = { ...m }; for (const i of state.items) if (here.has(i.id) && n[i.id] === undefined) n[i.id] = suggest(i.id) ?? i.min ?? 0; return n; });
+  const applySuggested = () => setMins(m => { const n = { ...m }; for (const id of Object.keys(n)) { const v = suggest(id); if (v !== null) n[id] = v; } return n; });
+  const tool = 'inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50';
   return (
-    <Modal open={!!loc} onClose={onClose} title={`รายการประจำจุด + ขั้นต่ำ · ${loc.name}`} footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-gray-500">ประจำจุด {assigned} รายการ</span><div className="flex gap-2"><button type="button" className={btnSecondary} onClick={onClose}>ยกเลิก</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} disabled={busy} onClick={() => void save()}>บันทึก</button></div></div>}>
+    <Modal open={!!loc} onClose={onClose} title={`รายการประจำจุด + ขั้นต่ำ · ${loc.name}`} footer={<div className="flex items-center justify-between gap-2"><span className="text-xs text-gray-600">ประจำจุด {assigned} รายการ{zero > 0 ? ` · ยังเป็น 0 อยู่ ${zero} รายการ` : ''}</span><div className="flex gap-2"><button type="button" className={btnSecondary} onClick={onClose}>ยกเลิก</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} disabled={busy} onClick={() => void save()}>บันทึก</button></div></div>}>
       <p className="text-sm text-gray-600 mb-3">ติ๊กยาที่ควรมีประจำจุดนี้ และใส่จำนวนขั้นต่ำ — ใช้คำนวณ “ต้องเติม” และรายการตรวจนับ</p>
+      <div className="mb-2 flex flex-wrap gap-2">
+        <button type="button" className={tool} disabled={here.size === 0} onClick={tickStocked}>ติ๊กทุกรายการที่มีของที่จุดนี้ ({here.size})</button>
+        <button type="button" className={tool} disabled={assigned === 0 || !usage} onClick={applySuggested}>ใช้ค่าแนะนำกับรายการที่ติ๊ก</button>
+      </div>
+      <p className="mb-2 text-xs text-gray-600">ค่าแนะนำ = จำนวนที่จ่ายเฉลี่ยใน 1 เดือน (คิดจาก 90 วันล่าสุดของจุดนี้) · ของที่มีอยู่แต่ไม่ได้จ่ายในช่วงนี้แนะนำ 1 · แก้ตัวเลขเองได้ทุกช่อง</p>
       <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="ค้นหายา" aria-label="ค้นหา" className={`${inputClass} mb-2`} />
-      <div className="max-h-[50vh] overflow-y-auto divide-y divide-gray-100 border border-gray-100 rounded-lg">
-        {items.map(i => { const on = mins[i.id] !== undefined; return (
+      <div className="max-h-[45vh] overflow-y-auto divide-y divide-gray-100 border border-gray-100 rounded-lg">
+        {items.map(i => { const on = mins[i.id] !== undefined; const sg = suggest(i.id); return (
           <label key={i.id} className="flex items-center gap-3 px-3 py-1.5 text-sm">
-            <input type="checkbox" className="h-4 w-4" checked={on} onChange={e => setMins(m => { const n = { ...m }; if (e.target.checked) n[i.id] = m[i.id] ?? i.min ?? 0; else delete n[i.id]; return n; })} />
-            <ItemImage item={i} size={28} rounded={6} /><span className="flex-1 min-w-0 truncate">{i.name} <span className="text-xs text-gray-400">{i.unit} · มี {fmtInt(balance(state, i.id, loc.id))}</span></span>
-            <input type="number" min={0} aria-label={`ขั้นต่ำ ${i.name}`} disabled={!on} value={on ? mins[i.id] : ''} onChange={e => setMins(m => ({ ...m, [i.id]: Number(e.target.value) || 0 }))} className="w-20 rounded-md border border-gray-300 px-2 py-1 text-right text-gray-900 disabled:bg-gray-50" />
+            <input type="checkbox" className="h-5 w-5" checked={on} onChange={e => setMins(m => { const n = { ...m }; if (e.target.checked) n[i.id] = m[i.id] ?? sg ?? i.min ?? 0; else delete n[i.id]; return n; })} />
+            <ItemImage item={i} size={28} rounded={6} /><span className="flex-1 min-w-0"><span className="block truncate text-gray-900">{i.name}</span><span className="block truncate text-xs text-gray-600">{i.unit} · มี {fmtInt(balance(state, i.id, loc.id))}{usage?.[i.id] ? ` · จ่าย ${fmtInt(usage[i.id])} ใน 90 วัน` : ''}{sg !== null ? ` · แนะนำ ${fmtInt(sg)}` : ''}</span></span>
+            <input type="number" min={0} aria-label={`ขั้นต่ำ ${i.name}`} disabled={!on} value={on ? mins[i.id] : ''} onChange={e => setMins(m => ({ ...m, [i.id]: Number(e.target.value) || 0 }))} onFocus={e => e.target.select()} className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-right text-gray-900 disabled:bg-gray-50" />
           </label>); })}
       </div>
       {err && <p className="mt-2 text-sm" style={{ color: VIZ.accent }}>{err}</p>}
@@ -203,7 +227,7 @@ function ArchiveItemPicker() {
   return (
     <details className="text-sm"><summary className="cursor-pointer text-gray-600">ปิดใช้งานยาที่ไม่ใช้แล้ว</summary>
       <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="พิมพ์ชื่อยา" aria-label="ค้นหา" className={`${inputClass} mt-2 max-w-sm`} />
-      <ul className="mt-2 space-y-1">{hits.map(i => { const b = balance(state, i.id); return <li key={i.id} className="flex items-center gap-2"><ItemImage item={i} size={24} rounded={6} /><span className="flex-1">{i.name} <span className="text-xs text-gray-400">คงเหลือ {fmtInt(b)}</span></span>{b === 0 ? <ConfirmButton label="ปิดใช้งาน" confirmLabel="ยืนยัน?" danger onConfirm={() => manage(company, { action: 'archive-item', id: i.id, active: false }).then(refresh)} /> : <span className="text-xs text-gray-400">ต้องไม่มีสต็อก</span>}</li>; })}</ul>
+      <ul className="mt-2 space-y-1">{hits.map(i => { const b = balance(state, i.id); return <li key={i.id} className="flex items-center gap-2"><ItemImage item={i} size={24} rounded={6} /><span className="flex-1">{i.name} <span className="text-xs text-gray-500">คงเหลือ {fmtInt(b)}</span></span>{b === 0 ? <ConfirmButton label="ปิดใช้งาน" confirmLabel="ยืนยัน?" danger onConfirm={() => manage(company, { action: 'archive-item', id: i.id, active: false }).then(refresh)} /> : <span className="text-xs text-gray-500">ต้องไม่มีสต็อก</span>}</li>; })}</ul>
     </details>
   );
 }

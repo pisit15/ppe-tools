@@ -224,16 +224,51 @@ test('staff employee identities are resolved in company scope and cannot be spoo
   await assert.rejects(server.postFirstAidTransaction(request('transactions', tx({ requesterId: `company:${ids.otherEmployee}` }))), /ไม่พบพนักงาน/);
 });
 
-test('public submission forces self-declared mode and returns only its receipt without directory lookups', async () => {
+test('public submission forces self-declared mode and returns only a bare receipt, never the recorded person', async () => {
   const result = await server.postPublicFirstAidTransaction(request('public/' + token, tx(), { auth: false }), token);
   assert.equal(result.documentId, ids.doc);
-  assert.deepEqual(Object.keys(result).sort(), ['documentId', 'events']);
+  assert.deepEqual(Object.keys(result).sort(), ['documentId', 'lines']);
   const call = db.rpcCalls.find(row => row.name === 'fa_post_transaction');
   assert.equal(call.args.p_payload.mode, 'self_service');
   assert.equal(call.args.p_payload.requester.identityMethod, 'self_declared');
   assert.equal(call.args.p_public_token_hash, createHash('sha256').update(token).digest('hex'));
-  assert.equal(db.calls.some(row => ['company_employees', 'ppe_employees'].includes(row.table)), false);
   await assert.rejects(server.postPublicFirstAidTransaction(request('public/' + token, tx({ requesterId: `company:${ids.employee}` }), { auth: false }), token), /ด้วยตนเอง/);
+});
+
+test('person collecting: department kept without a name, a typed employee code is matched on the server and never echoed to the QR page', async () => {
+  const model = load('src/lib/first-aid/model.ts');
+  const lastPayload = () => db.rpcCalls.filter(row => row.name === 'fa_post_transaction').at(-1).args.p_payload;
+  // staff screen: a department chosen with the name left blank is stored, the name stays a placeholder
+  await server.postFirstAidTransaction(request('transactions', tx({ requesterPerson: { name: '', department: 'ผลิต' } })));
+  assert.deepEqual([lastPayload().requester.name, lastPayload().requester.department], ['ไม่ระบุ', 'ผลิต']);
+  assert.equal(model.personLabel(lastPayload().requester), 'ไม่ระบุชื่อ · ผลิต');
+  assert.equal(model.personLabel({ name: 'ไม่ระบุ', department: 'ไม่ระบุ' }), '');
+  assert.equal(model.personLabel({ name: 'สมชาย', department: 'ไม่ระบุ' }), 'สมชาย');
+  // a point that requires a name still refuses a department-only ticket
+  db.tables.fa_locations[0].require_requester = true;
+  await assert.rejects(server.postFirstAidTransaction(request('transactions', tx({ requesterPerson: { name: '', department: 'ผลิต' } }))), /ต้องระบุชื่อ/);
+  db.tables.fa_locations[0].require_requester = false;
+  // a typed code (or the exact full name) becomes the register's name, code and department
+  await server.postFirstAidTransaction(request('transactions', tx({ requesterPerson: { name: ' 001 ', department: 'พิมพ์เอง' } })));
+  assert.deepEqual([lastPayload().requester.name, lastPayload().requester.code, lastPayload().requester.department], ['Test Employee', '001', 'Office']);
+  await server.postFirstAidTransaction(request('transactions', tx({ requesterPerson: { name: 'test  employee', department: '' } })));
+  assert.equal(lastPayload().requester.name, 'Test Employee');
+  // no match, or more than one person with that name → kept exactly as typed
+  await server.postFirstAidTransaction(request('transactions', tx({ requesterPerson: { name: 'Visitor', department: 'ผู้รับเหมา' } })));
+  assert.deepEqual([lastPayload().requester.name, lastPayload().requester.department], ['Visitor', 'ผู้รับเหมา']);
+  db.tables.company_employees.push({ id: randomUUID(), company_id: 'amt', emp_code: '002', first_name: 'Test', last_name: 'Employee', department: 'Store', is_active: true });
+  await server.postFirstAidTransaction(request('transactions', tx({ requesterPerson: { name: 'Test Employee', department: 'ผลิต' } })));
+  assert.deepEqual([lastPayload().requester.name, lastPayload().requester.department, lastPayload().requester.code || ''], ['Test Employee', 'ผลิต', '']);
+  // another company's code never matches
+  await server.postFirstAidTransaction(request('transactions', tx({ requesterPerson: { name: 'SECRET', department: '' } })));
+  assert.equal(lastPayload().requester.name, 'SECRET');
+  // QR page: the code is matched for the record, but the response carries no person at all
+  const result = await server.postPublicFirstAidTransaction(request('public/' + token, tx({ requesterPerson: { name: '001', department: '' } }), { auth: false }), token);
+  assert.equal(lastPayload().requester.name, 'Test Employee');
+  assert.equal(lastPayload().mode, 'self_service');
+  assert.doesNotMatch(JSON.stringify(result), /Employee|Office|001/);
+  const publicState = await server.loadPublicFirstAidState(token);
+  assert.deepEqual(publicState.employees, []);
 });
 
 test('clinical writes require privileged actor and malformed management fields cannot change protected columns', async () => {
@@ -542,4 +577,22 @@ test('illness report: stated reason first, medicine second, restocking and suppl
   assert.deepEqual(rows.map(r => [r.group, r.source, r.department, r.channel]), [['fever', 'chip', 'Store', 'staff'], ['fever', 'medicine', 'Production', 'self_service'], ['other', 'medicine', '', 'legacy']]);
   assert.equal(rows[0].month, '2026-11'); assert.equal(rows[0].location, 'Cabinet 1'); assert.equal(rows[0].unit, 'เม็ด');
   assert.equal(/Somchai|Patient|Nurse/.test(JSON.stringify(rows)), false);
+});
+
+test('Thai date field: day/month/year in the Buddhist era, box-style expiry, month-only means end of month', () => {
+  const { parseThaiDate, formatThaiInput } = load('src/lib/first-aid/thai-date.ts');
+  const iso = (text, opts = {}) => parseThaiDate(text, { today: '2026-11-20', ...opts })?.iso ?? null;
+  assert.equal(formatThaiInput('2027-12-31'), '31/12/2570');
+  assert.equal(formatThaiInput(''), '');
+  // full dates: Buddhist or Christian era, any separator, or digits only
+  for (const text of ['31/12/2570', '31-12-2570', '31.12.2570', '31 12 2570', '31/12/2027', '31122570', '31/12/70', '311270', '31/12/27']) assert.equal(iso(text), '2027-12-31', text);
+  assert.equal(iso('1/2/2569'), '2026-02-01');
+  assert.equal(iso('20/11/69'), '2026-11-20');
+  // month and year only is accepted for expiry dates alone, and means the last day of that month
+  assert.equal(iso('12/2570'), null);
+  for (const text of ['12/2570', '12/2027', '12/27', '12/70', '122570', '1227']) assert.deepEqual(parseThaiDate(text, { today: '2026-11-20', monthOnly: true }), { iso: '2027-12-31', monthOnly: true }, text);
+  assert.equal(iso('02/2571', { monthOnly: true }), '2028-02-29');
+  assert.equal(iso('311227', { monthOnly: true }), '2027-12-31'); // six digits that are not month+year stay day/month/year
+  // never month/day/year, never an impossible date
+  for (const text of ['12/31/2570', '31/02/2570', '0/1/2570', '32/1/2570', '1/13/2570', 'abc', '2570', '31/12', '31/12/25700', '']) assert.equal(iso(text), null, text);
 });

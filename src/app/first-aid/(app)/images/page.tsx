@@ -32,7 +32,7 @@ export default function ImagesPage() {
   return (
     <div className="space-y-4">
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-        <Stat label="มีรูปแล้ว" value={<>{fmtInt(own + viaDefault)} <span className="text-base text-gray-400">/ {fmtInt(ranked.length)}</span></>} color={FA_GREEN} sub={`รูปของบริษัทเอง ${fmtInt(own)} · รูปเริ่มต้น ${fmtInt(viaDefault)}`} />
+        <Stat label="มีรูปแล้ว" value={<>{fmtInt(own + viaDefault)} <span className="text-base text-gray-500">/ {fmtInt(ranked.length)}</span></>} color={FA_GREEN} sub={`รูปของบริษัทเอง ${fmtInt(own)} · รูปเริ่มต้น ${fmtInt(viaDefault)}`} />
         <Stat label="ยังไม่มีรูป" value={fmtInt(missing)} color={VIZ.secondary} sub="ใช้ไอคอนไปก่อน" />
         <div className="col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3 text-xs text-gray-600 leading-relaxed">เรียงตามยาที่จ่ายบ่อย 3 เดือนล่าสุดก่อน · กด <b>ค้นหารูป</b> → คลิกขวารูปที่ตรงยี่ห้อ → “คัดลอกที่อยู่รูปภาพ” → วางในช่องแล้วกด <b>ใช้ลิงก์</b> หรือถ่ายรูปกล่องจริงจากมือถือ · ระบบย่อรูปเหลือ ≈ 600 px และเก็บที่มาไว้</div>
       </section>
@@ -105,7 +105,7 @@ function DefaultLibrary({ notify }: { notify: (t: { type: 'success' | 'error'; m
                     {changed && <button type="button" className={`${btnSecondary} whitespace-nowrap`} disabled={!!busy || parseKeywords(value).length === 0} onClick={() => void run(d.id, { action: 'default-image-update', id: d.id, keywords: parseKeywords(value) }, () => `บันทึกคำค้นของ ${d.title} แล้ว`).then(ok => { if (ok) setEdits(x => { const n = { ...x }; delete n[d.id]; return n; }); })}>บันทึก</button>}</div>
                   <div className="flex items-center gap-2 justify-end">
                     {confirmId === d.id ? <><span className="text-xs" style={{ color: VIZ.accent }}>ลบจากทุกบริษัท?</span><button type="button" className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white" style={{ background: VIZ.accent }} disabled={!!busy} onClick={() => void run(d.id, { action: 'default-image-delete', id: d.id }, () => `ลบรูปเริ่มต้น ${d.title} แล้ว`).then(() => setConfirmId(''))}>ลบ</button><button type="button" className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs text-gray-600" onClick={() => setConfirmId('')}>ยกเลิก</button></>
-                      : <button type="button" aria-label={`ลบรูปเริ่มต้น ${d.title}`} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100" onClick={() => setConfirmId(d.id)}><Trash2 size={16} /></button>}
+                      : <button type="button" aria-label={`ลบรูปเริ่มต้น ${d.title}`} className="h-9 w-9 inline-flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100" onClick={() => setConfirmId(d.id)}><Trash2 size={16} /></button>}
                   </div>
                 </li>); })}
             </ul>)}

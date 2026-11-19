@@ -98,7 +98,7 @@ export default function FirstAidLayout({ children }: { children: React.ReactNode
               </Link>
               <Link href="/first-aid" className="flex items-center gap-2.5">
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-white text-xl font-bold" style={{ background: FA_GREEN }} aria-hidden="true">+</span>
-                <span className="hidden sm:block leading-tight"><span className="block whitespace-nowrap font-semibold text-sm" style={{ color: FA_GREEN }}>First Aid</span><span className="block max-w-[120px] truncate text-[11px] text-gray-500">{companyName}</span></span>
+                <span className="hidden sm:block leading-tight"><span className="block whitespace-nowrap font-semibold text-sm" style={{ color: FA_GREEN }}>First Aid</span><span className="block max-w-[120px] truncate text-xs text-gray-500">{companyName}</span></span>
               </Link>
             </div>
             <nav className="hidden xl:flex items-center gap-1" aria-label="เมนูหลัก">
@@ -123,7 +123,7 @@ export default function FirstAidLayout({ children }: { children: React.ReactNode
                   {menuOpen && (<>
                     <button type="button" aria-label="ปิด" className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuOpen(false)} />
                     <ul className="absolute right-0 mt-1 z-20 w-64 max-h-80 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg py-1">
-                      {companies.map(c => <li key={c.company_id}><button type="button" onClick={() => { setCompany(c.company_id); setMenuOpen(false); }} className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${c.company_id === company ? 'font-semibold' : 'text-gray-700'}`} style={c.company_id === company ? { color: FA_GREEN } : undefined}>{c.company_name}<span className="ml-2 text-xs text-gray-400">{c.company_id.toUpperCase()}</span></button></li>)}
+                      {companies.map(c => <li key={c.company_id}><button type="button" onClick={() => { setCompany(c.company_id); setMenuOpen(false); }} className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${c.company_id === company ? 'font-semibold' : 'text-gray-700'}`} style={c.company_id === company ? { color: FA_GREEN } : undefined}>{c.company_name}<span className="ml-2 text-xs text-gray-500">{c.company_id.toUpperCase()}</span></button></li>)}
                     </ul>
                   </>)}
                 </div>
@@ -180,7 +180,7 @@ function FirstAidLogin() {
           </form>
         )}
         {error && <p role="alert" className="mt-4 rounded-lg px-3 py-2 text-sm" style={{ background: `${VIZ.accent}14`, color: VIZ.accent }}>{error}</p>}
-        <p className="mt-6 text-xs text-gray-400">ผู้ที่หยิบของจากตู้เองสแกน QR หน้าตู้ได้โดยไม่ต้องเข้าสู่ระบบ</p>
+        <p className="mt-6 text-xs text-gray-500">ผู้ที่หยิบของจากตู้เองสแกน QR หน้าตู้ได้โดยไม่ต้องเข้าสู่ระบบ</p>
       </div>
     </main>
   );

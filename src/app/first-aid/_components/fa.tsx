@@ -46,7 +46,7 @@ const ICON_PATHS: Record<Exclude<FaIcon, ''>, (c: string) => ReactNode> = {
   gauze: c => <g><rect x="10" y="10" width="28" height="28" rx="3" fill="#fff" stroke={c} strokeWidth="2.5" /><path d="M10 18h28M10 26h28M10 34h28M18 10v28M26 10v28M34 10v28" stroke={c} strokeWidth="1.5" opacity=".7" /></g>,
   mask: c => <g><path d="M10 18h28v12a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6z" fill="#fff" stroke={c} strokeWidth="2.5" /><path d="M10 22H4v6h6M38 22h6v6h-6M14 24h20M14 29h20" stroke={c} strokeWidth="2" /></g>,
   glove: c => <path d="M16 42V22a3 3 0 0 1 6 0V12a3 3 0 0 1 6 0v10a3 3 0 0 1 6 0v6l4-6a3 3 0 0 1 5 3l-7 14a8 8 0 0 1-7 5H22a6 6 0 0 1-6-6z" fill="#fff" stroke={c} strokeWidth="2.5" />,
-  device: c => <g><rect x="20" y="6" width="8" height="26" rx="4" fill="#fff" stroke={c} strokeWidth="2.5" /><circle cx="24" cy="36" r="6" fill={c} /><path d="M24 20v14" stroke={c} strokeWidth="3" /></g>,
+  device: c => <g><path d="M18 15v-3a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v3" fill="none" stroke={c} strokeWidth="2.5" /><rect x="7" y="15" width="34" height="25" rx="4" fill="#fff" stroke={c} strokeWidth="2.5" /><path d="M24 21v13M17.5 27.5h13" stroke={c} strokeWidth="3" /></g>,
   other: c => <g><rect x="8" y="8" width="32" height="32" rx="6" fill="#fff" stroke={c} strokeWidth="2.5" /><path d="M24 15v18M15 24h18" stroke={c} strokeWidth="3" /></g>,
 };
 const ICON_COLOR: Record<Exclude<FaIcon, ''>, string> = { pill: VIZ.primary, bottle: VIZ.secondary, sachet: VIZ.primary, cream: VIZ.secondary, plaster: VIZ.accent, gauze: VIZ.neutral, mask: VIZ.positive, glove: VIZ.positive, device: VIZ.accent, other: VIZ.neutral };
@@ -67,7 +67,7 @@ export function ItemImage({ item, size = 40, rounded = 10, className = '', aspec
 
 export function StatusBadge({ status, small = false, item }: { status: ItemStatusKey; small?: boolean; item?: Pick<FaItem, 'dispenseMode'> }) {
   const c = STATUS_COLOR[status];
-  return <span className={`inline-flex items-center rounded-md font-medium whitespace-nowrap ${small ? 'px-1.5 py-0 text-[11px]' : 'px-2 py-0.5 text-xs'}`} style={{ background: `${c}1F`, color: status === 'pending' ? VIZ.text : c }}>{item ? statusLabel(item, status) : STATUS_LABEL[status]}</span>;
+  return <span className={`inline-flex items-center rounded-md font-medium whitespace-nowrap ${small ? 'px-1.5 py-0 text-xs' : 'px-2 py-0.5 text-xs'}`} style={{ background: `${c}1F`, color: status === 'pending' ? VIZ.text : c }}>{item ? statusLabel(item, status) : STATUS_LABEL[status]}</span>;
 }
 
 /** Quantity stepper with large touch targets. */
@@ -136,7 +136,7 @@ export function ItemPicker({ items, state, locationId, value, onPick, autoFocus 
               </li>
             ))}
           </ul>
-          {!needle && <div className="px-3 py-1.5 text-[11px] text-gray-400 bg-gray-50 border-t border-gray-100">{hits.length} รายการ · พิมพ์ชื่อเพื่อค้นหา หรือกดอาการด้านบน</div>}
+          {!needle && <div className="px-3 py-1.5 text-xs text-gray-500 bg-gray-50 border-t border-gray-100">{hits.length} รายการ · พิมพ์ชื่อเพื่อค้นหา หรือกดอาการด้านบน</div>}
         </div>
       )}
     </div>
@@ -155,7 +155,7 @@ export function Stat({ label, value, sub, color }: { label: string; value: React
 }
 
 export function Chip({ active, onClick, children, color }: { active: boolean; onClick: () => void; children: ReactNode; color?: string }) {
-  return <button type="button" onClick={onClick} className={`rounded-full border px-3 py-1.5 text-sm whitespace-nowrap transition ${active ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`} style={!active && color ? { color } : undefined}>{children}</button>;
+  return <button type="button" onClick={onClick} className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3.5 py-1.5 text-sm whitespace-nowrap transition md:min-h-0 md:px-3 ${active ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`} style={!active && color ? { color } : undefined}>{children}</button>;
 }
 
 export function Bar({ value, max, color }: { value: number; max: number; color: string }) {

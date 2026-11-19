@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { WRITE_OFF_REASONS, type FaItem, type FaLot } from '@/lib/first-aid/types';
 import { FA_GREEN, ItemImage, itemSub, Modal, Stepper, VIZ, balance, bangkokToday, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, manage, physicalQty, postTransaction, thaiDate, useFa } from './fa';
+import { ThaiDateInput } from './ThaiDateInput';
 
 const REASONS = ['ปวดหัว / ไข้', 'ปวดท้อง / ท้องเสีย', 'คลื่นไส้', 'แพ้ / คัน', 'ปวดเมื่อย', 'บาดแผล', 'อื่น ๆ'];
 const WHO_KEY = 'fa.lastWho';
@@ -50,7 +51,7 @@ export function DispenseModal({ item, onClose, onDone, defaultLocation }: { item
       </div>
       <div className="flex flex-wrap gap-1.5 mb-3">{[1, 2, 4, 6, 10].map(n => <button key={n} type="button" onClick={() => setQty(Math.min(n, Math.max(1, avail)))} className={`rounded-full border px-3 py-1 text-sm ${qty === n ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={qty === n ? { background: FA_GREEN } : undefined}>{n}</button>)}</div>
       <div className="grid grid-cols-2 gap-2 mb-2">
-        <div><label className={labelClass} htmlFor="dm-who">ผู้เบิกยา {locations.find(l => l.id === locationId)?.requireRequester ? <span style={{ color: VIZ.accent }}>*</span> : <span className="font-normal text-gray-400">(ไม่บังคับ)</span>}</label><input id="dm-who" className={inputClass} value={who} onChange={e => setWho(e.target.value)} placeholder="ชื่อ หรือรหัส" /></div>
+        <div><label className={labelClass} htmlFor="dm-who">ผู้เบิกยา {locations.find(l => l.id === locationId)?.requireRequester ? <span style={{ color: VIZ.accent }}>*</span> : <span className="font-normal text-gray-500">(ไม่บังคับ)</span>}</label><input id="dm-who" className={inputClass} value={who} onChange={e => setWho(e.target.value)} placeholder="ชื่อ หรือรหัส" /></div>
         <div><label className={labelClass} htmlFor="dm-dept">แผนก</label><input id="dm-dept" list="fa-depts" className={inputClass} value={dept} onChange={e => setDept(e.target.value)} placeholder="เช่น ผลิต" /><datalist id="fa-depts">{state.departments.map(d => <option key={d} value={d} />)}</datalist></div>
       </div>
       <div className="flex flex-wrap gap-1.5 mb-3">{REASONS.map(r => <button key={r} type="button" onClick={() => setNote(n => (n === r ? '' : r))} className={`rounded-full border px-3 py-1 text-sm ${note === r ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`} style={note === r ? { background: FA_GREEN } : undefined}>{r}</button>)}</div>
@@ -77,7 +78,7 @@ export function LotExpiryModal({ lot, item, onClose, onDone }: { lot: FaLot | nu
     <Modal open={!!lot} onClose={onClose} title={item.dispenseMode === 'fixed' ? 'ระบุวันครบกำหนดตรวจ / เปลี่ยน' : 'ระบุวันหมดอายุ'} size="sm" footer={<div className="flex gap-2 justify-end"><button type="button" className={btnSecondary} onClick={onClose}>ยกเลิก</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} disabled={busy || !expiry} onClick={() => void save(expiry)}>บันทึก</button></div>}>
       <div className="flex items-center gap-3 mb-3"><ItemImage item={item} size={44} /><div><div className="font-semibold text-gray-900">{item.name}</div><div className="text-xs text-gray-500">{location?.name} · ล็อต {lot.code} · {fmtInt(lot.quantity)} {item.unit}</div></div></div>
       <label className={labelClass} htmlFor="le-date">{item.dispenseMode === 'fixed' ? 'วันครบกำหนด (เช่น วันหมดอายุแผ่น AED / แบตเตอรี่ / วันสอบเทียบครั้งถัดไป)' : 'วันหมดอายุตามบรรจุภัณฑ์'}</label>
-      <input id="le-date" type="date" className={inputClass} value={expiry} onChange={e => setExpiry(e.target.value)} />
+      <ThaiDateInput id="le-date" value={expiry} onChange={setExpiry} monthOnly />
       <p className="mt-2 text-xs text-gray-500">{item.dispenseMode === 'fixed' ? 'เมื่อถึงวันนี้ระบบจะขึ้น “เกินกำหนด” ให้ตรวจหรือเปลี่ยน แล้วกลับมาใส่วันครบกำหนดรอบใหม่' : 'ของที่ยังไม่มีวันหมดอายุจะจ่ายไม่ได้ จนกว่าจะยืนยัน · ถ้าเป็นอุปกรณ์ที่ไม่มีวันหมดอายุ ให้ปิด “ติดตามวันหมดอายุ” ในหน้าแก้ไขรายการ'}</p>
       {err && <p className="mt-2 text-sm" style={{ color: VIZ.accent }}>{err}</p>}
     </Modal>

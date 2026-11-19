@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
-import type { FaItem, TransactionLine } from '@/lib/first-aid/types';
+import type { FaItem, FirstAidEmployee, TransactionLine } from '@/lib/first-aid/types';
 import { isDispensable, type OpenedInfo } from '@/lib/first-aid/model';
 import { SYMPTOMS, itemGroup, matchesSymptom } from '@/lib/first-aid/browse';
 import { DISPENSE_REASONS } from '@/lib/first-aid/health';
@@ -43,21 +43,25 @@ export function rememberQty(cart: Cart) {
  * Picture grid with search + symptom / group chips. Tap a card → it goes into the cart (same on the nurse's screen and the QR page).
  * `avail` gives the quantity available at the chosen point; `opened` the shared container in use there; `frequent` puts recently dispensed items first.
  */
-export function PickBoard({ items: allItems, avail, opened, cart, onChange, frequent = [], maxLines = 8, columns = 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5', compact = false, stickyFilters = false }: {
+export function PickBoard({ items: allItems, avail, opened, cart, onChange, frequent = [], maxLines = 8, columns = 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5', compact = false, stickyFilters = false, stocked, emptyHint }: {
   items: FaItem[]; avail: (item: FaItem) => number; opened?: (item: FaItem) => OpenedInfo | null; cart: Cart; onChange: (key: string, qty: number) => void; frequent?: string[]; maxLines?: number; columns?: string;
+  /** Has this point ever held the item? Items it never held stay off the board (search still finds them) so a long company list does not bury what is actually in the cabinet. */ stocked?: (item: FaItem) => boolean;
+  /** Shown instead of the grid when the point has never held anything. */ emptyHint?: ReactNode;
   /** Phone layout: shorter pictures, pill stepper. */ compact?: boolean;
   /** Keep search + chips pinned while the list scrolls (the parent must be the scroll container with 12 px side padding). */ stickyFilters?: boolean;
 }) {
-  const [q, setQ] = useState(''); const [tag, setTag] = useState('');
+  const [q, setQ] = useState(''); const [tag, setTag] = useState(''); const [showNever, setShowNever] = useState(false);
   // Equipment kept at the point (scissors, thermometer …) is not something to pick.
-  const items = useMemo(() => allItems.filter(isDispensable), [allItems]);
+  const dispensable = useMemo(() => allItems.filter(isDispensable), [allItems]);
+  const never = useMemo(() => (stocked ? dispensable.filter(i => !stocked(i)) : []), [dispensable, stocked]);
+  const items = useMemo(() => (stocked && !showNever ? dispensable.filter(stocked) : dispensable), [dispensable, stocked, showNever]);
   const symptoms = useMemo(() => SYMPTOMS.filter(t => items.some(i => matchesSymptom(t, i))), [items]);
   const groups = useMemo(() => { const m = new Map<string, number>(); items.forEach(i => m.set(itemGroup(i), (m.get(itemGroup(i)) || 0) + 1)); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [items]);
   const needle = q.trim().toLowerCase();
   const list = useMemo(() => {
     const usable = (i: FaItem) => avail(i) > 0 || !!(i.dispenseMode === 'shared' && opened?.(i) && !opened(i)!.expired);
     let l = items;
-    if (needle) l = items.filter(i => `${i.name} ${i.generic} ${i.description}`.toLowerCase().includes(needle));
+    if (needle) l = dispensable.filter(i => `${i.name} ${i.generic} ${i.description}`.toLowerCase().includes(needle)); // a search looks through everything, hidden items included
     else if (tag.startsWith('s:')) { const t = SYMPTOMS.find(x => x.id === tag.slice(2)); l = t ? items.filter(i => matchesSymptom(t, i)) : items; }
     else if (tag.startsWith('g:')) l = items.filter(i => itemGroup(i) === tag.slice(2));
     const rank = new Map(frequent.map((id, i) => [id, i]));
@@ -66,13 +70,13 @@ export function PickBoard({ items: allItems, avail, opened, cart, onChange, freq
       const sa = usable(a) ? 0 : 1, sb = usable(b) ? 0 : 1;
       return sa - sb || fa - fb || (a.category === 'ยา' ? 0 : 1) - (b.category === 'ยา' ? 0 : 1) || a.name.localeCompare(b.name, 'th');
     });
-  }, [items, needle, tag, frequent, avail, opened]);
-  const lines = cartLines(items, cart).length;
-  const chip = (id: string, label: ReactNode, on: boolean, onClick: () => void) => <button key={id} type="button" onClick={onClick} className={`shrink-0 rounded-full border px-3 py-1.5 text-sm whitespace-nowrap ${on ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>{label}</button>;
+  }, [items, dispensable, needle, tag, frequent, avail, opened]);
+  const lines = cartLines(dispensable, cart).length;
+  const chip = (id: string, label: ReactNode, on: boolean, onClick: () => void) => <button key={id} type="button" onClick={onClick} className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3.5 py-1.5 text-sm whitespace-nowrap md:min-h-0 md:px-3 ${on ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>{label}</button>;
   // Every card has the same anatomy — picture, two-line name, one-line note, action pinned to the bottom — so buttons line up across a row.
   const aspect = compact ? '3 / 2' : '1 / 1';
   const cardClass = (active: boolean, dim: boolean) => `rounded-2xl border bg-white flex flex-col h-full ${compact ? 'p-2' : 'p-2.5'} ${active ? 'border-[#246047] shadow-sm' : 'border-gray-200'} ${dim ? 'opacity-55' : ''}`;
-  const badge = (text: string, tone: 'ok' | 'warn' | 'out') => <span className="absolute top-1.5 right-1.5 max-w-[85%] truncate rounded-full border bg-white/95 px-2 py-0.5 text-[11px] font-medium shadow-sm" style={{ color: tone === 'out' ? VIZ.accent : tone === 'warn' ? '#9a5410' : VIZ.text, borderColor: tone === 'out' ? `${VIZ.accent}66` : tone === 'warn' ? `${VIZ.secondary}88` : '#E5E7EB' }}>{text}</span>;
+  const badge = (text: string, tone: 'ok' | 'warn' | 'out') => <span className="absolute top-1.5 right-1.5 max-w-[85%] truncate rounded-full border bg-white/95 px-2 py-0.5 text-xs font-medium shadow-sm" style={{ color: tone === 'out' ? VIZ.accent : tone === 'warn' ? '#9a5410' : VIZ.text, borderColor: tone === 'out' ? `${VIZ.accent}66` : tone === 'warn' ? `${VIZ.secondary}88` : '#E5E7EB' }}>{text}</span>;
   // Name with its note directly underneath. The block reserves the two-line height so rows are normally equally tall; a long name on a narrow phone may take a third line rather than be cut off.
   const title = (i: FaItem) => <div className="mt-2 min-h-[3.9rem]"><div className="text-[15px] font-semibold text-gray-900 leading-snug line-clamp-3 break-words">{i.name}</div><div className="mt-0.5 text-xs text-gray-500 truncate">{itemSub(i)}</div></div>;
   const primary = 'h-10 w-full rounded-xl text-white font-semibold disabled:opacity-40';
@@ -81,7 +85,7 @@ export function PickBoard({ items: allItems, avail, opened, cart, onChange, freq
   return (
     <div className="flex flex-col gap-2 min-w-0">
       <div className={`flex flex-col sm:flex-row gap-2 sm:items-center ${stickyFilters ? 'sticky top-0 z-10 -mx-3 px-3 py-2 bg-[#F4F6F4] shadow-[0_6px_8px_-8px_rgba(0,0,0,0.18)]' : ''}`}>
-        <label className="relative sm:w-72 shrink-0"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+        <label className="relative sm:w-72 shrink-0"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" aria-hidden="true" />
           <input type="search" value={q} onChange={e => { setQ(e.target.value); }} placeholder="พิมพ์ชื่อยา…" aria-label="ค้นหายา" className={`w-full border border-gray-300 bg-white pl-9 pr-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4E79A7] ${compact ? 'rounded-xl py-2.5 text-base' : 'rounded-lg py-2 text-sm'}`} /></label>
         <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="เลือกตามอาการ">
           {chip('all', `ทั้งหมด ${items.length}`, !tag && !needle, () => { setTag(''); setQ(''); })}
@@ -91,7 +95,7 @@ export function PickBoard({ items: allItems, avail, opened, cart, onChange, freq
         </div>
       </div>
       <div className={`grid ${compact ? 'gap-2.5' : 'gap-2'} ${columns}`}>
-        {list.length === 0 && <p className="col-span-full py-10 text-center text-sm text-gray-500">{needle ? `ไม่พบ “${q}” — ลองเลือกจากอาการ` : 'ไม่มีรายการในกลุ่มนี้'}</p>}
+        {list.length === 0 && (!needle && !tag && emptyHint ? <div className="col-span-full">{emptyHint}</div> : <p className="col-span-full py-10 text-center text-sm text-gray-500">{needle ? `ไม่พบ “${q}” — ลองเลือกจากอาการ` : 'ไม่มีรายการในกลุ่มนี้'}</p>)}
         {list.map(i => { const a = avail(i); const qty = cart[i.id] || 0; const on = qty > 0; const full = !on && lines >= maxLines;
           if (i.dispenseMode === 'shared') {
             const op = opened?.(i) || null; const openQty = cart[openKey(i.id)] || 0; const inUse = !!op && !op.expired; const out = !inUse && a === 0;
@@ -105,8 +109,8 @@ export function PickBoard({ items: allItems, avail, opened, cart, onChange, freq
                 </button>
                 <div className="mt-2 flex flex-col gap-1.5">
                   {!out && a > 0 && (openQty > 0
-                    ? <button type="button" onClick={() => onChange(openKey(i.id), 0)} className="h-8 w-full rounded-lg border px-1 text-xs font-medium truncate" style={{ borderColor: VIZ.secondary, color: '#9a5410', background: `${VIZ.secondary}14` }}>✓ เปิดขวดใหม่ · ยกเลิก</button>
-                    : <button type="button" disabled={lines >= maxLines} onClick={() => onChange(openKey(i.id), 1)} className="h-8 w-full rounded-lg border border-gray-300 bg-white px-1 text-xs font-medium text-gray-700 truncate hover:bg-gray-50 disabled:opacity-40">{inUse ? 'ขวดหมด → เปิดใหม่' : 'เปิดขวดใหม่'}</button>)}
+                    ? <button type="button" onClick={() => onChange(openKey(i.id), 0)} className="h-10 w-full rounded-lg border px-1 text-xs font-medium truncate md:h-8" style={{ borderColor: VIZ.secondary, color: '#9a5410', background: `${VIZ.secondary}14` }}>✓ เปิดขวดใหม่ · ยกเลิก</button>
+                    : <button type="button" disabled={lines >= maxLines} onClick={() => onChange(openKey(i.id), 1)} className="h-10 w-full rounded-lg border border-gray-300 bg-white px-1 text-xs font-medium text-gray-700 truncate hover:bg-gray-50 disabled:opacity-40 md:h-8">{inUse ? 'ขวดหมด → เปิดใหม่' : 'เปิดขวดใหม่'}</button>)}
                   {out ? soldOut
                     : on ? quantity(qty, n => onChange(i.id, n), 99, 'ครั้ง')
                     : <button type="button" disabled={full || !inUse} title={inUse ? undefined : 'ยังไม่มีขวดที่เปิดอยู่ — กด “เปิดขวดใหม่” ก่อน'} onClick={() => onChange(i.id, 1)} className={primary} style={{ background: FA_GREEN }}>ใช้ 1 ครั้ง</button>}
@@ -127,6 +131,7 @@ export function PickBoard({ items: allItems, avail, opened, cart, onChange, freq
               </div>
             </div>); })}
       </div>
+      {never.length > 0 && !needle && <p className="text-sm text-gray-600">{showNever ? `กำลังแสดง ${fmtInt(never.length)} รายการที่ยังไม่เคยมีของที่จุดนี้ด้วย` : `ซ่อน ${fmtInt(never.length)} รายการที่ยังไม่เคยมีของที่จุดนี้`} · <button type="button" className="underline font-medium" style={{ color: FA_GREEN }} onClick={() => setShowNever(v => !v)}>{showNever ? 'ซ่อน' : 'แสดงทั้งหมด'}</button></p>}
       {lines >= maxLines && <p className="text-xs" style={{ color: VIZ.secondary }}>เลือกได้สูงสุด {maxLines} รายการต่อใบ — บันทึกใบนี้ก่อนแล้วค่อยเลือกเพิ่ม</p>}
     </div>
   );
@@ -150,18 +155,25 @@ function QtyPill({ value, onChange, max, suffix = '', narrow = false, editable =
 const REASONS = DISPENSE_REASONS;
 
 /** The "ticket": who is collecting + what + why → one save. */
-export function TicketPanel({ items, cart, avail, onQty, who, setWho, dept, setDept, departments, reason, setReason, requireName, children, onSubmit, busy, err, submitLabel, hint, compact = false }: {
+export function TicketPanel({ items, cart, avail, onQty, who, setWho, dept, setDept, departments, reason, setReason, requireName, children, onSubmit, busy, err, submitLabel, hint, compact = false, employees, whoId = '', setWhoId }: {
   items: FaItem[]; cart: Cart; avail: (item: FaItem) => number; onQty: (key: string, qty: number) => void;
   who: string; setWho: (v: string) => void; dept: string; setDept: (v: string) => void; departments: string[]; reason: string; setReason: (v: string) => void;
   requireName: boolean; children?: ReactNode; onSubmit: () => void; busy: boolean; err: string; submitLabel: string; hint?: ReactNode;
   /** Phone (QR page): quantities change by tapping only; on desktop the number can also be typed. */ compact?: boolean;
+  /** Staff screens only: the company's employee register, offered while typing a name or code. Never passed on the open QR page. */ employees?: FirstAidEmployee[];
+  /** The employee picked from the register ('' = typed by hand). */ whoId?: string; setWhoId?: (id: string) => void;
 }) {
   const [deptOther, setDeptOther] = useState(false);
+  const [sugOpen, setSugOpen] = useState(false); const [sugCursor, setSugCursor] = useState(0);
+  const pickedEmployee = whoId ? employees?.find(e => e.id === whoId) : undefined;
+  const whoNeedle = who.trim().toLowerCase();
+  const suggestions = useMemo(() => (!employees || whoId || whoNeedle.length < 2 ? [] : employees.filter(e => `${e.name} ${e.code}`.toLowerCase().includes(whoNeedle)).slice(0, 6)), [employees, whoId, whoNeedle]);
+  const pickEmployee = (e: FirstAidEmployee) => { setWho(e.name); setWhoId?.(e.id); setDept(e.department); setDeptOther(false); setSugOpen(false); };
   const lines = cartLines(items, cart);
   const total = lines.filter(l => l.usage !== 'use').reduce((s, l) => s + l.qty, 0);
   const uses = lines.filter(l => l.usage === 'use').reduce((s, l) => s + l.qty, 0);
   const depts = useMemo(() => [...departments.filter(d => d !== 'ผู้รับเหมา').slice(0, 8), 'ผู้รับเหมา'], [departments]);
-  const pill = (on: boolean) => `rounded-full border px-3 py-1.5 text-sm ${on ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`;
+  const pill = (on: boolean) => `inline-flex min-h-11 items-center rounded-full border px-3.5 py-1.5 text-sm md:min-h-0 md:px-3 ${on ? 'text-white border-transparent' : 'bg-white border-gray-300 text-gray-700'}`;
   const summary = [total ? `${fmtInt(total)} ชิ้น` : '', uses ? `ใช้ ${fmtInt(uses)} ครั้ง` : ''].filter(Boolean).join(' · ');
   return (
     <div className="flex flex-col gap-3">
@@ -177,22 +189,34 @@ export function TicketPanel({ items, cart, avail, onQty, who, setWho, dept, setD
         </div></div>)}
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-800 mb-1" htmlFor="tk-who">ผู้เบิกยา {requireName ? <span style={{ color: VIZ.accent }}>* จำเป็น</span> : <span className="font-normal text-gray-400">(ไม่บังคับ)</span>}</label>
-        <input id="tk-who" value={who} onChange={e => setWho(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900" placeholder="ชื่อ-นามสกุล หรือรหัสพนักงาน" />
+        <label className="block text-sm font-medium text-gray-800 mb-1" htmlFor="tk-who">ผู้เบิกยา {requireName ? <span style={{ color: VIZ.accent }}>* จำเป็น</span> : <span className="font-normal text-gray-500">(ไม่บังคับ)</span>}</label>
+        <div className="relative">
+          <input id="tk-who" value={who} autoComplete="off" role={employees ? 'combobox' : undefined} aria-expanded={employees ? sugOpen && suggestions.length > 0 : undefined} aria-controls={employees ? 'tk-who-hits' : undefined}
+            onChange={e => { setWho(e.target.value); setWhoId?.(''); setSugOpen(true); setSugCursor(0); }} onFocus={() => setSugOpen(true)} onBlur={() => setSugOpen(false)}
+            onKeyDown={e => { if (!sugOpen || !suggestions.length) return; if (e.key === 'ArrowDown') { e.preventDefault(); setSugCursor(c => Math.min(suggestions.length - 1, c + 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); setSugCursor(c => Math.max(0, c - 1)); } else if (e.key === 'Enter' && suggestions[sugCursor]) { e.preventDefault(); pickEmployee(suggestions[sugCursor]); } else if (e.key === 'Escape') { e.stopPropagation(); setSugOpen(false); } }}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900" placeholder={employees ? 'พิมพ์ชื่อหรือรหัสพนักงาน แล้วเลือกจากรายชื่อ' : 'ชื่อ-นามสกุล หรือรหัสพนักงาน'} />
+          {sugOpen && suggestions.length > 0 && (
+            <ul id="tk-who-hits" role="listbox" className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+              {suggestions.map((e, i) => <li key={e.id} role="option" aria-selected={i === sugCursor}><button type="button" onMouseDown={ev => ev.preventDefault()} onMouseEnter={() => setSugCursor(i)} onClick={() => pickEmployee(e)} className={`block w-full px-3 py-2 text-left ${i === sugCursor ? 'bg-[#4E79A7]/10' : ''}`}><span className="block truncate font-medium text-gray-900">{e.name}</span><span className="block truncate text-xs text-gray-600">{[e.code ? `รหัส ${e.code}` : '', e.department].filter(Boolean).join(' · ') || 'ไม่ระบุแผนก'}</span></button></li>)}
+              <li className="border-t border-gray-100 bg-gray-50 px-3 py-1.5 text-xs text-gray-600">ไม่พบชื่อในรายการ → พิมพ์ชื่อต่อได้เลย แล้วเลือกแผนกด้านล่าง</li>
+            </ul>)}
+        </div>
+        {pickedEmployee ? <p className="mt-2 text-sm text-gray-700"><span style={{ color: VIZ.positive }}>✓ จากรายชื่อพนักงาน</span> · {[pickedEmployee.code ? `รหัส ${pickedEmployee.code}` : '', `แผนก ${pickedEmployee.department || 'ไม่ระบุ'}`].filter(Boolean).join(' · ')}</p> : <>
         <div className="flex flex-wrap gap-1.5 mt-2">
           {depts.map(d => <button key={d} type="button" onClick={() => { setDeptOther(false); setDept(dept === d ? '' : d); }} className={pill(dept === d && !deptOther)} style={dept === d && !deptOther ? { background: FA_GREEN } : undefined}>{d}</button>)}
           <button type="button" onClick={() => { setDeptOther(o => !o); if (!deptOther) setDept(''); }} className={pill(deptOther)} style={deptOther ? { background: FA_GREEN } : undefined}>อื่น ๆ</button>
         </div>
         {deptOther && <input value={dept} onChange={e => setDept(e.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900" placeholder="พิมพ์ชื่อแผนก / บริษัท" aria-label="แผนกอื่น" autoFocus />}
+        </>}
       </div>
       <div>
-        <div className="text-sm font-medium text-gray-800 mb-1">อาการ / เหตุผล <span className="font-normal text-gray-400">(ไม่บังคับ)</span></div>
+        <div className="text-sm font-medium text-gray-800 mb-1">อาการ / เหตุผล <span className="font-normal text-gray-500">(ไม่บังคับ)</span></div>
         <div className="flex flex-wrap gap-1.5">{REASONS.map(r => <button key={r} type="button" onClick={() => setReason(reason === r ? '' : r)} className={pill(reason === r)} style={reason === r ? { background: FA_GREEN } : undefined}>{r}</button>)}</div>
       </div>
       {children}
       {err && <p className="text-sm" style={{ color: VIZ.accent }}>{err}</p>}
       <button type="button" disabled={busy || lines.length === 0} onClick={onSubmit} className="h-12 w-full rounded-xl text-white text-base font-semibold disabled:opacity-50" style={{ background: FA_GREEN }}>{busy ? 'กำลังบันทึก…' : `${submitLabel} (${lines.length} รายการ${summary ? ` · ${summary}` : ''})`}</button>
-      {hint && <div className="text-xs text-gray-400">{hint}</div>}
+      {hint && <div className="text-xs leading-relaxed text-gray-600">{hint}</div>}
     </div>
   );
 }
