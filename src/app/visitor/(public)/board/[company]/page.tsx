@@ -18,6 +18,12 @@ const PALETTES: Record<ThemeName, Palette> = {
   light: { bg: '#F3F5F8', panel: '#FFFFFF', line: '#E2E8F0', text: '#1F2937', dim: '#6B7280', primary: '#4E79A7', positive: '#59A14F', warn: '#F28E2B', danger: '#E15759', onAccent: '#FFFFFF' },
 };
 type Tab = 'yesterday' | 'today' | 'tomorrow';
+const POLL_MS = 60_000;
+const POLL_OFF_HOURS_MS = 600_000;
+const WORK_START_HOUR = 6; // Bangkok time
+const WORK_END_HOUR = 20;
+const QUIET_START_HOUR = 23; // no auto-refresh 23:00-04:00
+const QUIET_END_HOUR = 4;
 type BgMode = 'company' | 'custom' | 'none';
 type Prefs = { theme: ThemeName; bgMode: BgMode; bg: string | null; dim: number; collapsed: string[]; showPending?: boolean; showRejected?: boolean };
 const PREFS_KEY = 'visitor_board_prefs_v1';
@@ -53,11 +59,24 @@ export default function BoardPage() {
     .then(r => { setData(r.data); setError(''); })
     .catch((e: unknown) => setError(e instanceof FetchError ? e.message : 'โหลดข้อมูลไม่สำเร็จ')), [company]);
 
+  // Auto-refresh (Bangkok time): every 60s in working hours (06:00-20:00), every 10 min in 20:00-23:00 and 04:00-06:00,
+  // none at all in 23:00-04:00, and never while the tab is hidden.
+  // Coming back to the tab refreshes at once; guard actions already reload after each POST.
   useEffect(() => {
-    void load();
-    const t = setInterval(load, 30_000);
+    let last = Date.now();
+    const run = () => { last = Date.now(); void load(); };
+    run();
+    const tick = setInterval(() => {
+      if (document.hidden) return;
+      const hour = new Date(Date.now() + 7 * 3600 * 1000).getUTCHours();
+      if (hour >= QUIET_START_HOUR || hour < QUIET_END_HOUR) return;
+      const every = hour >= WORK_START_HOUR && hour < WORK_END_HOUR ? POLL_MS : POLL_OFF_HOURS_MS;
+      if (Date.now() - last >= every - 1000) run();
+    }, POLL_MS);
+    const onVisible = () => { if (!document.hidden && Date.now() - last >= 10_000) run(); };
+    document.addEventListener('visibilitychange', onVisible);
     const clock = setInterval(() => setNow(new Date()), 1000);
-    return () => { clearInterval(t); clearInterval(clock); };
+    return () => { clearInterval(tick); clearInterval(clock); document.removeEventListener('visibilitychange', onVisible); };
   }, [load]);
 
   const tomorrow = useMemo(() => (data ? shift(data.today, 1) : ''), [data]);
