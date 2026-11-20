@@ -164,11 +164,21 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
     setExtracting(false);
   };
 
+  /** Copy the picked file into memory: Chrome fails the upload with a bare "Failed to fetch" when the file on disk is
+   *  moved, synced (Drive/OneDrive) or re-downloaded between picking it and pressing save. */
+  const pickFile = async (file: File | null) => {
+    if (!file) { setPendingFile(null); return; }
+    try { setPendingFile(new File([await file.arrayBuffer()], file.name, { type: file.type || 'application/pdf' })); }
+    catch { setPendingFile(null); if (fileRef.current) fileRef.current.value = ''; setError('อ่านไฟล์ SDS ไม่ได้ — ไฟล์อาจถูกย้ายหรือยังดาวน์โหลดไม่เสร็จ กรุณาเลือกไฟล์อีกครั้ง'); }
+  };
+  const networkMessage = (step: 'upload' | 'save') => step === 'upload'
+    ? 'ส่งไฟล์ SDS ไม่สำเร็จ (การเชื่อมต่อขาด หรือไฟล์ถูกย้าย/แก้ไขหลังเลือก) — ข้อมูลในฟอร์มยังอยู่ กดเลือกไฟล์ SDS อีกครั้งแล้วบันทึก'
+    : 'การเชื่อมต่อขาดระหว่างบันทึก — ข้อมูลในฟอร์มยังอยู่ ตรวจในทะเบียน (แท็บใหม่) ว่ามีรายการนี้แล้วหรือยังก่อนกดบันทึกซ้ำ เพื่อไม่ให้เกิดรายการซ้ำ';
   const uploadPending = async (): Promise<{ path: string; file_name: string } | null> => {
     if (!pendingFile) return null;
     const fd = new FormData(); fd.append('file', pendingFile); fd.append('company_id', companyId);
-    const res = await fetch('/api/chemical/sds', { method: 'POST', body: fd });
-    const data = await res.json();
+    const res = await fetch('/api/chemical/sds', { method: 'POST', body: fd }).catch(() => { throw new Error(networkMessage('upload')); });
+    const data = await res.json().catch(() => ({ error: res.status === 413 ? 'ไฟล์ใหญ่เกินขีดจำกัดการส่ง กรุณาลดขนาด PDF หรือใช้ลิงก์แทน' : `อัปโหลดไม่สำเร็จ (HTTP ${res.status})` }));
     if (!res.ok) throw new Error(data.error || 'อัปโหลดไม่สำเร็จ');
     return { path: data.path, file_name: data.file_name };
   };
@@ -190,8 +200,8 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
       if (!initial) payload.created_by = createdBy;
       const res = await fetch(initial ? `/api/chemical/substances/${initial.id}` : '/api/chemical/substances', {
         method: initial ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, ai_filled_fields: aiFields, expected_updated_at: initial?.updated_at }),
-      });
-      const data = await res.json();
+      }).catch(() => { throw new Error(networkMessage('save')); });
+      const data = await res.json().catch(() => ({ error: `บันทึกไม่สำเร็จ (HTTP ${res.status})` }));
       if (!res.ok) throw new Error(data.detail || data.error || 'บันทึกไม่สำเร็จ');
       setDirty(false);
       onSaved(data.data as ChemSubstance);
@@ -236,7 +246,7 @@ export default function SubstanceForm({ companyId, companyName, areas, initial, 
             {sdsMode === 'file' ? (
               <div className="flex flex-wrap items-center gap-3">
                 <input ref={fileRef} type="file" accept="application/pdf,image/png,image/jpeg" className="hidden"
-                  onChange={e => { markChanged(); setPendingFile(e.target.files?.[0] || null); }} />
+                  onChange={e => { markChanged(); void pickFile(e.target.files?.[0] || null); }} />
                 <button type="button" onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-lg border border-dashed border-gray-400 text-sm text-gray-700 hover:bg-gray-50">
                   เลือกไฟล์ PDF (≤ 25 MB)
                 </button>
