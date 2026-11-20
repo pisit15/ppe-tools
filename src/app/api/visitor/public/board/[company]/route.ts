@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { AccessError, apiError, assertSameOrigin } from '@/lib/toolsSession';
 import { REQUEST_SELECT, addEvent, boardPayload, db, sortPersons } from '@/lib/visitor/server';
@@ -12,11 +13,17 @@ const UUID = /^[0-9a-f-]{36}$/;
 type ReqMeta = { id: string; company_id: string; status: string; arrival_date: string };
 
 /** Public guard-post board (owner decision: no login, no token). Approved requests only, yesterday..tomorrow. */
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ company: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ company: string }> }) {
   try {
     const { company } = await params;
     if (!COMPANY.test(company)) throw new AccessError('ไม่พบบริษัท', 404);
-    return NextResponse.json({ data: await boardPayload(company.toLowerCase()) }, { headers: { 'Cache-Control': 'no-store' } });
+    const data = await boardPayload(company.toLowerCase());
+    // The board polls all day and the payload carries the company background image: when the caller already holds
+    // this exact payload (?v=<hash>), answer with a few bytes instead of sending it again.
+    const v = createHash('sha1').update(JSON.stringify(data)).digest('hex').slice(0, 16);
+    const headers = { 'Cache-Control': 'no-store' };
+    if (request.nextUrl.searchParams.get('v') === v) return NextResponse.json({ unchanged: true, v }, { headers });
+    return NextResponse.json({ data, v }, { headers });
   } catch (error) {
     return apiError(error);
   }

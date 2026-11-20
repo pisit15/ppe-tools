@@ -55,8 +55,10 @@ export default function BoardPage() {
   useEffect(() => { setPrefs(loadPrefs()); }, []);
   const updatePrefs = useCallback((patch: Partial<Prefs>) => setPrefs(prev => { const next = { ...prev, ...patch }; savePrefs(next); return next; }), []);
 
-  const load = useCallback(() => getJson<{ data: BoardPayload }>(`/api/visitor/public/board/${encodeURIComponent(company)}`)
-    .then(r => { setData(r.data); setError(''); })
+  // The server answers { unchanged: true } when we already hold the payload with this version hash.
+  const version = useRef('');
+  const load = useCallback(() => getJson<{ data?: BoardPayload; v?: string; unchanged?: boolean }>(`/api/visitor/public/board/${encodeURIComponent(company)}${version.current ? `?v=${version.current}` : ''}`)
+    .then(r => { if (r.data) { setData(r.data); version.current = r.v || ''; } setError(''); })
     .catch((e: unknown) => setError(e instanceof FetchError ? e.message : 'โหลดข้อมูลไม่สำเร็จ')), [company]);
 
   // Auto-refresh (Bangkok time): every 60s in working hours (06:00-20:00), every 10 min in 20:00-23:00 and 04:00-06:00,
