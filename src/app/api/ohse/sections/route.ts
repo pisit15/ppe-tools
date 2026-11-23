@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiError, assertCompany, AccessError } from '@/lib/toolsSession';
-import { cleanSectionInput, db, listSections, requireOhseStaff } from '@/lib/ohse/server';
+import { cleanSectionInput, db, getSection, listSections, requireOhseStaff } from '@/lib/ohse/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +22,12 @@ export async function POST(request: NextRequest) {
     const company = String(body?.company_id || '');
     assertCompany(actor, company, true);
     const input = cleanSectionInput(body, false);
+    if (company === 'amt' && input.parent_id) {
+      if (!/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(input.parent_id)) {
+        throw new AccessError('หมวดหลักไม่ถูกต้อง', 400);
+      }
+      await getSection(company, input.parent_id);
+    }
     const { data, error } = await db().from('ohse_sections').insert([{ ...input, company_id: company }]).select('*').single();
     if (error) {
       if (String(error.code) === '23505') throw new AccessError(`รหัสหมวด "${input.code}" มีอยู่แล้ว`, 400);

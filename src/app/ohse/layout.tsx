@@ -19,6 +19,7 @@ export default function OhseLayout({ children }: { children: React.ReactNode }) 
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [company, setCompanyState] = useState(() => (typeof window !== 'undefined' && window.localStorage.getItem(STORAGE_KEY)) || 'amt');
   const [menuOpen, setMenuOpen] = useState(false);
+  const isAmt = company === 'amt';
 
   useEffect(() => {
     if (!user) return;
@@ -37,16 +38,16 @@ export default function OhseLayout({ children }: { children: React.ReactNode }) 
     <CompanyContext.Provider value={ctx}>
       <div className="min-h-screen" style={{ background: PAGE_BG, color: VIZ.text }}>
         <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-            <Link href="/ohse" className="flex items-center gap-3 shrink-0">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg text-white" style={{ background: VIZ.primary }}><FolderOpen size={18} /></span>
-              <span><span className="block font-semibold leading-tight" style={{ color: VIZ.primary }}>SHE Data Center</span><span className="block text-xs text-gray-500">ศูนย์รวมเอกสาร ความปลอดภัย อาชีวอนามัย สิ่งแวดล้อม</span></span>
+          <div className={`max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between ${isAmt ? "gap-2 sm:gap-4" : "gap-4"}`}>
+            <Link href="/ohse" className={isAmt ? "flex min-w-0 items-center gap-2 sm:gap-3" : "flex items-center gap-3 shrink-0"}>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white" style={{ background: VIZ.primary }}><FolderOpen size={18} /></span>
+              <span className={isAmt ? "min-w-0" : undefined}><span className={isAmt ? "block truncate font-semibold leading-tight" : "block font-semibold leading-tight"} style={{ color: VIZ.primary }}>SHE Data Center</span><span className={isAmt ? "hidden truncate text-xs text-gray-500 sm:block" : "block text-xs text-gray-500"}>ศูนย์รวมเอกสาร ความปลอดภัย อาชีวอนามัย สิ่งแวดล้อม</span></span>
             </Link>
             <div className="flex items-center gap-2 sm:gap-3 text-sm">
               {isAdmin ? (
                 <div className="relative">
                   <button type="button" onClick={() => setMenuOpen(o => !o)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <span className="max-w-[140px] truncate">{companyName}</span><ChevronDown size={14} />
+                    <span className={isAmt ? "max-w-20 truncate sm:max-w-[140px]" : "max-w-[140px] truncate"}>{companyName}</span><ChevronDown size={14} />
                   </button>
                   {menuOpen && (
                     <>

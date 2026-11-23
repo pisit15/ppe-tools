@@ -3,11 +3,12 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Edit3, ExternalLink, Eye, EyeOff, FileText, FolderOpen, History, KeyRound, Link2, Paperclip, Plus, Search, Upload } from 'lucide-react';
+import { ChevronRight, LayoutGrid, ListTree, Edit3, ExternalLink, Eye, EyeOff, FileText, FolderOpen, History, KeyRound, Link2, Paperclip, Plus, Search, Upload } from 'lucide-react';
 import {
   ConfirmButton, Drawer, EmptyState, Modal, Spinner, ToastView, VIZ, btnGhost, btnPrimary, btnSecondary, cardClass, errMsg,
   formatBytes, getJson, inputClass, labelClass, postJson, thaiDate, useCompany, useToast,
 } from '@/app/inspect/_components/ui';
+import { AddAmtSectionModal, AmtCategories } from './amt-categories';
 import { OHSE_KIND_LABEL } from '@/lib/ohse/constants';
 import type { OhseCompanySettingsView, OhseDocumentRow, OhseSectionKind, OhseSectionView } from '@/lib/types';
 
@@ -31,13 +32,19 @@ function daysLeft(ymd: string | null) {
 
 export default function OhsePage() {
   const { company } = useCompany();
+  return <OhseWorkspace key={company} company={company} />;
+}
+
+function OhseWorkspace({ company }: { company: string }) {
+  const isAmt = company === 'amt';
   const { toast, setToast } = useToast();
   const [sections, setSections] = useState<OhseSectionView[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const [docs, setDocs] = useState<OhseDocumentRow[]>([]);
-  const [docsLoading, setDocsLoading] = useState(false);
+  const [docResult, setDocResult] = useState<{ key: string; rows: OhseDocumentRow[] } | null>(null);
+  const [loadingDocsKey, setLoadingDocsKey] = useState<string | null>(null);
+  const docsRequest = useRef<AbortController | null>(null);
   const [history, setHistory] = useState(false);
   const [query, setQuery] = useState('');
   const [form, setForm] = useState<DocForm | null>(null);
@@ -45,6 +52,9 @@ export default function OhsePage() {
   const [uploading, setUploading] = useState(false);
   const [sectionEdit, setSectionEdit] = useState<OhseSectionView | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [addSection, setAddSection] = useState<{ parent: string | null } | null>(null);
+  const [sectionsFailed, setSectionsFailed] = useState(false);
+  const [treeExpanded, setTreeExpanded] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const byId = useMemo(() => new Map(sections.map(s => [s.id, s])), [sections]);
@@ -59,27 +69,44 @@ export default function OhsePage() {
 
   const loadSections = useCallback(async () => {
     setLoading(true);
+    setSectionsFailed(false);
     try {
       const r = await getJson<{ data: OhseSectionView[] }>(`/api/ohse/sections?company=${company}`);
       setSections(r.data);
-      setSelected(cur => (cur && r.data.some(s => s.id === cur) ? cur : r.data.find(s => !s.parent_id && s.kind !== 'folder')?.id || r.data[0]?.id || null));
-    } catch (e) { setToast({ type: 'error', msg: errMsg(e) }); } finally { setLoading(false); }
-  }, [company, setToast]);
+      setSelected(cur => (cur && r.data.some(s => s.id === cur) ? cur : isAmt ? null : r.data.find(s => !s.parent_id && s.kind !== 'folder')?.id || r.data[0]?.id || null));
+    } catch (e) { setSectionsFailed(true); setToast({ type: 'error', msg: errMsg(e) }); } finally { setLoading(false); }
+  }, [company, isAmt, setToast]);
   useEffect(() => { loadSections(); }, [loadSections]);
 
   const searching = query.trim().length >= 2;
+  const docsKey = searching ? JSON.stringify([query.trim(), null, history]) : selected ? JSON.stringify([null, selected, history]) : null;
+  const docs = docsKey && docResult?.key === docsKey ? docResult.rows : [];
+  const docsLoading = Boolean(docsKey && (loadingDocsKey === docsKey || docResult?.key !== docsKey));
   const loadDocs = useCallback(async () => {
-    if (!searching && !selected) { setDocs([]); return; }
-    setDocsLoading(true);
+    docsRequest.current?.abort();
+    if (!docsKey) return;
+    const request = new AbortController();
+    docsRequest.current = request;
+    setLoadingDocsKey(docsKey);
     try {
       const p = new URLSearchParams({ company });
       if (searching) p.set('q', query.trim()); else p.set('section', selected!);
       if (history) p.set('history', '1');
-      const r = await getJson<{ data: OhseDocumentRow[] }>(`/api/ohse/documents?${p}`);
-      setDocs(r.data);
-    } catch (e) { setToast({ type: 'error', msg: errMsg(e) }); } finally { setDocsLoading(false); }
-  }, [company, selected, history, searching, query, setToast]);
-  useEffect(() => { const t = setTimeout(loadDocs, searching ? 300 : 0); return () => clearTimeout(t); }, [loadDocs, searching]);
+      const r = await getJson<{ data: OhseDocumentRow[] }>(`/api/ohse/documents?${p}`, { signal: request.signal });
+      if (!request.signal.aborted) setDocResult({ key: docsKey, rows: r.data });
+    } catch (e) {
+      if (!request.signal.aborted) {
+        setDocResult({ key: docsKey, rows: [] });
+        setToast({ type: 'error', msg: errMsg(e) });
+      }
+    } finally {
+      if (!request.signal.aborted) setLoadingDocsKey(null);
+    }
+  }, [company, docsKey, selected, history, searching, query, setToast]);
+  useEffect(() => {
+    const timer = setTimeout(loadDocs, searching ? 300 : 0);
+    return () => { clearTimeout(timer); docsRequest.current?.abort(); };
+  }, [loadDocs, searching]);
 
   const openFile = async (d: OhseDocumentRow) => {
     try {
@@ -141,8 +168,26 @@ export default function OhsePage() {
     } catch (e) { setToast({ type: 'error', msg: errMsg(e) }); }
   };
 
+  const addSectionModal = isAmt && addSection && (
+    <AddAmtSectionModal sections={sections} initialParent={addSection.parent} onClose={() => setAddSection(null)} onSaved={() => {
+      setAddSection(null);
+      setToast({ type: 'success', msg: 'เพิ่มหมวดแล้ว' });
+      void loadSections();
+    }} />
+  );
+
   if (loading) return <Spinner />;
-  if (!sections.length) return <div className={cardClass}><EmptyState icon={<FolderOpen size={40} />} title="ยังไม่มีหมวดของบริษัทนี้" hint="ติดต่อผู้ดูแลระบบเพื่อตั้งค่าโครงสร้างหมวดเริ่มต้น" /></div>;
+  if (isAmt && sectionsFailed) return (
+    <div className={cardClass}>
+      <ToastView toast={toast} />
+      <p className="mb-3 text-sm text-gray-700">โหลดหมวดเอกสารไม่สำเร็จ</p>
+      <button type="button" className={btnSecondary} onClick={() => void loadSections()}>ลองอีกครั้ง</button>
+    </div>
+  );
+  if (!isAmt && !sections.length) return <div className={cardClass}><EmptyState icon={<FolderOpen size={40} />} title="ยังไม่มีหมวดของบริษัทนี้" hint="ติดต่อผู้ดูแลระบบเพื่อตั้งค่าโครงสร้างหมวดเอกสาร" /></div>;
+  const overview = isAmt && !selected && !searching;
+  const showOverview = () => { setSelected(null); setQuery(''); setHistory(false); };
+  const showSection = (id: string) => { setSelected(id); setQuery(''); setHistory(false); };
 
   const kind: OhseSectionKind | null = section?.kind || null;
   const listKind: OhseSectionKind = searching ? 'documents' : kind || 'documents';
@@ -174,14 +219,21 @@ export default function OhsePage() {
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+    <div className={isAmt ? "grid items-start gap-4 lg:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)] lg:gap-6" : "grid gap-6 lg:grid-cols-[320px_1fr]"}>
       <ToastView toast={toast} />
       <aside className={`${cardClass} !p-3 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto`}>
+        {isAmt && <div className="mb-3 grid grid-cols-2 gap-2">
+          <button type="button" onClick={showOverview} aria-pressed={overview} className={`${btnSecondary} !px-2`}><LayoutGrid size={16} />ทุกหมวด</button>
+          <button type="button" onClick={() => setAddSection({ parent: null })} className={`${btnPrimary} !px-2`} style={{ background: VIZ.primary }}><Plus size={16} />เพิ่มหมวด</button>
+        </div>}
         <div className="relative mb-3">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="ค้นหาเลขที่ / ชื่อเอกสาร ทุกหมวด" className={`${inputClass} !pl-9 !py-2 text-sm`} />
         </div>
-        <Tree parent={null} depth={0} />
+        {isAmt ? <>
+          <button type="button" aria-expanded={treeExpanded} aria-controls="ohse-category-tree" className={`${btnGhost} w-full lg:!hidden`} onClick={() => setTreeExpanded(value => !value)}><ListTree size={16} />รายการหมวด</button>
+          <nav id="ohse-category-tree" aria-label="รายการหมวด" className={treeExpanded ? '' : 'hidden lg:block'}><Tree parent={null} depth={0} /></nav>
+        </> : <Tree parent={null} depth={0} />}
         <div className="mt-3 border-t border-gray-100 pt-3 flex flex-col gap-1">
           <button type="button" onClick={() => setSettingsOpen(true)} className={`${btnGhost} justify-start`}><KeyRound size={15} />รหัสเข้าดูสำหรับพนักงาน (LINE)</button>
           <p className="px-3 text-xs text-gray-400 flex items-center gap-1"><Eye size={12} style={{ color: VIZ.positive }} />พนักงานเห็นใน LINE <EyeOff size={12} className="ml-2" />เฉพาะทีม SHE</p>
@@ -189,7 +241,7 @@ export default function OhsePage() {
       </aside>
 
       <section className="min-w-0">
-        <div className={cardClass}>
+        {overview ? <AmtCategories sections={children.get(null) || []} onOpen={showSection} /> : <div className={cardClass}>
           {searching ? (
             <div className="mb-4"><h1 className="text-lg font-semibold text-gray-900">ผลการค้นหา “{query.trim()}”</h1><p className="text-sm text-gray-500">ค้นทุกหมวดของบริษัทนี้</p></div>
           ) : section && (
@@ -204,6 +256,7 @@ export default function OhsePage() {
                   {section.employee_visible ? <><Eye size={15} style={{ color: VIZ.positive }} />พนักงานเห็น</> : <><EyeOff size={15} />เฉพาะทีม SHE</>}
                 </button>
                 <button type="button" onClick={() => setSectionEdit(section)} className={btnSecondary}><Edit3 size={15} />แก้หมวด</button>
+                {isAmt && <button type="button" onClick={() => setAddSection({ parent: section.id })} className={btnSecondary}><Plus size={15} />เพิ่มหมวดย่อย</button>}
                 {kind !== 'folder' && kind !== 'link' && <button type="button" onClick={() => setForm(emptyForm(section.id))} className={btnPrimary} style={{ background: VIZ.primary }}><Plus size={15} />เพิ่มรายการ</button>}
               </div>
             </div>
@@ -215,10 +268,10 @@ export default function OhsePage() {
               : <EmptyState icon={<Link2 size={36} />} title="ยังไม่ได้ใส่ลิงก์" hint="กด แก้หมวด เพื่อใส่ลิงก์ไประบบที่ใช้งานจริง" />
           )}
 
-          {!searching && kind === 'folder' && section && (
+          {!searching && section && (kind === 'folder' || (isAmt && (children.get(section.id)?.length || 0) > 0)) && (
             <div className="grid gap-3 sm:grid-cols-2">
               {(children.get(section.id) || []).map(c => (
-                <button key={c.id} type="button" onClick={() => setSelected(c.id)} className="text-left rounded-xl border border-gray-100 p-4 hover:border-[#4E79A7]/40 hover:bg-[#4E79A7]/5">
+                <button key={c.id} type="button" onClick={() => isAmt ? showSection(c.id) : setSelected(c.id)} className="text-left rounded-xl border border-gray-100 p-4 hover:border-[#4E79A7]/40 hover:bg-[#4E79A7]/5">
                   <p className="text-xs text-gray-400">{c.code} · {OHSE_KIND_LABEL[c.kind]}</p>
                   <p className="font-medium text-gray-800">{c.title}</p>
                   <p className="text-sm text-gray-500 mt-1">{c.kind === 'link' ? 'ลิงก์' : `${totalDocs(c.id)} รายการ`}</p>
@@ -291,7 +344,7 @@ export default function OhsePage() {
               )}
             </>
           )}
-        </div>
+        </div>}
       </section>
 
       {/* Document drawer */}
@@ -360,6 +413,7 @@ export default function OhsePage() {
         })()}
       </Drawer>
 
+      {addSectionModal}
       {sectionEdit && <SectionModal section={sectionEdit} company={company} onClose={() => setSectionEdit(null)} onSaved={() => { setSectionEdit(null); loadSections(); }} onError={m => setToast({ type: 'error', msg: m })} />}
       {settingsOpen && <AccessCodeModal company={company} onClose={() => setSettingsOpen(false)} onSaved={m => { setSettingsOpen(false); setToast({ type: 'success', msg: m }); }} onError={m => setToast({ type: 'error', msg: m })} />}
     </div>
