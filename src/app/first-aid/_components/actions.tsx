@@ -128,28 +128,36 @@ export function WriteOffModal({ item, onClose, onDone }: { item: FaItem | null; 
 }
 
 const VOID_REASONS = ['บันทึกผิดรายการ', 'ผิดจำนวน', 'ผิดคน', 'บันทึกซ้ำ'];
-/** Cancel a whole dispense ticket recorded by mistake: its stock returns to the lots it came from and the ticket stays in the day list, struck through. */
+const VOID_RECEIPT_REASONS = ['ผิดจำนวน', 'ผิดรายการ', 'ผิดล็อต / วันหมดอายุ', 'ผิดจุด', 'บันทึกซ้ำ'];
+/**
+ * Cancel a whole record made by mistake. `events` are the lines of one document.
+ * A dispense ticket: its stock returns to the lots it came from. A stock receipt: its quantity is taken back out of the lot
+ * it went into (refused by the database when part of it has been used since). Either way the record stays in the list, struck through.
+ */
 export function VoidTicketModal({ events, onClose, onDone }: { events: FaEvent[] | null; onClose: () => void; onDone: (msg: string) => void }) {
   const { state, company, refresh } = useFa();
   const [reason, setReason] = useState(''); const [more, setMore] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const documentId = events?.[0]?.documentId || '';
   useEffect(() => { setReason(''); setMore(''); setErr(''); }, [documentId]);
   if (!events || !events.length || !state) return null;
+  const receipt = events[0].kind === 'receive';
   const text = [reason, more.trim()].filter(Boolean).join(' · ').slice(0, 300);
   async function save() {
     setBusy(true); setErr('');
-    try { await manage(company, { action: 'void-issue', documentId, reason: text }); await refresh(); onDone('ยกเลิกใบจ่ายยาแล้ว · คืนยอดเข้าสต๊อก'); onClose(); }
+    try { await manage(company, { action: receipt ? 'void-receive' : 'void-issue', documentId, reason: text }); await refresh(); onDone(receipt ? 'ยกเลิกรายการรับเข้าแล้ว · หักยอดออกจากสต๊อก' : 'ยกเลิกใบจ่ายยาแล้ว · คืนยอดเข้าสต๊อก'); onClose(); }
     catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   }
   const who = personLabel(events[0].requester);
   return (
-    <Modal open onClose={onClose} title="ยกเลิกใบจ่ายยานี้" size="sm" footer={<div className="flex gap-2 justify-end"><button type="button" className={btnSecondary} onClick={onClose}>ไม่ยกเลิก</button><button type="button" className={btnPrimary} style={{ background: VIZ.accent }} disabled={busy || !text} onClick={() => void save()}>{busy ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิก'}</button></div>}>
+    <Modal open onClose={onClose} title={receipt ? 'ยกเลิกรายการรับเข้านี้' : 'ยกเลิกใบจ่ายยานี้'} size="sm" footer={<div className="flex gap-2 justify-end"><button type="button" className={btnSecondary} onClick={onClose}>ไม่ยกเลิก</button><button type="button" className={btnPrimary} style={{ background: VIZ.accent }} disabled={busy || !text} onClick={() => void save()}>{busy ? 'กำลังยกเลิก…' : 'ยืนยันยกเลิก'}</button></div>}>
       <ul className="mb-3 divide-y divide-gray-100 rounded-lg border border-gray-200">
-        {events.map(e => { const it = state.items.find(i => i.id === e.itemId) || state.archivedItems.find(i => i.id === e.itemId); return <li key={e.id} className="flex items-center gap-2.5 px-3 py-2">{it && <ItemImage item={it} size={32} rounded={8} />}<span className="min-w-0 flex-1 font-medium text-gray-900">{it?.name || '?'}</span><span className="shrink-0 tabular-nums text-gray-700">{e.usage === 'use' ? `ใช้ ${fmtInt(e.quantity)} ครั้ง` : `${fmtInt(e.quantity)} ${it?.unit || ''}`}</span></li>; })}
+        {events.map(e => { const it = state.items.find(i => i.id === e.itemId) || state.archivedItems.find(i => i.id === e.itemId); return <li key={e.id} className="flex items-center gap-2.5 px-3 py-2">{it && <ItemImage item={it} size={32} rounded={8} />}<span className="min-w-0 flex-1"><span className="block font-medium text-gray-900">{it?.name || '?'}</span>{receipt && e.allocations[0] && <span className="block break-all text-xs text-gray-500">ล็อต {e.allocations[0].code}{e.allocations[0].expiry ? ` · หมดอายุ ${thaiDate(e.allocations[0].expiry)}` : ''}</span>}</span><span className="shrink-0 tabular-nums text-gray-700">{e.usage === 'use' ? `ใช้ ${fmtInt(e.quantity)} ครั้ง` : `${receipt ? '+' : ''}${fmtInt(e.quantity)} ${it?.unit || ''}`}</span></li>; })}
       </ul>
-      <p className="mb-3 text-sm text-gray-600">{who ? `ผู้เบิก ${who} · ` : ''}ยอดที่จ่ายไปจะกลับเข้าสต๊อกในล็อตเดิม ใบนี้ยังอยู่ในรายการของวัน โดยขีดฆ่าและบอกเหตุผล และจะไม่ถูกนับในรายงาน</p>
+      {receipt
+        ? <div className="mb-3 space-y-1 text-sm text-gray-600"><p>รับเข้าวันที่ {thaiDate(events[0].date)} · ยอดนี้จะถูกหักออกจากล็อตเดิม รายการยังอยู่ในประวัติแบบขีดฆ่าพร้อมเหตุผล และไม่ถูกนับในรายงาน</p><p>ยกเลิกได้เมื่อของที่รับเข้ายังอยู่ครบ · จากนั้นลงรับเข้าใหม่ให้ถูกต้อง</p></div>
+        : <p className="mb-3 text-sm text-gray-600">{who ? `ผู้เบิก ${who} · ` : ''}ยอดที่จ่ายไปจะกลับเข้าสต๊อกในล็อตเดิม ใบนี้ยังอยู่ในรายการของวัน โดยขีดฆ่าและบอกเหตุผล และจะไม่ถูกนับในรายงาน</p>}
       <span className={labelClass}>เหตุผล <span style={{ color: VIZ.accent }}>* จำเป็น</span></span>
-      <div className="mb-2 flex flex-wrap gap-1.5">{VOID_REASONS.map(r => <button key={r} type="button" onClick={() => setReason(reason === r ? '' : r)} className={`inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm ${reason === r ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-300 bg-white text-gray-700'}`}>{r}</button>)}</div>
+      <div className="mb-2 flex flex-wrap gap-1.5">{(receipt ? VOID_RECEIPT_REASONS : VOID_REASONS).map(r => <button key={r} type="button" onClick={() => setReason(reason === r ? '' : r)} className={`inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm ${reason === r ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-300 bg-white text-gray-700'}`}>{r}</button>)}</div>
       <input className={inputClass} value={more} onChange={e => setMore(e.target.value)} placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)" aria-label="รายละเอียดเหตุผล" maxLength={200} />
       {err && <p className="mt-2 text-sm" style={{ color: VIZ.accent }}>{err}</p>}
     </Modal>

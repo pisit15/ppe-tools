@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Fragment, Suspense, useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import type { FaItem } from '@/lib/first-aid/types';
+import { VOID_WINDOW_DAYS, type FaItem } from '@/lib/first-aid/types';
 import { ThaiDateInput } from '../../_components/ThaiDateInput';
 import { BulkReceive } from '../../_components/BulkReceive';
 import { FA_GREEN, ItemImage, ItemPicker, Spinner, ToastView, VIZ, balance, bangkokToday, btnPrimary, btnSecondary, daysUntil, errMsg, expiryDays, fmtInt, inputClass, labelClass, manage, postTransaction, thaiDate, useFa, useToast } from '../../_components/fa';
@@ -43,6 +43,7 @@ function CountPage() {
         return <>
           <div className="inline-flex overflow-hidden rounded-lg border border-gray-300" role="tablist" aria-label="วิธีรับเข้า">{tab('single', 'ทีละรายการ')}{tab('table', 'ทั้งตาราง')}</div>
           {view === 'table' ? <BulkReceive key={loc.id} locationId={loc.id} onDone={msg => setToast({ type: 'success', msg })} /> : <Receive locationId={loc.id} presetItem={params.get('item')} onDone={msg => setToast({ type: 'success', msg })} />}
+          <p className="text-xs text-gray-500">บันทึกรับเข้าผิด (จำนวน ล็อต หรือวันหมดอายุ) → ยกเลิกรายการนั้นได้ภายใน {VOID_WINDOW_DAYS} วันที่ <Link href="/first-aid/report?tab=history" className="underline">รายงาน → ประวัติทุกรายการ</Link> แล้วลงรับเข้าใหม่</p>
         </>;
       })()}
       {mode === 'transfer' && <Transfer onDone={msg => setToast({ type: 'success', msg })} />}

@@ -633,6 +633,19 @@ test('cancelled dispense tickets: cancelling needs a reason and the session acto
   assert.deepEqual(withVoided.events.map(e => e.voided), [{ at: '2026-11-20T03:00:00Z', by: 'Test Staff', reason: 'บันทึกผิดรายการ' }]);
 });
 
+test('cancelled receipts: the same gate as a ticket — a reason, the session actor, a record of this company — and their own database function', async () => {
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'void-receive', documentId: ids.doc })), error => error.status === 400);
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'void-receive', documentId: randomUUID(), reason: 'ผิดจำนวน' })), error => error.status === 404);
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'void-receive', documentId: ids.doc, reason: 'ผิดจำนวน', actorName: 'Someone Else' })), error => error.status === 400);
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'void-receive', documentId: ids.doc, reason: 'x'.repeat(301) })), error => error.status === 400);
+  assert.equal(db.rpcCalls.some(row => row.name === 'fa_void_receive'), false); // nothing reached the database so far
+  await server.manageFirstAid(request('manage', { action: 'void-receive', documentId: ids.doc, reason: ' ผิดจำนวน · รับจริง 3 ' }));
+  const calls = db.rpcCalls.filter(row => row.name === 'fa_void_receive');
+  assert.equal(calls.length, 1);
+  // which records may be cancelled (kind, age, stock still there) is decided inside the database function: tests/first-aid-void-db.test.cjs
+  assert.deepEqual(calls[0].args, { p_company_id: 'amt', p_document_id: ids.doc, p_actor_key: `tools_users:${ids.user}`, p_actor_name: 'Test Staff', p_reason: 'ผิดจำนวน · รับจริง 3' });
+});
+
 test('problem reports: the QR page can report without picking, scoped to its own point, capped per day, closed by staff', async () => {
   const report = (overrides = {}) => server.postPublicFirstAidTransaction(request('public/' + token, { type: 'issue-report', createId: randomUUID(), kind: 'out', detail: 'ผ้าก๊อซหมด', reporterName: 'สมชาย', reporterDepartment: 'ผลิต', ...overrides }, { auth: false }), token);
   db.tables.fa_issue_reports = [];

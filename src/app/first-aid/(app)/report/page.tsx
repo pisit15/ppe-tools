@@ -1,13 +1,15 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
-import type { FaEvent } from '@/lib/first-aid/types';
-import { FA_GREEN, ItemImage, KIND_LABEL, Spinner, Stat, ToastView, VIZ, bangkokToday, btnSecondary, currentPeriod, daysUntil, errMsg, expiryDays, fmtInt, loadHistory, manage, openedContainers, personLabel, shiftPeriod, thaiDate, thaiPeriod, useFa, useToast, writeOffReason } from '../../_components/fa';
+import { VOID_WINDOW_DAYS, type FaEvent } from '@/lib/first-aid/types';
+import { FA_GREEN, ItemImage, KIND_LABEL, Spinner, Stat, ToastView, VIZ, addDays, bangkokToday, btnSecondary, currentPeriod, daysUntil, errMsg, expiryDays, fmtInt, loadHistory, manage, openedContainers, personLabel, shiftPeriod, thaiDate, thaiPeriod, useFa, useToast, writeOffReason } from '../../_components/fa';
 import type { FaItem, WriteOffReason } from '@/lib/first-aid/types';
 import { HealthTab } from './HealthTab';
 import { MonthlySummary } from './MonthlySummary';
+import { VoidTicketModal } from '../../_components/actions';
 
 /** Shared-use items are tallied in uses (ครั้ง); opening a new container is a stock event, not a dispense. */
 const tallyUnit = (item: FaItem | undefined) => (item?.dispenseMode === 'shared' ? 'ครั้ง' : item?.unit || '');
@@ -16,20 +18,26 @@ type Tab = 'tally' | 'summary' | 'months' | 'health' | 'expiry' | 'history';
 const daysIn = (period: string) => { const [y, m] = period.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).getUTCDate(); };
 const isWeekend = (period: string, d: number) => { const [y, m] = period.split('-').map(Number); const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); return w === 0 || w === 6; };
 
-export default function ReportPage() {
+export default function ReportPageWrapper() { return <Suspense fallback={<Spinner />}><ReportPage /></Suspense>; }
+
+function ReportPage() {
   const { state, loading, scope, company } = useFa();
   const { toast, setToast } = useToast();
-  const [tab, setTab] = useState<Tab>('tally');
+  // ?tab=history: the link from the receive page, where a wrong receipt is cancelled.
+  const [tab, setTab] = useState<Tab>(useSearchParams().get('tab') === 'history' ? 'history' : 'tally');
   const [period, setPeriod] = useState(currentPeriod());
   const [events, setEvents] = useState<FaEvent[] | null>(null);
   // 12 months of history, remembered together with the company it belongs to (an admin can switch company without a reload).
   const [yearData, setYear] = useState<{ company: string; events: FaEvent[] } | null>(null);
   const year = yearData && yearData.company === company ? yearData.events : null;
   const [dayPick, setDayPick] = useState<{ itemId: string; day: number } | null>(null);
+  const [voidDoc, setVoidDoc] = useState('');
+  // The month is loaded with its cancelled records: the history tab shows them struck through, every other tab leaves them out.
+  // It reloads whenever the state does, so a record cancelled here shows as cancelled straight away.
   useEffect(() => {
     if (!state) return; let cancelled = false; setEvents(null);
     const to = period === currentPeriod() ? bangkokToday() : `${period}-${String(daysIn(period)).padStart(2, '0')}`;
-    loadHistory(company, `${period}-01`, to).then(r => { if (!cancelled) setEvents(r.events); }).catch(e => { if (!cancelled) { setEvents([]); setToast({ type: 'error', msg: errMsg(e) }); } });
+    loadHistory(company, `${period}-01`, to, { voided: '1' }).then(r => { if (!cancelled) setEvents(r.events); }).catch(e => { if (!cancelled) { setEvents([]); setToast({ type: 'error', msg: errMsg(e) }); } });
     return () => { cancelled = true; };
   }, [state, period, company, setToast]);
   useEffect(() => {
@@ -37,7 +45,8 @@ export default function ReportPage() {
     loadHistory(company, `${shiftPeriod(currentPeriod(), -11)}-01`, bangkokToday()).then(r => { if (!cancelled) setYear({ company, events: r.events }); }).catch(() => { if (!cancelled) setYear({ company, events: [] }); });
     return () => { cancelled = true; };
   }, [state, tab, year, company]);
-  const scoped = useMemo(() => (events || []).filter(e => scope === 'all' || e.locationId === scope), [events, scope]);
+  const monthAll = useMemo(() => (events || []).filter(e => scope === 'all' || e.locationId === scope), [events, scope]);
+  const scoped = useMemo(() => monthAll.filter(e => !e.voided), [monthAll]);
   const locName = state?.locations.find(l => l.id === scope)?.name || '';
 
   const tally = useMemo(() => {
@@ -109,14 +118,25 @@ export default function ReportPage() {
       {tab === 'months' && <MonthsTab events={year} />}
       {tab === 'health' && <HealthTab events={year} onError={msg => setToast({ type: 'error', msg })} />}
       {tab === 'expiry' && <ExpiryTab />}
-      {tab === 'history' && (
+      {tab === 'history' && (() => {
+        // A record made by mistake can be cancelled for a few days: a dispense ticket (stock returns) or a stock receipt (stock is taken back out).
+        const cutoff = addDays(bangkokToday(), -VOID_WINDOW_DAYS);
+        const voidable = (e: FaEvent) => !e.voided && e.recordingMode !== 'legacy' && e.date >= cutoff && (
+          e.kind === 'issue' ? !monthAll.some(x => x.documentId === e.documentId && x.usage === 'open')
+            : e.kind === 'receive' && !e.note.startsWith('ตรวจนับ '));
+        const live = monthAll.filter(e => !e.voided).length;
+        return (
         <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
-          {events === null ? <Spinner /> : scoped.length === 0 ? <p className="px-4 py-10 text-center text-sm text-gray-500">ไม่มีรายการ</p> : (
-            <table className="w-full text-sm"><thead><tr className="text-xs text-gray-500 bg-gray-50/80"><th className="text-left font-medium px-3 py-2">วันที่</th><th className="text-left font-medium px-2 py-2">ประเภท</th><th className="text-left font-medium px-2 py-2">ยา</th><th className="text-right font-medium px-2 py-2">จำนวน</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">จุด</th><th className="text-left font-medium px-2 py-2 hidden sm:table-cell">ผู้เบิกยา</th><th className="text-left font-medium px-2 py-2 hidden lg:table-cell">ล็อต</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">หมายเหตุ</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">ผู้บันทึก</th></tr></thead>
-              <tbody>{scoped.map(e => { const it = state.items.find(i => i.id === e.itemId) || state.archivedItems.find(i => i.id === e.itemId); const c = e.kind === 'issue' ? VIZ.text : e.kind === 'receive' ? VIZ.positive : e.kind === 'transfer' ? VIZ.primary : VIZ.accent; return (
-                <tr key={e.id} className="border-t border-gray-50"><td className="px-3 py-1.5 whitespace-nowrap">{e.datePrecision === 'month' ? thaiPeriod(e.date.slice(0, 7)) : thaiDate(e.date)}</td><td className="px-2 py-1.5 font-medium" style={{ color: c }}>{KIND_LABEL[e.kind]}</td><td className="px-2 py-1.5">{it?.name || '?'}</td><td className="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{e.usage === 'use' ? `ใช้ ${fmtInt(e.quantity)} ครั้ง` : <>{e.kind === 'issue' || e.kind === 'dispose' ? '−' : '+'}{fmtInt(e.quantity)} {it?.unit}{e.usage === 'open' && <span className="text-xs text-gray-500"> เปิดใหม่</span>}</>}</td><td className="px-2 py-1.5 text-gray-500 hidden md:table-cell">{state.locations.find(l => l.id === e.locationId)?.name}{e.destinationId ? ` → ${state.locations.find(l => l.id === e.destinationId)?.name}` : ''}</td><td className="px-2 py-1.5 hidden sm:table-cell">{personLabel(e.requester) || <span className="text-gray-500">—</span>}</td><td className="px-2 py-1.5 text-xs text-gray-500 hidden lg:table-cell">{e.allocations.map(a => `${a.code}${a.expiry ? ` / ${thaiDate(a.expiry, { short: true })}` : ''} ×${a.quantity}`).join('; ')}</td><td className="px-2 py-1.5 text-gray-500 hidden md:table-cell max-w-[260px] truncate">{e.note}</td><td className="px-2 py-1.5 text-gray-500 hidden md:table-cell">{e.recordingMode === 'legacy' ? 'Excel' : e.recordingMode === 'self_service' ? 'QR' : e.recordedBy.name}</td></tr>); })}</tbody></table>)}
-          {events && <p className="px-3 py-2 text-xs text-gray-500 border-t border-gray-100">{fmtInt(scoped.length)} รายการใน{thaiPeriod(period, true)}</p>}
-        </section>)}
+          {events === null ? <Spinner /> : monthAll.length === 0 ? <p className="px-4 py-10 text-center text-sm text-gray-500">ไม่มีรายการ</p> : (
+            <table className="w-full text-sm"><thead><tr className="text-xs text-gray-500 bg-gray-50/80"><th className="text-left font-medium px-3 py-2">วันที่</th><th className="text-left font-medium px-2 py-2">ประเภท</th><th className="text-left font-medium px-2 py-2">ยา</th><th className="text-right font-medium px-2 py-2">จำนวน</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">จุด</th><th className="text-left font-medium px-2 py-2 hidden sm:table-cell">ผู้เบิกยา</th><th className="text-left font-medium px-2 py-2 hidden lg:table-cell">ล็อต</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">หมายเหตุ</th><th className="text-left font-medium px-2 py-2 hidden md:table-cell">ผู้บันทึก</th><th className="hidden px-2 py-2 sm:table-cell print:hidden"><span className="sr-only">ยกเลิก</span></th></tr></thead>
+              <tbody>{monthAll.map((e, index) => { const it = state.items.find(i => i.id === e.itemId) || state.archivedItems.find(i => i.id === e.itemId); const v = e.voided; const c = v ? VIZ.lightText : e.kind === 'issue' ? VIZ.text : e.kind === 'receive' ? VIZ.positive : e.kind === 'transfer' ? VIZ.primary : VIZ.accent; const firstOfDoc = index === 0 || monthAll[index - 1].documentId !== e.documentId; const cut = v ? 'line-through text-gray-400' : '';
+                const cancel = !v && firstOfDoc && voidable(e) && <button type="button" onClick={() => setVoidDoc(e.documentId)} className="inline-flex min-h-9 items-center rounded-lg border border-gray-300 bg-white px-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50" aria-label={`ยกเลิกรายการ${KIND_LABEL[e.kind]} ${it?.name || ''}`}>ยกเลิก</button>;
+                return (
+                <tr key={e.id} className="border-t border-gray-50"><td className={`px-3 py-1.5 whitespace-nowrap ${cut}`}>{e.datePrecision === 'month' ? thaiPeriod(e.date.slice(0, 7)) : thaiDate(e.date)}</td><td className={`px-2 py-1.5 font-medium ${cut}`} style={{ color: c }}>{KIND_LABEL[e.kind]}</td><td className="px-2 py-1.5"><span className={cut}>{it?.name || '?'}</span>{(cancel || v) && <span className="mt-1 block sm:hidden">{v ? <span className="text-xs" style={{ color: VIZ.accent }}>ยกเลิกแล้ว: {v.reason}</span> : cancel}</span>}</td><td className={`px-2 py-1.5 text-right tabular-nums whitespace-nowrap ${cut}`}>{e.usage === 'use' ? `ใช้ ${fmtInt(e.quantity)} ครั้ง` : <>{e.kind === 'issue' || e.kind === 'dispose' ? '−' : '+'}{fmtInt(e.quantity)} {it?.unit}{e.usage === 'open' && <span className="text-xs text-gray-500"> เปิดใหม่</span>}</>}</td><td className="px-2 py-1.5 text-gray-500 hidden md:table-cell">{state.locations.find(l => l.id === e.locationId)?.name}{e.destinationId ? ` → ${state.locations.find(l => l.id === e.destinationId)?.name}` : ''}</td><td className="px-2 py-1.5 hidden sm:table-cell">{personLabel(e.requester) || <span className="text-gray-500">—</span>}</td><td className="px-2 py-1.5 text-xs text-gray-500 hidden lg:table-cell">{e.allocations.map(a => `${a.code}${a.expiry ? ` / ${thaiDate(a.expiry, { short: true })}` : ''} ×${a.quantity}`).join('; ')}</td><td className="px-2 py-1.5 text-gray-500 hidden md:table-cell max-w-[260px] truncate">{v ? <span style={{ color: VIZ.accent }} title={`${v.reason}${v.by ? ` · โดย ${v.by}` : ''}`}>ยกเลิก: {v.reason}{v.by ? ` · ${v.by}` : ''}</span> : e.note}</td><td className="px-2 py-1.5 text-gray-500 hidden md:table-cell">{e.recordingMode === 'legacy' ? 'Excel' : e.recordingMode === 'self_service' ? 'QR' : e.recordedBy.name}</td>
+                  <td className="hidden px-2 py-1 text-right whitespace-nowrap sm:table-cell print:hidden">{v ? firstOfDoc && <span className="text-xs font-medium" style={{ color: VIZ.accent }}>ยกเลิกแล้ว</span> : cancel}</td></tr>); })}</tbody></table>)}
+          {events && <p className="px-3 py-2 text-xs text-gray-500 border-t border-gray-100">{fmtInt(live)} รายการใน{thaiPeriod(period, true)}{monthAll.length > live ? ` · ยกเลิกแล้ว ${fmtInt(monthAll.length - live)} รายการ (ไม่นับในรายงาน)` : ''} · บันทึกรับเข้าหรือจ่ายผิด → กด “ยกเลิก” ท้ายรายการได้ภายใน {VOID_WINDOW_DAYS} วัน · เกินกว่านั้นแก้ยอดที่หน้า ตรวจนับ</p>}
+        </section>); })()}
+      <VoidTicketModal events={voidDoc ? monthAll.filter(e => e.documentId === voidDoc) : null} onClose={() => setVoidDoc('')} onDone={msg => setToast({ type: 'success', msg })} />
       <ToastView toast={toast} />
     </div>
   );

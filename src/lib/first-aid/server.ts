@@ -400,7 +400,7 @@ async function createMasterRow(db: DB, table: 'fa_items' | 'fa_locations' | 'fa_
 export async function manageFirstAid(request: NextRequest) {
   const { actor, companyId } = await firstAidActor(request, true); const db = getSupabaseServer();
   const body = record(await readJsonBody(request)); const action = text(body.action, 'การดำเนินการ', 40);
-  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location', 'close-opened', 'default-image-add', 'default-image-add-all', 'default-image-update', 'default-image-delete', 'qr-show', 'qr-adopt', 'void-issue', 'issue-close'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
+  if (!['location', 'item', 'thresholds', 'settings', 'inspection', 'visit', 'rotate-token', 'image-sign', 'image-from-url', 'image-clear', 'lot-expiry', 'count', 'archive-item', 'archive-location', 'close-opened', 'default-image-add', 'default-image-add-all', 'default-image-update', 'default-image-delete', 'qr-show', 'qr-adopt', 'void-issue', 'void-receive', 'issue-close'].includes(action)) throw new FirstAidInputError('ไม่รองรับการดำเนินการนี้');
   if (action === 'visit' && !actor.isAdmin) throw new AccessError('เฉพาะผู้ดูแลที่มีสิทธิ์ข้อมูลบริการห้องพยาบาล');
   // Authenticated writes initialize only their selected company's configuration.
   check(await db.from('fa_company_settings').upsert({ company_id: companyId }, { onConflict: 'company_id', ignoreDuplicates: true }));
@@ -543,6 +543,14 @@ export async function manageFirstAid(request: NextRequest) {
     const result = check(await db.rpc('fa_void_issue', { p_company_id: companyId, p_document_id: documentId, p_actor_key: `${actor.accountTable}:${actor.id}`, p_actor_name: actor.displayName, p_reason: text(body.reason, 'เหตุผลที่ยกเลิก', 300) }));
     return { ok: true, already: !!result?.already };
   }
+  if (action === 'void-receive') {
+    // Cancel a stock receipt recorded by mistake: the database takes its quantity back out of the lot it went into and
+    // marks the receipt. It refuses when part of that stock has since been dispensed, transferred or written off.
+    allowedKeys(body, ['action', 'documentId', 'reason']);
+    const documentId = await scopedRow(db, 'fa_documents', companyId, body.documentId);
+    const result = check(await db.rpc('fa_void_receive', { p_company_id: companyId, p_document_id: documentId, p_actor_key: `${actor.accountTable}:${actor.id}`, p_actor_name: actor.displayName, p_reason: text(body.reason, 'เหตุผลที่ยกเลิก', 300) }));
+    return { ok: true, already: !!result?.already };
+  }
   if (action === 'issue-close') {
     allowedKeys(body, ['action', 'id', 'note']);
     const id = await scopedRow(db, 'fa_issue_reports', companyId, body.id);
@@ -616,7 +624,7 @@ export async function loadFirstAidHistory(request: NextRequest) {
   const locationId = params.get('location_id') ? uuid(params.get('location_id'), 'รหัสจุด') : null;
   let docQuery = db.from('fa_documents').select(DOCUMENT_COLUMNS).eq('company_id', companyId).gte('date', from).lte('date', to).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(4000);
   if (locationId) docQuery = docQuery.eq('location_id', locationId);
-  // Cancelled tickets are left out of every list and report; only the day list on the dispense page asks for them.
+  // Cancelled tickets and receipts are left out of every list and report; only the lists that offer the cancel button ask for them.
   if (params.get('voided') !== '1') docQuery = docQuery.is('voided_at', null);
   const documents: Row[] = check(await docQuery) || [];
   const movements: Row[] = [];

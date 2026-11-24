@@ -50,13 +50,13 @@ export type FaEvent = {
   id: string; documentId: string; date: string; datePrecision: 'day' | 'month'; kind: TransactionKind; itemId: string; locationId: string; destinationId?: string; quantity: number; usage: MovementUsage;
   allocations: FaAllocation[]; requester: PersonSnapshot | null; recipientPerson: PersonSnapshot | null; recipient: string; onBehalf: boolean; note: string;
   recordedBy: { id: string; name: string; identityMethod: 'legacy_import' | 'self_declared' | 'authenticated_session' }; recordingMode: 'legacy' | 'staff' | 'self_service'; recordedAt: string;
-  /** The ticket was cancelled (stock returned). Cancelled tickets are left out of every list and report unless asked for. */ voided: { at: string; by: string; reason: string } | null;
+  /** The dispense ticket or stock receipt was cancelled (its stock change undone). Cancelled records are left out of every list and report unless asked for. */ voided: { at: string; by: string; reason: string } | null;
 };
 /** A problem reported at a point — from its QR page or by staff — kept open until someone closes it. */
 export type IssueKind = 'out' | 'expired' | 'damaged' | 'other';
 export const ISSUE_KINDS: { id: IssueKind; label: string }[] = [{ id: 'out', label: 'ของหมด' }, { id: 'expired', label: 'ของหมดอายุ' }, { id: 'damaged', label: 'ชำรุด / สูญหาย' }, { id: 'other', label: 'อื่น ๆ' }];
 export type FaIssueReport = { id: string; locationId: string; kind: IssueKind; detail: string; reporterName: string; reporterDepartment: string; source: 'qr' | 'staff'; status: 'open' | 'closed'; createdAt: string; closedAt: string | null; closedBy: string; closedNote: string };
-/** How many days after the dispense date a ticket can still be cancelled (the database enforces the same limit). */
+/** How many days after its date a dispense ticket or a stock receipt can still be cancelled (the database enforces the same limit). */
 export const VOID_WINDOW_DAYS = 7;
 export type FaUsageSummary = { monthUsesByLocation: { locationId: string; count: number }[]; dailyUsesByLocation: { locationId: string; date: string; count: number }[] };
 export type FaState = {
