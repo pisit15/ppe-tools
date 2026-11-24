@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, QrCode } from 'lucide-react';
 import type { FaLocation } from '@/lib/first-aid/types';
 import { ComboInput } from '../../_components/ComboInput';
-import { ConfirmButton, FA_GREEN, ItemImage, Modal, Spinner, ToastView, VIZ, addDays, balance, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, loadHistory, manage, thaiDate, useFa, useToast } from '../../_components/fa';
+import { ConfirmButton, FA_GREEN, ItemImage, Modal, Spinner, ToastView, VIZ, addDays, balance, btnPrimary, btnSecondary, errMsg, fmtInt, inputClass, labelClass, loadHistory, manage, physicalQty, thaiDate, useFa, useToast } from '../../_components/fa';
 
 const TYPES = ['ตู้ปฐมพยาบาล', 'ห้องพยาบาล', 'กระเป๋าปฐมพยาบาล', 'คลังสำรอง'];
 
@@ -227,7 +227,7 @@ function ArchiveItemPicker() {
   return (
     <details className="text-sm"><summary className="cursor-pointer text-gray-600">ปิดใช้งานยาที่ไม่ใช้แล้ว</summary>
       <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="พิมพ์ชื่อยา" aria-label="ค้นหา" className={`${inputClass} mt-2 max-w-sm`} />
-      <ul className="mt-2 space-y-1">{hits.map(i => { const b = balance(state, i.id); return <li key={i.id} className="flex items-center gap-2"><ItemImage item={i} size={24} rounded={6} /><span className="flex-1">{i.name} <span className="text-xs text-gray-500">คงเหลือ {fmtInt(b)}</span></span>{b === 0 ? <ConfirmButton label="ปิดใช้งาน" confirmLabel="ยืนยัน?" danger onConfirm={() => manage(company, { action: 'archive-item', id: i.id, active: false }).then(refresh)} /> : <span className="text-xs text-gray-500">ต้องไม่มีสต็อก</span>}</li>; })}</ul>
+      <ul className="mt-2 space-y-1">{hits.map(i => { const b = balance(state, i.id); const held = physicalQty(state, i.id); return <li key={i.id} className="flex items-center gap-2"><ItemImage item={i} size={24} rounded={6} /><span className="flex-1">{i.name} <span className="text-xs text-gray-500">คงเหลือ {fmtInt(b)}{held > b ? ` · หมดอายุ/รอระบุวัน ${fmtInt(held - b)}` : ''}</span></span>{held === 0 ? <ConfirmButton label="ปิดใช้งาน" confirmLabel="ยืนยัน?" danger onConfirm={() => manage(company, { action: 'archive-item', id: i.id, active: false }).then(refresh)} /> : <span className="text-xs text-gray-500">ต้องไม่มีสต็อก</span>}</li>; })}</ul>
     </details>
   );
 }

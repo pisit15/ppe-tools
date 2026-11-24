@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Pencil, Plus, Search } from 'lucide-react';
 import type { FaEvent, FaItem, FaLot } from '@/lib/first-aid/types';
-import { Bar, Chip, Drawer, ItemImage, itemSub, KIND_LABEL, STATUS_COLOR, Spinner, Stat, StatusBadge, ToastView, VIZ, FA_GREEN, balance, btnPrimary, btnSecondary, daysUntil, expiredLots, expiryDays, fmtInt, itemStatus, loadHistory, pendingLots, personLabel, physicalQty, relativeDays, shiftPeriod, statusLabel, thaiDate, type ItemStatus, type ItemStatusKey, useFa, useToast, usableLots, currentPeriod, thaiPeriod, addDays, errMsg, minFor } from '../_components/fa';
+import { Bar, Chip, ConfirmButton, Drawer, ItemImage, itemSub, KIND_LABEL, STATUS_COLOR, Spinner, Stat, StatusBadge, ToastView, VIZ, FA_GREEN, balance, btnPrimary, btnSecondary, daysUntil, expiredLots, expiryDays, fmtInt, itemStatus, loadHistory, manage, pendingLots, personLabel, physicalQty, relativeDays, shiftPeriod, statusLabel, thaiDate, type ItemStatus, type ItemStatusKey, useFa, useToast, usableLots, currentPeriod, thaiPeriod, addDays, errMsg, minFor } from '../_components/fa';
 import { DispenseModal, LotExpiryModal, WriteOffModal } from '../_components/actions';
 import { ItemFormModal } from '../_components/ItemForm';
 import { SetupChecklist, TodoBox } from '../_components/HomePanels';
@@ -190,7 +190,7 @@ export default function ItemsPage() {
         <div className="border-t border-gray-100">{pager}</div>
       </section>
 
-      <ItemDetail item={selectedItem} onClose={() => setSelected(null)} onDispense={() => setDispense(selectedItem)} onWriteOff={() => setWriteOff(selectedItem)} onEdit={() => setEdit({ open: true, item: selectedItem })} onLot={(lot, item) => setLotEdit({ lot, item })} />
+      <ItemDetail item={selectedItem} onClose={() => setSelected(null)} onDispense={() => setDispense(selectedItem)} onWriteOff={() => setWriteOff(selectedItem)} onEdit={() => setEdit({ open: true, item: selectedItem })} onLot={(lot, item) => setLotEdit({ lot, item })} onArchived={msg => { setSelected(null); setToast({ type: 'success', msg }); }} />
       <DispenseModal item={dispense} onClose={() => setDispense(null)} onDone={msg => setToast({ type: 'success', msg })} />
       <WriteOffModal item={writeOff} onClose={() => setWriteOff(null)} onDone={msg => setToast({ type: 'success', msg })} />
       <ItemFormModal open={edit.open} item={edit.item} onClose={() => setEdit({ open: false, item: null })} onSaved={id => { setEdit({ open: false, item: null }); setSelected(id); setToast({ type: 'success', msg: 'บันทึกรายการแล้ว' }); }} />
@@ -202,8 +202,9 @@ export default function ItemsPage() {
   );
 }
 
-function ItemDetail({ item, onClose, onDispense, onWriteOff, onEdit, onLot }: { item: FaItem | null; onClose: () => void; onDispense: () => void; onWriteOff: () => void; onEdit: () => void; onLot: (lot: FaLot, item: FaItem) => void }) {
-  const { state, company } = useFa();
+function ItemDetail({ item, onClose, onDispense, onWriteOff, onEdit, onLot, onArchived }: { item: FaItem | null; onClose: () => void; onDispense: () => void; onWriteOff: () => void; onEdit: () => void; onLot: (lot: FaLot, item: FaItem) => void; onArchived: (msg: string) => void }) {
+  const { state, company, refresh } = useFa();
+  const [archive, setArchive] = useState<{ itemId: string; busy: boolean; error: string }>({ itemId: '', busy: false, error: '' });
   const [loaded, setLoaded] = useState<{ itemId: string; events: FaEvent[] }>({ itemId: '', events: [] });
   useEffect(() => {
     if (!item || !state) return;
@@ -222,6 +223,18 @@ function ItemDetail({ item, onClose, onDispense, onWriteOff, onEdit, onLot }: { 
   const avg = Math.round(perMonth.slice(0, 5).reduce((a, b) => a + b, 0) / 5);
   const fixed = item.dispenseMode === 'fixed';
   const writtenOff = (events || []).filter(e => e.kind === 'dispose').reduce((s, e) => s + e.quantity, 0);
+  // Switching an item off hides it from every working page, so it is only offered once nothing of it is left on the books (expired stock included).
+  const onBooks = physicalQty(state, item.id);
+  const arch = archive.itemId === item.id ? archive : { itemId: item.id, busy: false, error: '' };
+  async function archiveItem(target: FaItem) {
+    setArchive({ itemId: target.id, busy: true, error: '' });
+    try {
+      await manage(company, { action: 'archive-item', id: target.id, active: false });
+      await refresh().catch(() => undefined);
+      setArchive({ itemId: '', busy: false, error: '' });
+      onArchived(`ปิดใช้งาน ${target.name} แล้ว · เปิดใช้ใหม่ได้ที่ ตั้งค่า → ทะเบียนยา`);
+    } catch (e) { setArchive({ itemId: target.id, busy: false, error: errMsg(e) }); }
+  }
   return (
     <Drawer open={!!item} onClose={onClose} title={<span className="flex items-center gap-3"><ItemImage item={item} size={48} rounded={12} />{item.name}</span>} subtitle={`${itemSub(item)} · หน่วย: ${item.unit}`}
       footer={<div className="flex gap-2">{fixed ? <button type="button" className={`${btnSecondary} flex-1`} disabled={physicalQty(state, item.id) === 0} onClick={onWriteOff}>ชำรุด / หาย</button> : <button type="button" className={`${btnPrimary} flex-1`} style={{ background: FA_GREEN }} disabled={st.balance === 0} onClick={onDispense}>จ่าย</button>}<Link href={`/first-aid/count?mode=receive&item=${item.id}`} className={`${btnSecondary} flex-1`}>รับเข้า</Link><button type="button" className={btnSecondary} onClick={onEdit}><Pencil size={15} />แก้ไข</button></div>}>
@@ -247,6 +260,13 @@ function ItemDetail({ item, onClose, onDispense, onWriteOff, onEdit, onLot }: { 
       {events === null ? <p className="text-sm text-gray-500">กำลังโหลด…</p> : events.length === 0 ? <p className="text-sm text-gray-500">ไม่มีรายการใน 6 เดือน</p> : (
         <ul className="text-sm divide-y divide-gray-100">{events.slice(0, 15).map(e => <li key={e.id} className="py-1.5 flex justify-between gap-2"><span>{thaiDate(e.date)} · <b style={{ color: e.kind === 'issue' ? VIZ.text : e.kind === 'receive' ? VIZ.positive : VIZ.accent }}>{KIND_LABEL[e.kind]} {fmtInt(e.quantity)}</b> {personLabel(e.requester) && <span className="text-gray-500">· {personLabel(e.requester)}</span>}{e.note && <span className="text-gray-500"> · {e.note.slice(0, 40)}</span>}</span><span className="text-xs text-gray-500 whitespace-nowrap">{state.locations.find(l => l.id === e.locationId)?.name?.slice(0, 14)}</span></li>)}</ul>)}
       {expiredLots(state, item.id).length > 0 && <p className="mt-4 text-xs" style={{ color: VIZ.accent }}>{fixed ? `เกินวันครบกำหนด ${fmtInt(st.expiredQty)} ${item.unit} — ตรวจหรือเปลี่ยนแล้วกด “แก้วันที่” เพื่อใส่รอบใหม่` : `มีของหมดอายุ ${fmtInt(st.expiredQty)} ${item.unit} — ตัดทิ้งได้ที่หน้า ตรวจนับ`}</p>}
+      <section className="mt-6 border-t border-gray-100 pt-4" aria-label="ปิดใช้งานรายการนี้">
+        <h3 className="text-sm font-semibold mb-1">ไม่ใช้รายการนี้แล้ว</h3>
+        <p className="text-xs text-gray-500 mb-3">ปิดใช้งานแล้วรายการนี้จะไม่แสดงในหน้ารายการยา จ่ายยา และตรวจนับ · ประวัติเดิมยังอยู่ครบ · เปิดใช้ใหม่ได้ที่ ตั้งค่า → ทะเบียนยา</p>
+        <ConfirmButton label="ปิดใช้งาน" confirmLabel="ยืนยันปิดใช้งาน?" danger disabled={onBooks > 0 || arch.busy} onConfirm={() => void archiveItem(item)} />
+        {onBooks > 0 && <p className="mt-2 text-xs" style={{ color: VIZ.lightText }}>ยังปิดไม่ได้ — มีของในระบบ {fmtInt(onBooks)} {item.unit}{st.expiredQty > 0 ? ` (หมดอายุ ${fmtInt(st.expiredQty)})` : ''} · {fixed ? 'กด “ชำรุด / หาย” ด้านล่างเพื่อตัดออกให้เหลือ 0 ก่อน' : <>จ่ายออก หรือปรับยอดให้เหลือ 0 ที่หน้า <Link href="/first-aid/count" className="underline">ตรวจนับ</Link> ก่อน</>}</p>}
+        {arch.error && <p className="mt-2 text-xs" role="alert" style={{ color: VIZ.accent }}>{arch.error}</p>}
+      </section>
     </Drawer>
   );
 }
