@@ -122,7 +122,7 @@ export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean;
           <div className="grid grid-cols-3 gap-2">
             <div><label className={labelClass} htmlFor="if-cat">หมวด</label><ComboInput id="if-cat" value={form.category} onChange={category => setForm(f => ({ ...f, category }))} options={categories} /></div>
             <div><label className={labelClass} htmlFor="if-unit">หน่วย</label><ComboInput id="if-unit" value={form.unit} disabled={locked} onChange={unit => setForm(f => ({ ...f, unit }))} options={units} /></div>
-            <div><label className={labelClass} htmlFor="if-min">{form.dispenseMode === 'fixed' ? 'ต้องมี' : 'ขั้นต่ำ'}</label><input id="if-min" type="number" min={0} className={inputClass} value={form.min} onChange={e => setForm(f => ({ ...f, min: Number(e.target.value) }))} /></div>
+            <div><label className={labelClass} htmlFor="if-min">{form.dispenseMode === 'fixed' ? 'ต้องมี' : 'ขั้นต่ำ'}{(state?.locations.length || 0) > 1 ? ' ต่อจุด' : ''}</label><input id="if-min" type="number" min={0} className={inputClass} value={form.min} onChange={e => setForm(f => ({ ...f, min: Number(e.target.value) }))} /></div>
           </div>
           {locked && <p className="text-xs text-gray-500">รายการนี้มีสต็อก/ประวัติแล้ว จึงเปลี่ยนหน่วยไม่ได้</p>}
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.trackExpiry} onChange={e => setForm(f => ({ ...f, trackExpiry: e.target.checked }))} className="h-4 w-4" />{form.dispenseMode === 'fixed' ? 'มีวันครบกำหนดตรวจ / เปลี่ยน (เช่น แผ่นและแบตเตอรี่ AED, สอบเทียบเครื่องวัดความดัน)' : 'ติดตามวันหมดอายุ (ปิดสำหรับอุปกรณ์ เช่น กรรไกร ปรอท)'}</label>

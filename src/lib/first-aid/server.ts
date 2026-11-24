@@ -425,7 +425,7 @@ export async function manageFirstAid(request: NextRequest) {
     const values = { name: text(body.name, 'ชื่อรายการ'), generic: text(body.generic, 'รายละเอียด', 200, false), category: text(body.category, 'หมวดหมู่', 80), unit: text(body.unit, 'หน่วยนับ', 40), min: integer(body.min ?? 0, 'จำนวนขั้นต่ำ'), track_expiry: bool(body.trackExpiry, true), description: text(body.description, 'คำอธิบายสั้น', 160, false), icon, ...(dispenseMode !== null || !body.id ? { dispense_mode: dispenseMode || 'unit', open_life_days: openLifeDays } : {}) };
     const id = body.id ? await scopedRow(db, 'fa_items', companyId, body.id) : null;
     if (id) {
-      const existing = checkOne(await db.from('fa_items').select('track_expiry,unit,dispense_mode').eq('company_id', companyId).eq('id', id).single());
+      const existing = checkOne(await db.from('fa_items').select('track_expiry,unit,dispense_mode,min').eq('company_id', companyId).eq('id', id).single());
       if (existing.unit !== values.unit) {
         const [lots, movements] = await Promise.all([
           db.from('fa_lots').select('id').eq('company_id', companyId).eq('item_id', id).limit(1),
@@ -438,6 +438,13 @@ export async function manageFirstAid(request: NextRequest) {
         const missing = check(await db.from('fa_lots').select('id').eq('company_id', companyId).eq('item_id', id).is('expiry', null).gt('quantity', 0).limit(1));
         if (missing?.length) throw new FirstAidInputError('มีล็อตที่ยังไม่ระบุวันหมดอายุ กรุณาจัดการก่อนเปิดติดตามวันหมดอายุ');
       }
+      // The item's minimum is the standard for every point that holds it, and the per-point value is the one every screen
+      // and the inspection read. The first receipt at a point copies the standard of that moment, so a minimum entered
+      // afterwards used to stay on the item only and never show. A point still on the old standard now follows the new
+      // one; a point that was given its own minimum (settings → ขั้นต่ำ) keeps it. Done before the item itself is saved:
+      // if the save below fails and is retried, nothing is left behind on the old value.
+      const previousMin = Number(existing.min) || 0;
+      if (previousMin !== values.min) check(await db.from('fa_location_items').update({ min: values.min }).eq('company_id', companyId).eq('item_id', id).eq('min', previousMin));
     }
     const row = id ? checkOne(await db.from('fa_items').update(values).eq('company_id', companyId).eq('id', id).select('id').single()) : await createMasterRow(db, 'fa_items', companyId, body.createId, values);
     return { ok: true, id: row.id };

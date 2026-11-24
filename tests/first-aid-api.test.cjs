@@ -281,6 +281,31 @@ test('clinical writes require privileged actor and malformed management fields c
   assert.equal(db.calls.some(row => row.table === 'fa_locations' && row.mutation), false);
 });
 
+test('a minimum entered on the item after stock was received reaches the points: points on the old standard follow, a point with its own minimum keeps it', async () => {
+  const body = min => ({ action: 'item', id: ids.item, name: 'Gauze', category: 'เวชภัณฑ์', unit: 'ซอง', min, trackExpiry: true });
+  const other = randomUUID(); const foreign = randomUUID();
+  // received first: the point row was created with the standard of that moment (0); a second point was given its own minimum
+  db.tables.fa_items[0].min = 0;
+  db.tables.fa_location_items = [
+    { id: randomUUID(), company_id: 'amt', item_id: ids.item, location_id: ids.location, min: 0 },
+    { id: randomUUID(), company_id: 'amt', item_id: ids.item, location_id: other, min: 7 },
+    { id: randomUUID(), company_id: 'amt', item_id: randomUUID(), location_id: ids.location, min: 0 },   // another item
+    { id: foreign, company_id: 'other', item_id: ids.item, location_id: ids.location, min: 0 },          // another company
+  ];
+  const mins = () => db.tables.fa_location_items.map(row => row.min);
+  await server.manageFirstAid(request('manage', body(4)));
+  assert.equal(db.tables.fa_items[0].min, 4);
+  assert.deepEqual(mins(), [4, 7, 0, 0]);
+  // raising the standard again moves the same point, still not the one with its own value
+  await server.manageFirstAid(request('manage', body(6)));
+  assert.deepEqual(mins(), [6, 7, 0, 0]);
+  // saving the item without touching the minimum (a rename) writes nothing to the points
+  const before = db.calls.filter(row => row.table === 'fa_location_items' && row.mutation).length;
+  await server.manageFirstAid(request('manage', { ...body(6), name: 'Gauze pad' }));
+  assert.equal(db.calls.filter(row => row.table === 'fa_location_items' && row.mutation).length, before);
+  assert.deepEqual(mins(), [6, 7, 0, 0]);
+});
+
 test('a unit cannot change after any lot or movement exists, including zero stock', async () => {
   db.tables.fa_lots[0].quantity = 0;
   const body = { action: 'item', id: ids.item, name: 'Gauze', category: 'เวชภัณฑ์', unit: 'กล่อง', min: 1, trackExpiry: true };
