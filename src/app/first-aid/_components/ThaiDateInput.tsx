@@ -46,7 +46,7 @@ export function ThaiDateInput({ id, value, onChange, min, max, monthOnly = false
     <div className={`${compact ? 'inline-block align-middle' : ''} ${widthClass || (compact ? 'w-[8.75rem]' : 'w-full')}`}>
       <div className="relative">
         <input id={id} type="text" inputMode="numeric" autoComplete="off" disabled={disabled} value={text} aria-label={ariaLabel} aria-invalid={invalid || undefined} title={compact ? reading || undefined : undefined}
-          placeholder={compact ? 'วว/ดด/ค.ศ.' : monthOnly ? 'วว/ดด/ปปปป หรือ ดด/ปปปป (ค.ศ.)' : 'วว/ดด/ปปปป (ค.ศ.)'}
+          placeholder={compact ? 'วว/ดด/ค.ศ.' : 'วว/ดด/ปี ค.ศ.'}
           onChange={e => type(e.target.value)} onFocus={e => e.target.select()} onBlur={() => { if (parsed && !outOfRange) setSt(s => ({ ...s, text: formatThaiInput(parsed.iso) })); }}
           className={`w-full border bg-white text-gray-900 tabular-nums placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#4E79A7] disabled:bg-gray-50 disabled:text-gray-500 ${box}`} style={{ borderColor: invalid || (attention && !value) ? VIZ.accent : '#D1D5DB' }} />
         <button type="button" tabIndex={-1} disabled={disabled} aria-label="เลือกจากปฏิทิน" onClick={openPicker} className={`absolute inset-y-0 right-0 flex items-center justify-center text-gray-500 hover:text-gray-800 disabled:opacity-40 ${compact ? 'w-8' : 'w-10'}`}><Calendar size={compact ? 15 : 17} aria-hidden="true" /></button>

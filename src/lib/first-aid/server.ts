@@ -414,7 +414,7 @@ export async function manageFirstAid(request: NextRequest) {
     return { ok: true, id: row.id };
   }
   if (action === 'item') {
-    allowedKeys(body, ['action', 'id', 'createId', 'name', 'generic', 'category', 'unit', 'min', 'trackExpiry', 'description', 'icon', 'dispenseMode', 'openLifeDays']);
+    allowedKeys(body, ['action', 'id', 'createId', 'name', 'generic', 'category', 'unit', 'min', 'trackExpiry', 'description', 'icon', 'dispenseMode', 'openLifeDays', 'points']);
     // An older page that does not send the mode must not reset it: on update the mode is only written when given.
     const dispenseMode = body.dispenseMode == null ? null : text(body.dispenseMode, 'วิธีจ่าย', 10);
     if (dispenseMode !== null && !['unit', 'shared', 'fixed'].includes(dispenseMode)) throw new FirstAidInputError('วิธีจ่ายไม่ถูกต้อง');
@@ -423,6 +423,11 @@ export async function manageFirstAid(request: NextRequest) {
     const icon = text(body.icon, 'ไอคอน', 20, false);
     if (icon && !FA_ICONS.some(entry => entry.id === icon)) throw new FirstAidInputError('ไอคอนไม่ถูกต้อง');
     const values = { name: text(body.name, 'ชื่อรายการ'), generic: text(body.generic, 'รายละเอียด', 200, false), category: text(body.category, 'หมวดหมู่', 80), unit: text(body.unit, 'หน่วยนับ', 40), min: integer(body.min ?? 0, 'จำนวนขั้นต่ำ'), track_expiry: bool(body.trackExpiry, true), description: text(body.description, 'คำอธิบายสั้น', 160, false), icon, ...(dispenseMode !== null || !body.id ? { dispense_mode: dispenseMode || 'unit', open_life_days: openLifeDays } : {}) };
+    // Minimums the form shows per point (only for points that already hold the item). Sent when the person set one directly.
+    if (body.points != null && (!Array.isArray(body.points) || body.points.length > 50)) throw new FirstAidInputError('ขั้นต่ำรายจุดไม่ถูกต้อง');
+    const points = ((body.points as unknown[] | undefined) || []).map(value => { const point = record(value); allowedKeys(point, ['locationId', 'min']); return { locationId: uuid(point.locationId, 'รหัสจุด'), min: integer(point.min, 'จำนวนขั้นต่ำ') }; });
+    if (new Set(points.map(point => point.locationId)).size !== points.length) throw new FirstAidInputError('ขั้นต่ำรายจุดซ้ำกัน');
+    if (points.length && !body.id) throw new FirstAidInputError('ตั้งขั้นต่ำรายจุดได้หลังสร้างรายการแล้ว');
     const id = body.id ? await scopedRow(db, 'fa_items', companyId, body.id) : null;
     if (id) {
       const existing = checkOne(await db.from('fa_items').select('track_expiry,unit,dispense_mode,min').eq('company_id', companyId).eq('id', id).single());
@@ -447,6 +452,9 @@ export async function manageFirstAid(request: NextRequest) {
       if (previousMin !== values.min) check(await db.from('fa_location_items').update({ min: values.min }).eq('company_id', companyId).eq('item_id', id).eq('min', previousMin));
     }
     const row = id ? checkOne(await db.from('fa_items').update(values).eq('company_id', companyId).eq('id', id).select('id').single()) : await createMasterRow(db, 'fa_items', companyId, body.createId, values);
+    // A minimum set for one point wins over the standard. Only a point that already holds the item is touched:
+    // the filters are this company and this item, so another company's point or a point without the item matches nothing.
+    for (const point of points) check(await db.from('fa_location_items').update({ min: point.min }).eq('company_id', companyId).eq('item_id', id as string).eq('location_id', point.locationId));
     return { ok: true, id: row.id };
   }
   if (action === 'close-opened') {

@@ -95,19 +95,30 @@ export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean;
   const [form, setForm] = useState({ name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '' as FaIcon, dispenseMode: 'unit' as DispenseMode, openLifeDays: '' });
   const [saving, setSaving] = useState(false); const [err, setErr] = useState('');
   const [draft, setDraft] = useState<FaItem | null>(item);
+  // The minimum every screen reads is the one of each point; the item's own number is the standard a point starts from.
+  // `pointRows` = the points that already hold this item. A company with one point sees one number (that point's);
+  // with several points the form lists them, and `pointEdits` keeps only the ones the person changed here.
+  const pointRows = useMemo(() => (item && state ? state.thresholds.filter(t => t.itemId === item.id && state.locations.some(l => l.id === t.locationId)) : []), [item, state]);
+  const solo = state?.locations.length === 1 && pointRows.length === 1 ? pointRows[0] : null;
+  const soloMin = solo ? solo.min : null;
+  const [pointEdits, setPointEdits] = useState<Record<string, number>>({});
   // One id per "add" attempt: stable while the form stays open (a retry cannot create two items), new each time it opens.
   // The form stays mounted between uses, so a single id made the second new item of a visit fail.
   const [createId, setCreateId] = useState(() => (typeof crypto !== 'undefined' ? crypto.randomUUID() : ''));
   useEffect(() => {
     if (!open) return;
-    setDraft(item); setErr(''); if (!item) setCreateId(crypto.randomUUID());
-    setForm(item ? { name: item.name, generic: item.generic, description: item.description, category: item.category, unit: item.unit, min: item.min, trackExpiry: item.trackExpiry, icon: item.icon, dispenseMode: item.dispenseMode, openLifeDays: item.openLifeDays ? String(item.openLifeDays) : '' } : { name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '', dispenseMode: 'unit', openLifeDays: '' });
-  }, [open, item]);
+    setDraft(item); setErr(''); setPointEdits({}); if (!item) setCreateId(crypto.randomUUID());
+    setForm(item ? { name: item.name, generic: item.generic, description: item.description, category: item.category, unit: item.unit, min: soloMin ?? item.min, trackExpiry: item.trackExpiry, icon: item.icon, dispenseMode: item.dispenseMode, openLifeDays: item.openLifeDays ? String(item.openLifeDays) : '' } : { name: '', generic: '', description: '', category: 'ยา', unit: 'เม็ด', min: 0, trackExpiry: true, icon: '', dispenseMode: 'unit', openLifeDays: '' });
+  }, [open, item, soloMin]);
+  // What a point's box shows: the number typed for it here, or what saving will leave there — a point still on the
+  // item's old standard follows the new one (the same rule the server applies), any other point keeps its own.
+  const pointMin = (t: { locationId: string; min: number }) => pointEdits[t.locationId] ?? (item && t.min === item.min && Number(form.min) !== item.min ? Number(form.min) || 0 : t.min);
   async function save() {
     if (!form.name.trim()) { setErr('กรุณาระบุชื่อยา'); return; }
     setSaving(true); setErr('');
     try {
-      const r = await manage<{ ok: true; id: string }>(company, { action: 'item', ...(item ? { id: item.id } : { createId }), name: form.name.trim(), generic: form.generic.trim(), description: form.description.trim(), category: form.category.trim() || 'ยา', unit: form.unit.trim() || 'ชิ้น', min: Number(form.min) || 0, trackExpiry: form.trackExpiry, icon: form.icon, dispenseMode: form.dispenseMode, openLifeDays: form.dispenseMode === 'shared' && form.openLifeDays ? Number(form.openLifeDays) : null });
+      const r = await manage<{ ok: true; id: string }>(company, { action: 'item', ...(item ? { id: item.id } : { createId }), name: form.name.trim(), generic: form.generic.trim(), description: form.description.trim(), category: form.category.trim() || 'ยา', unit: form.unit.trim() || 'ชิ้น', min: Number(form.min) || 0, trackExpiry: form.trackExpiry, icon: form.icon, dispenseMode: form.dispenseMode, openLifeDays: form.dispenseMode === 'shared' && form.openLifeDays ? Number(form.openLifeDays) : null,
+        ...(item && solo ? { points: [{ locationId: solo.locationId, min: Number(form.min) || 0 }] } : item && Object.keys(pointEdits).length ? { points: Object.entries(pointEdits).map(([locationId, min]) => ({ locationId, min })) } : {}) });
       await refresh(); onSaved(r.id);
     } catch (e) { setErr(errMsg(e)); } finally { setSaving(false); }
   }
@@ -124,6 +135,13 @@ export function ItemFormModal({ open, item, onClose, onSaved }: { open: boolean;
             <div><label className={labelClass} htmlFor="if-unit">หน่วย</label><ComboInput id="if-unit" value={form.unit} disabled={locked} onChange={unit => setForm(f => ({ ...f, unit }))} options={units} /></div>
             <div><label className={labelClass} htmlFor="if-min">{form.dispenseMode === 'fixed' ? 'ต้องมี' : 'ขั้นต่ำ'}{(state?.locations.length || 0) > 1 ? ' ต่อจุด' : ''}</label><input id="if-min" type="number" min={0} className={inputClass} value={form.min} onChange={e => setForm(f => ({ ...f, min: Number(e.target.value) }))} /></div>
           </div>
+          {pointRows.length > 0 && !solo && state && (
+            <div className="rounded-lg border border-gray-200 p-3">
+              <div className="text-sm font-medium text-gray-900">{form.dispenseMode === 'fixed' ? 'ต้องมี' : 'ขั้นต่ำ'}ของแต่ละจุดที่มีรายการนี้</div>
+              <p className="mt-0.5 text-xs text-gray-500">ช่องด้านบนเป็นค่ามาตรฐาน จุดที่ใช้ค่าเดียวกันจะเปลี่ยนตาม · แก้เฉพาะจุดได้ที่นี่ · หน้ารายการแสดงผลรวมของทุกจุด</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">{pointRows.map(t => { const name = state.locations.find(l => l.id === t.locationId)?.name || ''; return (
+                <label key={t.locationId} className="flex items-center justify-between gap-2 text-sm"><span className="min-w-0 flex-1 text-gray-700">{name}</span><span className="w-20 shrink-0"><input type="number" min={0} aria-label={`ขั้นต่ำที่ ${name}`} className={inputClass} value={pointMin(t)} onChange={e => setPointEdits(p => ({ ...p, [t.locationId]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))} /></span></label>); })}</div>
+            </div>)}
           {locked && <p className="text-xs text-gray-500">รายการนี้มีสต็อก/ประวัติแล้ว จึงเปลี่ยนหน่วยไม่ได้</p>}
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.trackExpiry} onChange={e => setForm(f => ({ ...f, trackExpiry: e.target.checked }))} className="h-4 w-4" />{form.dispenseMode === 'fixed' ? 'มีวันครบกำหนดตรวจ / เปลี่ยน (เช่น แผ่นและแบตเตอรี่ AED, สอบเทียบเครื่องวัดความดัน)' : 'ติดตามวันหมดอายุ (ปิดสำหรับอุปกรณ์ เช่น กรรไกร ปรอท)'}</label>
           <div>

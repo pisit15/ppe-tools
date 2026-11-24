@@ -306,6 +306,36 @@ test('a minimum entered on the item after stock was received reaches the points:
   assert.deepEqual(mins(), [6, 7, 0, 0]);
 });
 
+test('the item form can set the minimum of single points: an explicit point value wins over the standard, and only points of this company that hold the item change', async () => {
+  const body = (min, points) => ({ action: 'item', id: ids.item, name: 'Gauze', category: 'เวชภัณฑ์', unit: 'ซอง', min, trackExpiry: true, ...(points ? { points } : {}) });
+  const other = randomUUID(); const empty = randomUUID();
+  db.tables.fa_items[0].min = 2;
+  db.tables.fa_location_items = [
+    { id: randomUUID(), company_id: 'amt', item_id: ids.item, location_id: ids.location, min: 2 },   // on the standard
+    { id: randomUUID(), company_id: 'amt', item_id: ids.item, location_id: other, min: 2 },          // on the standard, then set here
+    { id: randomUUID(), company_id: 'other', item_id: ids.item, location_id: other, min: 2 },        // another company, same ids
+  ];
+  const mins = () => db.tables.fa_location_items.map(row => row.min);
+  // standard 2 → 5 while one point is given 9: the untouched point follows, the edited one gets its own number
+  await server.manageFirstAid(request('manage', body(5, [{ locationId: other, min: 9 }])));
+  assert.equal(db.tables.fa_items[0].min, 5);
+  assert.deepEqual(mins(), [5, 9, 2]);
+  // a point alone, standard unchanged; a point that does not hold the item creates nothing
+  await server.manageFirstAid(request('manage', body(5, [{ locationId: ids.location, min: 0 }, { locationId: empty, min: 4 }])));
+  assert.deepEqual(mins(), [0, 9, 2]);
+  assert.equal(db.tables.fa_location_items.length, 3);
+  // malformed or out-of-place input is refused before anything is written
+  const writes = () => db.calls.filter(row => row.mutation && ['fa_items', 'fa_location_items'].includes(row.table)).length; const before = writes();
+  await assert.rejects(server.manageFirstAid(request('manage', body(5, 'x'))), error => error.status === 400);
+  await assert.rejects(server.manageFirstAid(request('manage', body(5, [{ locationId: other, min: -1 }]))), error => error.status === 400);
+  await assert.rejects(server.manageFirstAid(request('manage', body(5, [{ locationId: 'not-an-id', min: 1 }]))), error => error.status === 400);
+  await assert.rejects(server.manageFirstAid(request('manage', body(5, [{ locationId: other, min: 1, company_id: 'other' }]))), /ช่องข้อมูล/);
+  await assert.rejects(server.manageFirstAid(request('manage', body(5, [{ locationId: other, min: 1 }, { locationId: other, min: 2 }]))), /ซ้ำกัน/);
+  await assert.rejects(server.manageFirstAid(request('manage', { action: 'item', createId: randomUUID(), name: 'New', category: 'ยา', unit: 'เม็ด', min: 1, trackExpiry: true, points: [{ locationId: other, min: 1 }] })), /หลังสร้างรายการ/);
+  assert.equal(writes(), before);
+  assert.deepEqual(mins(), [0, 9, 2]);
+});
+
 test('a unit cannot change after any lot or movement exists, including zero stock', async () => {
   db.tables.fa_lots[0].quantity = 0;
   const body = { action: 'item', id: ids.item, name: 'Gauze', category: 'เวชภัณฑ์', unit: 'กล่อง', min: 1, trackExpiry: true };
