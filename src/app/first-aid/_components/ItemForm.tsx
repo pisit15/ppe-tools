@@ -57,7 +57,8 @@ export function ImageField({ item, onChanged, compact = false }: { item: FaItem;
           <button type="button" className={btnSecondary} disabled={!!busy} onClick={() => file.current?.click()}><Camera size={15} />ถ่าย / อัปโหลด</button>
           {item.hasImage && <button type="button" className={btnSecondary} disabled={!!busy} onClick={() => void clear()}><Trash2 size={15} />ลบรูป</button>}
           {isAdmin && item.hasImage && <button type="button" className={btnSecondary} disabled={!!busy} onClick={() => void makeDefault()} title="ทุกบริษัทที่มียาชื่อเดียวกันและยังไม่มีรูปของตัวเอง จะเห็นรูปนี้"><Share2 size={15} />ใช้เป็นรูปเริ่มต้นทุกบริษัท</button>}
-          <input ref={file} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
+          {/* No `capture`: with it a phone opens the camera straight away and a saved picture cannot be chosen. Without it the phone offers camera, photo library and files. */}
+          <input ref={file} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
         </div>
         <div className="flex gap-2">
           <input value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void fromUrl(); } }} placeholder="หรือวางลิงก์รูป (https://…jpg)" aria-label="ลิงก์รูป" className={inputClass} disabled={!!busy} />
