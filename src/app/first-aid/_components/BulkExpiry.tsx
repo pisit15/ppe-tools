@@ -34,7 +34,7 @@ export function BulkExpiryModal({ open, onClose, onDone }: { open: boolean; onCl
   }
   return (
     <Modal open={open} onClose={onClose} size="lg" title="กรอกวันหมดอายุ" footer={<div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-gray-600">{busy ? `กำลังบันทึก ${fmtInt(saved)} / ${fmtInt(filled.length)}…` : `กรอกแล้ว ${fmtInt(filled.length)} จาก ${fmtInt(lots.length)} ล็อต`}</span><div className="flex gap-2"><button type="button" className={btnSecondary} onClick={onClose}>ปิด</button><button type="button" className={btnPrimary} style={{ background: FA_GREEN }} disabled={busy || filled.length === 0} onClick={() => void save()}>บันทึก {filled.length ? fmtInt(filled.length) : ''} ล็อต</button></div></div>}>
-      <p className="mb-3 text-sm text-gray-600">พิมพ์วันหมดอายุตามที่พิมพ์บนกล่อง เช่น 31/12/2570 หรือเฉพาะเดือน/ปี 12/2570 กรอกเท่าที่มี แล้วกลับมากรอกที่เหลือทีหลังได้ · ของที่ไม่มีวันหมดอายุจริง (เช่น อุปกรณ์) ให้ปิด “ติดตามวันหมดอายุ” ที่หน้าแก้ไขรายการ</p>
+      <p className="mb-3 text-sm text-gray-600">พิมพ์วันหมดอายุตามที่พิมพ์บนกล่องเป็นปี ค.ศ. เช่น 31/12/2027 หรือเฉพาะเดือน/ปี 12/2027 กรอกเท่าที่มี แล้วกลับมากรอกที่เหลือทีหลังได้ · ของที่ไม่มีวันหมดอายุจริง (เช่น อุปกรณ์) ให้ปิด “ติดตามวันหมดอายุ” ที่หน้าแก้ไขรายการ</p>
       {lots.length === 0 ? <p className="py-8 text-center text-sm text-gray-600">ทุกล็อตมีวันหมดอายุครบแล้ว</p> : (
         <ul className="max-h-[55vh] divide-y divide-gray-100 overflow-y-auto rounded-lg border border-gray-100">
           {lots.map(({ lot, item, point }) => (

@@ -583,22 +583,36 @@ test('illness report: stated reason first, medicine second, restocking and suppl
   assert.equal(/Somchai|Patient|Nurse/.test(JSON.stringify(rows)), false);
 });
 
-test('Thai date field: day/month/year in the Buddhist era, box-style expiry, month-only means end of month', () => {
-  const { parseThaiDate, formatThaiInput } = load('src/lib/first-aid/thai-date.ts');
+test('First Aid dates: shown and typed in the Christian era, Buddhist-era input still understood, month-only means end of month', () => {
+  const { parseThaiDate, formatThaiInput, faDate, faPeriod, faDateTime } = load('src/lib/first-aid/thai-date.ts');
   const iso = (text, opts = {}) => parseThaiDate(text, { today: '2026-11-20', ...opts })?.iso ?? null;
-  assert.equal(formatThaiInput('2027-12-31'), '31/12/2570');
+  // what the screen shows: Thai month names, four-digit Christian-era year everywhere (also in the compact form)
+  assert.equal(faDate('2026-11-24'), '24 พ.ย. 2026');
+  assert.equal(faDate('2028-07-22', { short: true }), '22 ก.ค. 2028');
+  assert.equal(faDate('2026-11-24', { withDay: true }), 'อ. 24 พ.ย. 2026');
+  assert.equal(faDate(''), '–');
+  assert.equal(faPeriod('2026-11'), 'พ.ย. 2026');
+  assert.equal(faPeriod('2026-11', true), 'พฤศจิกายน 2026');
+  assert.equal(faDateTime('2026-11-24T11:32:00Z'), '24 พ.ย. 2026 18:32');
+  assert.equal(faDateTime('2026-12-31T18:00:00Z'), '1 ม.ค. 2027 01:00'); // Bangkok time, not UTC
+  // what a date field shows after a date is typed or picked
+  assert.equal(formatThaiInput('2027-12-31'), '31/12/2027');
   assert.equal(formatThaiInput(''), '');
-  // full dates: Buddhist or Christian era, any separator, or digits only
-  for (const text of ['31/12/2570', '31-12-2570', '31.12.2570', '31 12 2570', '31/12/2027', '31122570', '31/12/70', '311270', '31/12/27']) assert.equal(iso(text), '2027-12-31', text);
+  // full dates: Christian or Buddhist era, any separator, or digits only
+  for (const text of ['31/12/2027', '31-12-2027', '31.12.2027', '31 12 2027', '31/12/2570', '31122027', '31122570', '31/12/27', '311227', '31/12/70', '311270']) assert.equal(iso(text), '2027-12-31', text);
+  assert.equal(iso('1/2/2026'), '2026-02-01');
   assert.equal(iso('1/2/2569'), '2026-02-01');
   assert.equal(iso('20/11/69'), '2026-11-20');
+  // a converted Buddhist-era year is flagged so the field can say so; a Christian-era one is not
+  for (const [text, buddhist] of [['22/07/2028', false], ['22/07/28', false], ['22/07/2571', true], ['22/07/71', true]]) assert.deepEqual(parseThaiDate(text, { today: '2026-11-20' }), { iso: '2028-07-22', monthOnly: false, buddhist }, text);
   // month and year only is accepted for expiry dates alone, and means the last day of that month
-  assert.equal(iso('12/2570'), null);
-  for (const text of ['12/2570', '12/2027', '12/27', '12/70', '122570', '1227']) assert.deepEqual(parseThaiDate(text, { today: '2026-11-20', monthOnly: true }), { iso: '2027-12-31', monthOnly: true }, text);
+  assert.equal(iso('12/2027'), null);
+  for (const [text, buddhist] of [['12/2027', false], ['12/27', false], ['122027', false], ['1227', false], ['12/2570', true], ['12/70', true], ['122570', true]]) assert.deepEqual(parseThaiDate(text, { today: '2026-11-20', monthOnly: true }), { iso: '2027-12-31', monthOnly: true, buddhist }, text);
+  assert.equal(iso('02/2028', { monthOnly: true }), '2028-02-29');
   assert.equal(iso('02/2571', { monthOnly: true }), '2028-02-29');
   assert.equal(iso('311227', { monthOnly: true }), '2027-12-31'); // six digits that are not month+year stay day/month/year
   // never month/day/year, never an impossible date
-  for (const text of ['12/31/2570', '31/02/2570', '0/1/2570', '32/1/2570', '1/13/2570', 'abc', '2570', '31/12', '31/12/25700', '']) assert.equal(iso(text), null, text);
+  for (const text of ['12/31/2027', '31/02/2027', '0/1/2027', '32/1/2027', '1/13/2027', '12/31/2570', 'abc', '2027', '2570', '31/12', '31/12/20270', '']) assert.equal(iso(text), null, text);
 });
 
 test('cancelled dispense tickets: cancelling needs a reason and the session actor, and they drop out of state and history unless asked for', async () => {

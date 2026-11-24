@@ -6,7 +6,9 @@ import type { FaEvent, FaIcon, FaItem, FaState } from '@/lib/first-aid/types';
 import { balance, statusLabel } from '@/lib/first-aid/model';
 import { SYMPTOMS, cleanGeneric, itemGroup, matchesSymptom } from '@/lib/first-aid/browse';
 
-export { VIZ, PAGE_BG, thaiDate, thaiPeriod, thaiDateTime, bangkokToday, currentPeriod, shiftPeriod, daysUntil, relativeDays, getJson, postJson, errMsg, useToast, ToastView, inputClass, selectCompact, labelClass, cardClass, btnPrimary, btnSecondary, btnGhost, Spinner, EmptyState, Drawer, Modal, ConfirmButton, SectionTitle } from '@/app/inspect/_components/ui';
+// Dates: First Aid shows Christian-era years (as printed on medicine boxes); the shared helpers show Buddhist-era years.
+export { faDate as thaiDate, faPeriod as thaiPeriod, faDateTime as thaiDateTime } from '@/lib/first-aid/thai-date';
+export { VIZ, PAGE_BG, bangkokToday, currentPeriod, shiftPeriod, daysUntil, relativeDays, getJson, postJson, errMsg, useToast, ToastView, inputClass, selectCompact, labelClass, cardClass, btnPrimary, btnSecondary, btnGhost, Spinner, EmptyState, Drawer, Modal, ConfirmButton, SectionTitle } from '@/app/inspect/_components/ui';
 
 export const FA_GREEN = '#246047';
 export const STATUS_COLOR = { ok: VIZ.positive, low: VIZ.secondary, out: VIZ.accent, expired: VIZ.accent, pending: VIZ.lightText, open_expired: VIZ.accent } as const;

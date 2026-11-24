@@ -76,7 +76,7 @@ export function BulkReceive({ locationId, onDone }: { locationId: string; onDone
   return (
     <section className="rounded-xl border border-gray-100 bg-white shadow-sm">
       <div className="flex flex-wrap items-end gap-3 px-4 pt-4">
-        <div className="min-w-0 flex-1 basis-64"><h2 className="font-semibold text-gray-900">รับเข้าทั้งตาราง · {point?.name}</h2><p className="mt-0.5 text-sm text-gray-600">ใช้ลงของครั้งแรก หรือรับหลายรายการพร้อมกัน · กรอกเฉพาะแถวที่มีของ แถวที่เว้นว่างจะไม่ถูกบันทึก · วันหมดอายุพิมพ์ตามกล่อง เช่น 31/12/2570 หรือ 12/2570</p></div>
+        <div className="min-w-0 flex-1 basis-64"><h2 className="font-semibold text-gray-900">รับเข้าทั้งตาราง · {point?.name}</h2><p className="mt-0.5 text-sm text-gray-600">ใช้ลงของครั้งแรก หรือรับหลายรายการพร้อมกัน · กรอกเฉพาะแถวที่มีของ แถวที่เว้นว่างจะไม่ถูกบันทึก · วันหมดอายุพิมพ์ตามกล่องเป็นปี ค.ศ. เช่น 31/12/2027 หรือ 12/2027</p></div>
         <div><label className={labelClass} htmlFor="brx-date">วันที่รับ</label><ThaiDateInput id="brx-date" value={date} max={bangkokToday()} onChange={setDate} attention widthClass="w-44" /></div>
         <div className="min-w-[200px] flex-1 basis-56"><label className={labelClass} htmlFor="brx-note">หมายเหตุ</label><input id="brx-note" className={inputClass} value={note} onChange={e => setNote(e.target.value)} placeholder="เช่น ลงของครั้งแรก / ใบส่งของเลขที่…" disabled={busy} /></div>
       </div>
