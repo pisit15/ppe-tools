@@ -73,7 +73,7 @@ export function parseTransaction(value: unknown, today = bangkokDate()): Transac
   };
   if (body.destinationId) input.destinationId = uuid(body.destinationId, 'รหัสจุดปลายทาง');
   if (body.expiry != null && body.expiry !== '') input.expiry = calendarDate(body.expiry, 'วันหมดอายุ');
-  if (body.lotCode != null) input.lotCode = text(body.lotCode, 'เลขล็อต', 100, false);
+  if (body.lotCode != null) input.lotCode = text(body.lotCode, 'เลขล็อต / PO', 100, false);
   if (input.kind === 'transfer' && (!input.destinationId || input.destinationId === input.locationId)) throw new FirstAidInputError('เลือกจุดปลายทางที่ต่างจากต้นทาง');
   if (input.kind === 'dispose' && !input.note) throw new FirstAidInputError('กรุณาระบุเหตุผลที่ตัดจำหน่าย');
   if (input.kind !== 'issue') return input;

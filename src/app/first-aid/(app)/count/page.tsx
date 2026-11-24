@@ -188,7 +188,7 @@ function Receive({ locationId, presetItem, onDone }: { locationId: string; prese
           <div key={l.key} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_90px_120px_176px_36px] items-start rounded-lg border border-gray-100 p-2">
             <div>{i === 0 && <span className={labelClass}>ยา</span>}<ItemPicker items={state.items} state={state} locationId={locationId} value={l.item} onPick={it => set(l.key, { item: it, expiry: it && !it.trackExpiry ? '' : l.expiry })} autoFocus={i === lines.length - 1 && !l.item} placeholder="พิมพ์ชื่อยาที่รับเข้า" /></div>
             <div>{i === 0 && <span className={labelClass}>จำนวน</span>}<input type="number" inputMode="numeric" min={1} aria-label="จำนวน" className={inputClass} value={l.qty} onChange={e => set(l.key, { qty: Math.max(1, Number(e.target.value) || 1) })} onFocus={e => e.target.select()} /></div>
-            <div>{i === 0 && <span className={labelClass}>เลขล็อต</span>}<input aria-label="เลขล็อต" className={inputClass} value={l.lot} onChange={e => set(l.key, { lot: e.target.value })} placeholder="ไม่บังคับ" /></div>
+            <div>{i === 0 && <span className={labelClass}>เลขล็อต / PO</span>}<input aria-label="เลขล็อต / PO" className={inputClass} value={l.lot} onChange={e => set(l.key, { lot: e.target.value })} placeholder="ไม่บังคับ" /></div>
             <div>{i === 0 && <span className={labelClass}>วันหมดอายุ</span>}<ThaiDateInput monthOnly ariaLabel="วันหมดอายุ" value={l.expiry} min={bangkokToday()} disabled={!!l.item && !l.item.trackExpiry} onChange={v => set(l.key, { expiry: v })} /></div>
             <button type="button" aria-label="ลบแถว" className="h-10 w-9 inline-flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100" disabled={lines.length === 1} onClick={() => setLines(ls => ls.filter(x => x.key !== l.key))}><Trash2 size={16} /></button>
           </div>
@@ -236,7 +236,7 @@ function Transfer({ onDone }: { onDone: (msg: string) => void }) {
       <div className="flex gap-2"><button type="button" className={btnSecondary} disabled={lines.length >= 8} onClick={() => setLines(ls => [...ls, { key: crypto.randomUUID(), item: null, qty: 1 }])}><Plus size={15} />เพิ่มแถว</button></div>
       {err && <p className="text-sm" style={{ color: VIZ.accent }}>{err}</p>}
       <button type="button" className={`${btnPrimary} h-11`} style={{ background: FA_GREEN }} disabled={busy} onClick={() => void save()}>{busy ? 'กำลังบันทึก…' : 'บันทึกการโอน'}</button>
-      <p className="text-xs text-gray-500">โอนล็อตที่หมดอายุก่อนไปก่อน · เลขล็อตและวันหมดอายุเดิมติดไปกับของ</p>
+      <p className="text-xs text-gray-500">โอนล็อตที่หมดอายุก่อนไปก่อน · เลขล็อต / PO และวันหมดอายุเดิมติดไปกับของ</p>
     </section>
   );
 }
