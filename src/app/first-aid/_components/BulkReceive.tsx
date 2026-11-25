@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { FaItem } from '@/lib/first-aid/types';
@@ -90,7 +91,7 @@ export function BulkReceive({ locationId, onDone }: { locationId: string; onDone
       </div>
       <div className={`hidden border-y border-gray-100 bg-gray-50/80 px-3 py-2 text-xs font-medium text-gray-600 ${GRID}`}><span>รายการ</span><span className="text-right">มีอยู่</span><span>จำนวนที่รับ</span><span>วันหมดอายุ</span><span>ขั้นต่ำ</span></div>
       <ul className="divide-y divide-gray-100 border-t border-gray-100 md:border-t-0">
-        {shown.length === 0 && <li className="px-4 py-10 text-center text-sm text-gray-600">{needle ? `ไม่พบ “${q}”` : view === 'filled' ? 'ยังไม่ได้กรอกแถวใด' : 'ไม่มีรายการ'}</li>}
+        {shown.length === 0 && <li className="px-4 py-10 text-center text-sm text-gray-600">{needle ? `ไม่พบ “${q}”` : view === 'filled' ? 'ยังไม่ได้กรอกแถวใด' : state.items.length === 0 ? <>ยังไม่มีรายการยาในทะเบียน — เพิ่มที่หน้า <Link href="/first-aid" className="underline">รายการยา</Link> (ปุ่ม “เพิ่มยา”) ก่อน แล้วกลับมาลงของ</> : 'ไม่มีรายการ'}</li>}
         {shown.map(i => { const c = cell(i.id); const have = balance(state, i.id, locationId); const filled = qtyOf(i.id) > 0; const m = minNow(i); return (
           <li key={i.id} className={`px-3 py-2 ${GRID}`} style={filled ? { background: `${FA_GREEN}0A` } : undefined}>
             <div className="flex min-w-0 items-center gap-2.5"><ItemImage item={i} size={36} rounded={8} /><div className="min-w-0"><div className="break-words font-medium leading-snug text-gray-900">{i.name}</div><div className="truncate text-xs text-gray-600">{itemSub(i)} · {i.unit}</div></div></div>

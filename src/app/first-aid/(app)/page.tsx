@@ -100,7 +100,7 @@ export default function ItemsPage() {
   const phoneTiles: [Filter, string, number, string][] = [['low', 'ต้องเติม', counts.low, VIZ.secondary], ['out', 'หมด', counts.out, VIZ.accent], ['expired', 'หมดอายุ', counts.expired, VIZ.accent], ['near', 'ใกล้หมดอายุ', counts.near, VIZ.secondary]];
   return (
     <div className="space-y-4">
-      <SetupChecklist state={state} />
+      <SetupChecklist state={state} onAddItem={() => setEdit({ open: true, item: null })} />
       {(state.lots.length > 0 || state.issueReports.some(r => r.status === 'open')) && <TodoBox state={state} scope={scope} rows={state.lots.length > 0 ? rows : []} onReports={() => setReportsOpen(true)} onFilter={f => { setFilter(f); setCat('all'); setQ(''); document.getElementById('fa-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} onBulkExpiry={() => setBulkExpiry(true)} onReorder={() => void exportReorder()} reorderBusy={reorderBusy} />}
       {/* Phone: the four numbers that call for action, each one a filter. The full six-card strip needs a wider screen. */}
       <section className="grid grid-cols-4 gap-1.5 sm:hidden" aria-label="สรุป">
@@ -132,7 +132,7 @@ export default function ItemsPage() {
 
       {/* Phone: one card per item — name in full, balance and status always on screen, no sideways scrolling. */}
       <section className="space-y-2 md:hidden" aria-label="รายการยา">
-        {visible.length === 0 && <p className="rounded-xl border border-gray-100 bg-white px-4 py-10 text-center text-gray-600">ไม่พบรายการ</p>}
+        {visible.length === 0 && <p className="rounded-xl border border-gray-100 bg-white px-4 py-10 text-center text-gray-600">{state.items.length === 0 ? 'ยังไม่มีรายการยา — กด “เพิ่มยา” เพื่อเริ่ม' : 'ไม่พบรายการ'}</p>}
         {visible.map(({ item, st }) => {
           const d = st.nearest ? daysUntil(st.nearest.expiry) : null; const expC = d !== null && d < 0 ? VIZ.accent : d !== null && d <= 90 ? '#9a5410' : VIZ.lightText;
           const notes = [
@@ -168,7 +168,7 @@ export default function ItemsPage() {
             <th className="text-right font-medium pl-2 pr-14 py-2 w-[116px] whitespace-nowrap">คงเหลือ</th><th className="text-right font-medium px-2 py-2 hidden sm:table-cell w-[60px]">ขั้นต่ำ</th><th className="text-left font-medium px-2 py-2 hidden sm:table-cell w-[118px] whitespace-nowrap">หมดอายุเร็วสุด</th><th className="text-left font-medium px-2 py-2 w-[124px]">สถานะ</th><th className="px-2 py-2 w-[124px]" />
           </tr></thead>
           <tbody>
-            {visible.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-500">ไม่พบรายการ</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-500">{state.items.length === 0 ? 'ยังไม่มีรายการยา — กด “เพิ่มยา” เพื่อเริ่ม' : 'ไม่พบรายการ'}</td></tr>}
             {visible.map(({ item, st }) => {
               const d = st.nearest ? daysUntil(st.nearest.expiry) : null; const expC = d !== null && d < 0 ? VIZ.accent : d !== null && d <= 90 ? VIZ.secondary : VIZ.text;
               return (

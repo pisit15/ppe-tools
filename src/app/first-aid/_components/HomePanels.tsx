@@ -10,18 +10,22 @@ type Row = { item: FaItem; st: ItemStatus };
 const smallBtn = 'inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 whitespace-nowrap disabled:opacity-50';
 
 /**
- * First days of a company: the four steps from an empty list to a working cabinet, with a button for the next one.
+ * First days of a company: the steps from an empty list to a working cabinet, with a button for the next one.
+ * A company that was given a starter list already has its items; one that was not has to add them before stock can be
+ * entered, so the item register is a step of its own. `onAddItem` opens the "add item" form of the page.
  * It goes away by itself once a point exists and holds stock; what is left after that (minimums, QR) moves to the to-do box.
  */
-export function SetupChecklist({ state }: { state: FaState }) {
+export function SetupChecklist({ state, onAddItem }: { state: FaState; onAddItem: () => void }) {
   const points = state.locations.filter(l => !l.isRegister);
   const hasPoint = points.length > 0; const hasStock = state.lots.length > 0;
   if (hasPoint && hasStock) return null;
   const hasMin = state.thresholds.some(t => t.min > 0);
   const selfService = points.filter(l => l.issueMode === 'self_service');
   const hasQr = selfService.length > 0 && selfService.every(l => l.hasPublicLink);
-  const steps = [
+  const itemCount = state.items.length;
+  const steps: { done: boolean; title: string; text: string; cta: string; href?: string; onClick?: () => void }[] = [
     { done: hasPoint, title: 'สร้างจุดปฐมพยาบาล', text: 'ตู้ กระเป๋า หรือห้องพยาบาล ที่เก็บยาจริง', href: '/first-aid/settings', cta: 'สร้างจุด' },
+    { done: itemCount > 0, title: 'เพิ่มรายการยาและเวชภัณฑ์', text: itemCount > 0 ? `มีแล้ว ${fmtInt(itemCount)} รายการ · เพิ่มได้อีกที่ปุ่ม “เพิ่มยา” ด้านล่าง` : 'ใส่ชื่อ หมวด และหน่วยของยาแต่ละตัวที่ใช้ — ต้องมีรายการก่อนจึงลงของได้', onClick: onAddItem, cta: 'เพิ่มยา' },
     { done: hasStock, title: 'ลงของที่มีอยู่ในตู้', text: 'กรอกจำนวนและวันหมดอายุของทุกรายการในตารางเดียว', href: '/first-aid/count?mode=receive&view=table', cta: 'ลงของครั้งแรก' },
     { done: hasMin, title: 'ตั้งจำนวนขั้นต่ำ', text: 'ระบบจะขึ้น “ต้องเติม” เมื่อของเหลือน้อยกว่าจำนวนนี้', href: '/first-aid/settings', cta: 'ตั้งขั้นต่ำ' },
     { done: hasQr, title: 'พิมพ์ QR ติดตู้', text: 'ให้พนักงานสแกนแล้วบันทึกการหยิบเอง (เฉพาะจุดแบบหยิบเอง)', href: '/first-aid/settings', cta: 'สร้าง / พิมพ์ QR' },
@@ -30,13 +34,13 @@ export function SetupChecklist({ state }: { state: FaState }) {
   return (
     <section className="rounded-xl border bg-white p-4 shadow-sm sm:p-5" style={{ borderColor: `${FA_GREEN}55` }} aria-label="ขั้นตอนเริ่มใช้งาน">
       <h2 className="font-semibold text-gray-900">เริ่มใช้งาน First Aid · เหลืออีก {steps.filter(s => !s.done).length} ขั้น</h2>
-      <p className="mt-0.5 text-sm text-gray-600">มีรายการยา {fmtInt(state.items.length)} รายการแล้ว ทำตามลำดับนี้เพื่อเริ่มจ่ายยาได้</p>
+      <p className="mt-0.5 text-sm text-gray-600">ทำตามลำดับนี้เพื่อเริ่มจ่ายยาได้</p>
       <ol className="mt-3 space-y-2">
         {steps.map((s, i) => (
           <li key={s.title} className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-3 py-2.5 ${i === next ? 'border-gray-300 bg-gray-50' : 'border-gray-100'}`}>
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold" style={s.done ? { background: `${VIZ.positive}22`, color: VIZ.positive } : i === next ? { background: FA_GREEN, color: '#fff' } : { background: '#F3F4F6', color: VIZ.lightText }}>{s.done ? <Check size={16} aria-label="เสร็จแล้ว" /> : i + 1}</span>
             <span className="min-w-0 flex-1 basis-48"><span className={`block font-medium ${s.done ? 'text-gray-500' : 'text-gray-900'}`}>{s.title}</span><span className="block text-sm text-gray-600">{s.text}</span></span>
-            {i === next && <Link href={s.href} className="inline-flex h-11 items-center rounded-xl px-4 font-semibold text-white" style={{ background: FA_GREEN }}>{s.cta}</Link>}
+            {i === next && (s.href ? <Link href={s.href} className="inline-flex h-11 items-center rounded-xl px-4 font-semibold text-white" style={{ background: FA_GREEN }}>{s.cta}</Link> : <button type="button" onClick={s.onClick} className="inline-flex h-11 items-center rounded-xl px-4 font-semibold text-white" style={{ background: FA_GREEN }}>{s.cta}</button>)}
           </li>))}
       </ol>
     </section>
